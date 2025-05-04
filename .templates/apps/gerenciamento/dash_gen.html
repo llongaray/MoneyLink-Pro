@@ -1,0 +1,82 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block addtitle %}
+<title>Dashboard Administrativo</title>
+{% endblock %}
+
+{% block addcss_extra %}
+<link rel="stylesheet" href="{% static 'styles/dash_gen.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="text-center">Dashboard Administrativo</h2>
+    <div class="row">
+
+        <!-- Card 1: Gerenciador de Funcionários -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Gerenciador de Funcionários</h5>
+                    <p class="card-text">Acesse o painel de gerenciamento de funcionários.</p>
+                    <a href="{% url 'colab:gen_funcionarios' %}" class="btn btn-primary">Gerenciar Funcionários</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card 2: Gerenciar Usuários do Sistema -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Gerenciar Usuários do Sistema</h5>
+                    <p class="card-text">Visualize, edite ou remova usuários do sistema.</p>
+                    <button type="button" class="btn btn-primary" data-toggle="modal" data-target="#modalUsuarios">
+                        Gerenciar Usuários
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Modal com a Tabela de Usuários -->
+<div class="modal fade" id="modalUsuarios" tabindex="-1" aria-labelledby="modalUsuariosLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalUsuariosLabel">Lista de Usuários do Sistema</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Fechar">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Nome</th>
+                            <th>Email</th>
+                            <th>Nome do Funcionário</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in usuarios %}
+                        <tr>
+                            <td>{{ user.first_name }}</td>
+                            <td>{{ user.email }}</td>
+                            <td>{{ user.funcionario_nome }}</td> <!-- Caso a relação com funcionário exista -->
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block addjs_extra %}
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.bundle.min.js"></script>
+{% endblock %}

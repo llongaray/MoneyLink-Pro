@@ -1,0 +1,295 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block addtitle %}
+<title>Gerenciamento de Funcionários</title>
+{% endblock %}
+
+{% block addcss_extra %}
+<link rel="stylesheet" href="{% static 'gerenciamento/gen_funcionarios.css' %}">
+<link rel="stylesheet" href="{% static 'gerenciamento/cards.css' %}">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap">
+<style>
+    #mensagem-sucesso {
+        display: {% if messages %}block{% else %}none{% endif %};
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Div para mostrar mensagens de sucesso -->
+<div id="mensagem-sucesso" class="alert alert-success" role="alert">
+    <button class="close-btn" onclick="document.getElementById('mensagem-sucesso').style.display='none';">&times;</button>
+    {% if messages %}
+        {% for message in messages %}
+            {{ message }}
+        {% endfor %}
+    {% endif %}
+</div>
+
+<h2 class="text-center">Gerenciamento de Funcionários</h2>
+<div class="container mt-4">
+    <div class="body">
+        <div class="slider">
+            <!-- Outros cards aqui (Cadastrar Funcionário, Gerenciar Funcionários, Associar Grupos) -->
+            
+            
+            <!-- Card: Criar Empresa -->
+            <div class="container__card">
+                <div class="background__sup"></div>
+                <div class="background__sub"></div>
+                <div class="content__card">
+                    <div class="sup-photo">
+                        <div class="photo">
+                            <img src="{% static 'gerenciamento/empresa.png' %}" alt="Criar Empresa">
+                        </div>
+                    </div>
+                    <div class="sub-text">
+                        <div class="title">
+                            <h2>Criar Empresa</h2>
+                            <p>Adicione uma nova empresa.</p>
+                        </div>
+                        <div class="button">
+                            <a href="#" class="btn btn-custom" data-toggle="modal" data-target="#modalEmpresa">Cadastrar</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card: Criar Horário -->
+            <div class="container__card">
+                <div class="background__sup"></div>
+                <div class="background__sub"></div>
+                <div class="content__card">
+                    <div class="sup-photo">
+                        <div class="photo">
+                            <img src="{% static 'gerenciamento/horario.png' %}" alt="Criar Horário">
+                        </div>
+                    </div>
+                    <div class="sub-text">
+                        <div class="title">
+                            <h2>Criar Horário</h2>
+                            <p>Defina um novo horário de trabalho.</p>
+                        </div>
+                        <div class="button">
+                            <a href="#" class="btn btn-custom" data-toggle="modal" data-target="#modalHorario">Cadastrar</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card: Criar Departamento -->
+            <div class="container__card">
+                <div class="background__sup"></div>
+                <div class="background__sub"></div>
+                <div class="content__card">
+                    <div class="sup-photo">
+                        <div class="photo">
+                            <img src="{% static 'gerenciamento/departamento.png' %}" alt="Criar Departamento">
+                        </div>
+                    </div>
+                    <div class="sub-text">
+                        <div class="title">
+                            <h2>Criar Departamento</h2>
+                            <p>Adicione um novo departamento.</p>
+                        </div>
+                        <div class="button">
+                            <a href="#" class="btn btn-custom" data-toggle="modal" data-target="#modalDepartamento">Cadastrar</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card: Criar Cargo -->
+            <div class="container__card">
+                <div class="background__sup"></div>
+                <div class="background__sub"></div>
+                <div class="content__card">
+                    <div class="sup-photo">
+                        <div class="photo">
+                            <img src="{% static 'gerenciamento/cargo.png' %}" alt="Criar Cargo">
+                        </div>
+                    </div>
+                    <div class="sub-text">
+                        <div class="title">
+                            <h2>Criar Cargo</h2>
+                            <p>Adicione um novo cargo.</p>
+                        </div>
+                        <div class="button">
+                            <a href="#" class="btn btn-custom" data-toggle="modal" data-target="#modalCargo">Cadastrar</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Cadastrar Empresa -->
+<div class="modal fade" id="modalEmpresa" tabindex="-1" aria-labelledby="modalEmpresaLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalEmpresaLabel">Cadastrar Empresa</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Fechar">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <form method="POST" action="{% url 'funcionarios:criar_empresa' %}">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="nome_empresa">Nome da Empresa</label>
+                        <input type="text" class="form-control" id="nome_empresa" name="nome" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="cnpj_empresa">CNPJ</label>
+                        <input type="text" class="form-control" id="cnpj_empresa" name="cnpj" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="endereco_empresa">Endereço</label>
+                        <input type="text" class="form-control" id="endereco_empresa" name="endereco" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Fechar</button>
+                    <button type="submit" class="btn btn-primary">Cadastrar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Cadastrar Horário -->
+<div class="modal fade" id="modalHorario" tabindex="-1" aria-labelledby="modalHorarioLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalHorarioLabel">Cadastrar Horário</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Fechar">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <form method="POST" action="{% url 'funcionarios:criar_horario' %}">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="nome_horario">Nome do Horário</label>
+                        <input type="text" class="form-control" id="nome_horario" name="nome" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="horario_entrada">Horário de Entrada</label>
+                        <input type="time" class="form-control" id="horario_entrada" name="horario_entrada" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="horario_saida">Horário de Saída</label>
+                        <input type="time" class="form-control" id="horario_saida" name="horario_saida" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Fechar</button>
+                    <button type="submit" class="btn btn-primary">Cadastrar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Cadastrar Departamento -->
+<div class="modal fade" id="modalDepartamento" tabindex="-1" aria-labelledby="modalDepartamentoLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalDepartamentoLabel">Cadastrar Departamento</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Fechar">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <form method="POST" action="{% url 'funcionarios:criar_departamento' %}">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="nome_departamento">Nome do Departamento</label>
+                        <input type="text" class="form-control" id="nome_departamento" name="nome" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Fechar</button>
+                    <button type="submit" class="btn btn-primary">Cadastrar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Cadastrar Cargo -->
+<div class="modal fade" id="modalCargo" tabindex="-1" aria-labelledby="modalCargoLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalCargoLabel">Cadastrar Cargo</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Fechar">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <form method="POST" action="{% url 'funcionarios:criar_cargo' %}">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="nome_cargo">Nome do Cargo</label>
+                        <input type="text" class="form-control" id="nome_cargo" name="nome" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="nivel_cargo">Nível</label>
+                        <input type="text" class="form-control" id="nivel_cargo" name="nivel" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Fechar</button>
+                    <button type="submit" class="btn btn-primary">Cadastrar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block addjs_extra %}
+<script>
+    $(document).ready(function() {
+        if ($('#mensagem-sucesso').is(':visible')) {
+            setTimeout(function() {
+                $('#mensagem-sucesso').fadeOut();
+            }, 5000);
+        }
+    });
+
+    document.addEventListener('DOMContentLoaded', function() {
+        var openModalButtons = document.querySelectorAll('[data-toggle="modal"]');
+        openModalButtons.forEach(function(button) {
+            button.addEventListener('click', function() {
+                var targetModalId = button.getAttribute('data-target');
+                var targetModal = document.querySelector(targetModalId);
+                if (targetModal) {
+                    targetModal.style.display = 'flex';
+                }
+            });
+        });
+
+        var modals = document.querySelectorAll('.modal');
+        modals.forEach(function(modal) {
+            var closeButton = modal.querySelector('.close');
+            closeButton.addEventListener('click', function() {
+                modal.style.display = 'none';
+            });
+            window.addEventListener('click', function(event) {
+                if (event.target == modal) {
+                    modal.style.display = 'none';
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}

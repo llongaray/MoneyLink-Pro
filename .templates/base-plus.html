@@ -1,0 +1,46 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}MoneyConsig{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/main.css' %}">
+    <link rel="stylesheet" href="{% static 'css/partials/menu-lateral.css' %}">
+    <!-- Favicon -->
+    <link rel="icon" href="{% static 'img/geral/logo.png' %}" type="image/png">
+    <!-- Importando Boxicons via CDN -->
+    <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    {% block addcss_extra %}{% endblock %}
+</head>
+
+<body>
+    {% include 'partials/_menu-latera.html' %}
+    <main>
+        <header>
+            <div class="TituloPagina">
+                <p>{% block header_title %}MoneyConsig{% endblock %}</p>
+                {% block pre_content %}{% endblock %}
+            </div>
+            <div class="Logout">
+                {% if user.is_authenticated %}
+                    <a href="{% url 'usuarios:logout' %}">
+                        <i class='bx bx-log-out'></i>
+                    </a>
+                    <a href="#">
+                        <p>{{ user.username }}</p>
+                    </a>
+                {% else %}
+                    <a href="{% url 'admin:login' %}">
+                        <i class='bx bx-log-in'></i>
+                    </a>
+                {% endif %}
+            </div>
+        </header>
+
+        {% block content %}{% endblock %}
+    </main>
+    
+    {% block addjs_extra %}{% endblock %}
+</body>
+</html>

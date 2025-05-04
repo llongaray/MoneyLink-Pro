@@ -1,0 +1,739 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load custom_tags %}
+{% get_user_cargo user as user_cargo %}
+
+{% block addtitle %}
+<title>Formulários</title>
+{% endblock %}
+
+{% block addcss_extra %}
+<link rel="stylesheet" href="{% static 'divider.css' %}">
+<link rel="stylesheet" href="{% static 'geral_forms.css' %}">
+<link rel="stylesheet" href="{% static 'mensagens.css' %}">
+<link rel="stylesheet" href="{% static 'modais.css' %}">
+<link rel="stylesheet" href="{% static 'darkmode.css' %}">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+{% endblock %}
+
+
+{% block pre_content %}
+{% include 'partials/_dark_mode_toggle.html' %}
+{% include 'partials/_messages.html' %}
+{% endblock %}
+
+{% block content %}
+
+
+<!-- FORMULARIOS -->
+<div class="container">
+    <!-- Botões para abrir os modais -->
+    <div class="options_modais">
+        {% can_view_funcionarios_button user 'cadastro_funcionario' as can_view_funcionario %}
+        {% if can_view_funcionario or user.is_superuser %}
+            <button type="button" class="btn btn-primary" onclick="abrirModalOptions('#modalCadastroFuncionario')">
+                Cadastro de Funcionário
+            </button>
+        {% endif %}
+
+        {% can_view_funcionarios_button user 'cadastro_usuario' as can_view_usuario %}
+        {% if can_view_usuario or user.is_superuser %}
+            <button type="button" class="btn btn-primary" onclick="abrirModalOptions('#modalCadastrarUsuario')">
+                Cadastrar Usuário
+            </button>
+            <button type="button" class="btn btn-primary" onclick="abrirModalOptions('#modalAssociarGrupos')">
+                Associar Grupos a Usuário
+            </button>
+        {% endif %}
+
+        {% can_view_funcionarios_button user 'cadastro_empresa' as can_view_empresa %}
+        {% if can_view_empresa or user.is_superuser %}
+            <button type="button" class="btn btn-primary" onclick="abrirModalOptions('#modalEmpresa')">
+                Cadastro de Empresa
+            </button>
+            <button type="button" class="btn btn-primary" onclick="abrirModalOptions('#modalLoja')">
+                Cadastro de Loja
+            </button>
+            <button type="button" class="btn btn-primary" onclick="abrirModalOptions('#modalDepartamento')">
+                Cadastro de Departamento
+            </button>
+            <button type="button" class="btn btn-primary" onclick="abrirModalOptions('#modalCargo')">
+                Cadastro de Cargo
+            </button>
+            <button type="button" class="btn btn-primary" onclick="abrirModalOptions('#modalHorario')">
+                Cadastro de Horário
+            </button>
+            <button type="button" class="btn btn-primary" onclick="abrirModalOptions('#modalTabela')">
+                Lista de Funcionários
+            </button>
+            <!-- Novo botão para abrir o modal de Aniversariantes -->
+            <button type="button" class="btn btn-primary" onclick="abrirModalOptions('#modalAniversariantes')">
+                Aniversariantes do Mês
+            </button>
+        {% endif %}
+    </div>
+
+    <div class="divider"></div>
+
+<!--***************************MODAIS***************************-->
+
+    <!-- Modal para Aniversariantes do Mês -->
+    <div class="modal" id="modalAniversariantes">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-birthday-cake"></i> Aniversariantes do Mês
+                    </h5>
+                    <button type="button" class="btn-close" data-dismiss="modal" aria-label="Fechar" style="color: #142650;"></button>
+                </div>
+                <div class="modal-body">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>Nome</th>
+                                <th>Departamento</th>
+                                <th>Faltam</th>
+                                <th>Aniversário</th>
+                            </tr>
+                        </thead>
+                        <tbody id="aniversariantes-tabela-body">
+                            <!-- Os dados serão inseridos via JS a partir da API -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Modal para Cadastro de Funcionário -->
+    <div class="modal active" id="modalCadastroFuncionario">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Novo Funcionário</h5>
+                </div>
+                <div class="modal-body">
+                    <form method="post" enctype="multipart/form-data" action="{% url 'funcionarios:all_forms' %}"> 
+                        <input type="hidden" name="form_type" value="cadastro_funcionario">
+                        {% csrf_token %}
+                    
+                        <!-- Campos obrigatórios -->
+                        <div class="form-group">
+                            <label for="apelido">Apelido:</label>
+                            <input type="text" name="apelido" id="apelido" class="form-control" placeholder="Apelido" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="nome">Nome:</label>
+                            <input type="text" name="nome" id="nome" class="form-control" placeholder="Nome" required>
+                        </div>
+                    
+                        <div class="form-group">
+                            <label for="sobrenome">Sobrenome:</label>
+                            <input type="text" name="sobrenome" id="sobrenome" class="form-control" placeholder="Sobrenome" required>
+                        </div>
+                    
+                        <div class="form-group">
+                            <label for="cpf">CPF:</label>
+                            <input type="text" name="cpf" id="cpf" class="form-control" placeholder="CPF" required>
+                        </div>
+                    
+                        <div class="form-group">
+                            <label for="foto">Foto:</label>
+                            <input type="file" name="foto" id="foto" class="form-control-file">
+                        </div>
+                    
+                        <!-- Campos opcionais -->
+                        <div class="form-group">
+                            <input type="text" name="cep" id="cep" class="form-control" placeholder="CEP">
+                        </div>
+                    
+                        <div class="form-group">
+                            <input type="text" name="endereco" id="endereco" class="form-control" placeholder="Endereço">
+                        </div>
+                    
+                        <div class="form-group">
+                            <input type="text" name="bairro" id="bairro" class="form-control" placeholder="Bairro">
+                        </div>
+                    
+                        <div class="form-group">
+                            <input type="text" name="cidade" id="cidade" class="form-control" placeholder="Cidade">
+                        </div>
+                    
+                        <div class="form-group">
+                            <input type="text" name="estado" id="estado" class="form-control" placeholder="Estado">
+                        </div>
+                    
+                        <div class="form-group">
+                            <label for="empresa">Empresa:</label>
+                            <select name="empresa" id="empresa" class="form-control">
+                                <option value="">-- Selecione uma Empresa --</option>
+                                {% for empresa in empresas %}
+                                    <option value="{{ empresa.id }}">{{ empresa.id }} | {{ empresa.nome }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <!-- Novo campo de seleção para a Loja -->
+                        <div class="form-group">
+                            <label for="loja">Loja:</label>
+                            <select name="loja" id="loja" class="form-control">
+                                <option value="">-- Selecione uma Loja --</option>
+                                {% for loja in lojas %}
+                                    <option value="{{ loja.id }}">{{ loja.id }} | {{ loja.nome }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                            
+                        <div class="form-group">
+                            <label for="horario">Horário:</label>
+                            <select name="horario" id="horario" class="form-control">
+                                <option value="">-- Selecione um Horário --</option>
+                                {% for horario in horarios %}
+                                    <option value="{{ horario.id }}">{{ horario.id }} | {{ horario.nome }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    
+                        <div class="form-group">
+                            <label for="cargo">Cargo:</label>
+                            <select name="cargo" id="cargo" class="form-control">
+                                <option value="">-- Selecione um Cargo --</option>
+                                {% for cargo in cargos_form %}
+                                    <option value="{{ cargo.id }}">{{ cargo.nome }} (Nível: {{ cargo.nivel }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    
+                        <div class="form-group">
+                            <label for="departamento">Departamento:</label>
+                            <select name="departamento" id="departamento" class="form-control">
+                                <option value="">-- Selecione um Departamento --</option>
+                                {% for departamento in departamentos_form %}
+                                    <option value="{{ departamento.id }}">{{ departamento.nome }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-submit">Salvar</button>
+                    </form>                    
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Modal para Cadastro de Usuário -->
+    <div class="modal" id="modalCadastrarUsuario">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Cadastro de Usuário</h5>
+                </div>
+                <div class="modal-body">
+                    <form method="post" action="{% url 'funcionarios:all_forms' %}">
+                        <input type="hidden" name="form_type" value="cadastrar_usuario">
+                        {% csrf_token %}
+                        {{ form_usuario.as_p }}
+                        <label for="funcionario">Selecione um Funcionário:</label>
+                        <select name="funcionario" id="funcionario">
+                            <option value="">-- Nenhum --</option>
+                            {% for funcionario in funcionarios %}
+                                <option value="{{ funcionario.id }}">{{ funcionario.nome }} {{ funcionario.sobrenome }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="btn btn-primary btn-submit">Cadastrar Usuário</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Associar Grupos a Usuário -->
+    <div class="modal" id="modalAssociarGrupos">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Associar Grupos a Usuário</h5>
+                </div>
+                <div class="modal-body">
+                    <form method="post" action="{% url 'funcionarios:all_forms' %}">
+                        <input type="hidden" name="form_type" value="associar_grupos">
+                        {% csrf_token %}
+                        
+                        <!-- Campo para selecionar o usuário -->
+                        <h5>Usuário:</h5>
+                        <select name="user" id="user-select" class="form-select">
+                            <option value="">Selecione um usuário</option>
+                            {% for usuario in usuarios %}
+                                <option value="{{ usuario.id }}">{{ usuario.username }}</option>
+                            {% endfor %}
+                        </select>
+                        
+                        <!-- Grupos -->
+                        <h5>Grupos:</h5>
+                        <div id="groups-container">
+                            {% for group in groups %}
+                                <div class="form-check">
+                                    <input class="form-check-input group-checkbox" type="checkbox" name="groups" value="{{ group.id }}" id="group-{{ group.id }}">
+                                    <label class="form-check-label" for="group-{{ group.id }}">{{ group.name }}</label>
+                                </div>
+                            {% endfor %}
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary btn-submit">Associar</button>
+                    </form>                        
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Cadastro de Empresa -->
+    <div class="modal" id="modalEmpresa">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Cadastro de Empresa</h5>
+                </div>
+                <div class="modal-body">
+                    <form method="POST" action="{% url 'funcionarios:all_forms' %}">
+                        <input type="hidden" name="form_type" value="criar_empresa">
+                        {% csrf_token %}
+                        <div class="form-group">
+                            <label for="nome_empresa">Nome da Empresa</label>
+                            <input type="text" class="form-control" id="nome_empresa" name="nome" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="cnpj_empresa">CNPJ</label>
+                            <input type="text" class="form-control" id="cnpj_empresa" name="cnpj" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="endereco_empresa">Endereço</label>
+                            <input type="text" class="form-control" id="endereco_empresa" name="endereco" required>
+                        </div>
+                        <div class="modal-footer">
+                            
+                            <button type="submit" class="btn btn-primary btn-submit">Cadastrar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal para Cadastro de Empresa -->
+    <div class="modal" id="modalLoja">
+        <div class="modal-dialog modal-lg"> <!-- Aumentei para modal-lg para ter mais espaço -->
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Cadastro de Loja</h5>
+                </div>
+                <div class="modal-body">
+                    <!-- Formulário existente -->
+                    <form method="POST" action="{% url 'funcionarios:all_forms' %}" enctype="multipart/form-data">
+                        <input type="hidden" name="form_type" value="criar_loja">
+                        {% csrf_token %}
+                        
+                        <div class="form-group">
+                            <label for="empresa">Empresa</label>
+                            <select class="form-control" id="empresa" name="empresa" required>
+                                <option value="">-- Selecione uma Empresa --</option>
+                                {% for empresa in empresas %}
+                                    <option value="{{ empresa.id }}">{{ empresa.nome }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+    
+                        <div class="form-group">
+                            <label for="nome_loja">Nome da Loja</label>
+                            <input type="text" class="form-control" id="nome_loja" name="nome" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="logo_loja">Logo da Loja (Opcional)</label>
+                            <input type="file" class="form-control" id="logo_loja" name="logo" accept="image/*">
+                        </div>
+    
+                        <div class="modal-footer">
+                            <button type="submit" class="btn btn-primary btn-submit">Cadastrar</button>
+                        </div>
+                    </form>
+
+                    <!-- Nova tabela de lojas existentes -->
+                    <div class="mt-4">
+                        <h6>Lojas Cadastradas</h6>
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Empresa</th>
+                                        <th>Nome da Loja</th>
+                                        <th>Logo</th>
+                                        <th>Ações</th>  <!-- Nova coluna -->
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for loja in lojas %}
+                                    <tr>
+                                        <td>{{ loja.empresa.nome }}</td>
+                                        <td>{{ loja.nome }}</td>
+                                        <td>
+                                            {% if loja.logo %}
+                                                <img src="{{ loja.logo.url }}" alt="Logo {{ loja.nome }}" style="max-height: 30px;">
+                                            {% else %}
+                                                <span class="text-muted">Sem logo</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <form method="POST" action="{% url 'funcionarios:all_forms' %}">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="form_type" value="delete_loja">
+                                                <input type="hidden" name="loja_id" value="{{ loja.id }}">
+                                                <button type="submit" class="btn btn-link text-danger" title="Excluir Loja">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="4" class="text-center">Nenhuma loja cadastrada</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Cadastro de Departamento -->
+    <div class="modal" id="modalDepartamento">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Cadastro de Departamento</h5>
+                </div>
+                <div class="modal-body">
+                    <form method="POST" action="{% url 'funcionarios:all_forms' %}" id="formDepartamento">
+                        <input type="hidden" name="form_type" value="criar_departamento">
+                        {% csrf_token %}
+                        <div class="form-group">
+                            <label for="nome_departamento">Nome do Departamento</label>
+                            <input type="text" class="form-control" id="nome_departamento" name="nome" required>
+                            <small id="departamentoFeedback" class="form-text text-danger"></small>
+                        </div>
+                        <div class="form-group">
+                            <label>Departamentos existentes:</label>
+                            <ul id="listaDepartamentos">
+                                {% for departamento in departamentos_form %}
+                                    <li>{{ departamento.nome }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="submit" class="btn btn-primary btn-submit" id="btnCadastrarDepartamento">Cadastrar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Cadastro de Cargo -->
+    <div class="modal" id="modalCargo">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Cadastro de Cargo</h5>
+                </div>
+                <div class="modal-body">
+                    <form id="formCargo" method="POST" action="{% url 'funcionarios:all_forms' %}" class="needs-validation" novalidate>
+                        {% csrf_token %}
+                        <input type="hidden" name="form_type" value="criar_cargo">
+                        
+                        <div class="form-group mb-3">
+                            <label for="nome_cargo" class="form-label">Nome do Cargo:</label>
+                            <input type="text" 
+                                   class="form-control" 
+                                   id="nome_cargo" 
+                                   name="nome" 
+                                   required>
+                        </div>
+                        
+                        <div class="form-group mb-3">
+                            <label for="nivel_cargo" class="form-label">Nível do Cargo:</label>
+                            <select class="form-control" 
+                                    id="nivel_cargo" 
+                                    name="nivel" 
+                                    required>
+                                <option value="">Selecione um nível</option>
+                                <option value="ESTAGIO">ESTÁGIO</option>
+                                <option value="PADRÃO">PADRÃO</option>
+                                <option value="GERENTE">GERENTE</option>
+                                <option value="COORDENADOR">COORDENADOR</option>
+                                <option value="SUPERVISOR GERAL">SUPERVISOR GERAL</option>
+                                <option value="TOTAL">TOTAL</option>
+                            </select>
+                        </div>
+                        
+                        <div id="cargoFeedback" class="feedback"></div>
+                        
+                        <button type="submit" class="btn btn-primary">
+                            Cadastrar Cargo
+                        </button>
+                    </form>
+                    
+                    <hr>
+                    
+                    <h6 class="mt-4 mb-3">Cargos Existentes:</h6>
+                    <ul id="listaCargos" class="list-group">
+                        {% for cargo in cargos_form %}
+                            <li class="list-group-item">
+                                <span>{{ cargo.nome }} <small class="text-muted">({{ cargo.nivel }})</small></span>
+                                <form method="POST" action="{% url 'funcionarios:all_forms' %}" class="d-inline">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="form_type" value="excluir_cargo">
+                                    <input type="hidden" name="cargo_id" value="{{ cargo.id }}">
+                                    <button type="submit" class="btn btn-danger" 
+                                            onclick="return confirm('Tem certeza que deseja excluir este cargo?')"
+                                            title="Excluir cargo">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </form>
+                            </li>
+                        {% empty %}
+                            <li class="list-group-item text-center text-muted">
+                                Nenhum cargo cadastrado
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Cadastro de Horário -->
+    <div class="modal" id="modalHorario">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Cadastro de Horário</h5>
+                </div>
+                <div class="modal-body">
+                    <form method="POST" action="{% url 'funcionarios:all_forms' %}">
+                        <input type="hidden" name="form_type" value="criar_horario">
+                        {% csrf_token %}
+                        <div class="form-group">
+                            <label for="nome_horario">Nome do Horário</label>
+                            <input type="text" class="form-control" id="nome_horario" name="nome" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="horario_entrada">Horário de Entrada</label>
+                            <input type="time" class="form-control" id="horario_entrada" name="horario_entrada" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="horario_saida">Horário de Saída</label>
+                            <input type="time" class="form-control" id="horario_saida" name="horario_saida" required>
+                        </div>
+                        <div class="modal-footer">
+                            
+                            <button type="submit" class="btn btn-primary btn-submit">Cadastrar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Lista de Funcionários -->
+    <div class="modal" id="modalTabela">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Lista de Funcionários</h5>
+                    <button type="button" class="btn-close" data-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Adicionar campos de busca -->
+                    <div class="mb-3">
+                        <input type="text" 
+                               id="busca_nome" 
+                               class="form-control mb-2" 
+                               placeholder="Buscar por nome...">
+                        <input type="text" 
+                               id="busca_cpf" 
+                               class="form-control" 
+                               placeholder="Buscar por CPF...">
+                    </div>
+                    
+                    <!-- Tabela com id para referência -->
+                    <div id="tabela-funcionarios">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Nome</th>
+                                    <th>CPF</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for funcionario in funcionarios_list %}
+                                <tr>
+                                    <td>{{ funcionario.id }}</td>
+                                    <td>
+                                        <a href="{% url 'funcionarios:render_ficha_funcionario' funcionario.id %}" target="_blank">
+                                            {{ funcionario.fullname }}
+                                        </a>
+                                    </td>
+                                    <td>{{ funcionario.cpf }}</td>
+                                    <td>
+                                        <form method="POST">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="form_type" value="delete_funcionario">
+                                            <input type="hidden" name="funcionario_id" value="{{ funcionario.id }}">
+                                            <button type="submit" class="delete-btn" title="Excluir Funcionário">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+</div>
+
+
+
+
+{% endblock %}
+
+{% block addjs_extra %}
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+
+<script>
+    const userGroups = {{ user_groups|safe }}; // Certifique-se que 'user_groups' seja renderizado corretamente
+    console.log("Grupos de usuários carregados:", userGroups); // Log para verificar se userGroups foi carregado corretamente
+</script>
+
+<script>
+document.getElementById('formCargo').addEventListener('submit', function(event) {
+    console.log('Formulário sendo enviado...');
+    
+    if (!this.checkValidity()) {
+        event.preventDefault();
+        event.stopPropagation();
+        console.log('Formulário inválido');
+    } else {
+        console.log('Formulário válido, enviando...');
+        console.log('Nome:', document.getElementById('nome_cargo').value);
+        console.log('Nível:', document.getElementById('nivel_cargo').value);
+    }
+    
+    this.classList.add('was-validated');
+});
+</script>
+
+<script src="{% static 'conjunto/groups.js' %}"></script> <!-- Carregue o groups.js aqui -->
+<script src="{% static 'darkmode.js' %}"></script>
+<script src="{% static 'modal-core.js' %}"></script>
+
+<script>
+$(document).ready(function() {
+    // Função para filtrar a tabela
+    function filtrarTabela() {
+        const nome = $('#busca_nome').val().toLowerCase();
+        const cpf = $('#busca_cpf').val().toLowerCase();
+        
+        $('#tabela-funcionarios tbody tr').filter(function() {
+            $(this).toggle(
+                $(this).find('td:eq(1)').text().toLowerCase().indexOf(nome) > -1 &&
+                $(this).find('td:eq(2)').text().toLowerCase().indexOf(cpf) > -1
+            );
+        });
+    }
+    
+    // Event listeners para os campos de busca
+    $('#busca_nome, #busca_cpf').on('input', filtrarTabela);
+});
+</script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Função para buscar os aniversariantes e atualizar a tabela
+        function atualizarTabelaAniversariantes() {
+            fetch('/rh/api/aniversariantes/')
+                .then(response => response.json())
+                .then(data => {
+                    const tbody = document.getElementById('aniversariantes-tabela-body');
+                    tbody.innerHTML = ''; // Limpa o conteúdo da tabela
+    
+                    if (data && data.length > 0) {
+                        data.forEach(item => {
+                            const row = document.createElement('tr');
+    
+                            const tdNome = document.createElement('td');
+                            tdNome.textContent = item.nome;
+                            row.appendChild(tdNome);
+    
+                            const tdDepartamento = document.createElement('td');
+                            tdDepartamento.textContent = item.departamento;
+                            row.appendChild(tdDepartamento);
+    
+                            const tdFaltam = document.createElement('td');
+                            tdFaltam.textContent = item.contador_dias + ' dias';
+                            row.appendChild(tdFaltam);
+    
+                            const tdData = document.createElement('td');
+                            tdData.textContent = item.data_formatada;
+                            row.appendChild(tdData);
+    
+                            tbody.appendChild(row);
+                        });
+                    } else {
+                        // Caso não haja aniversariantes no mês
+                        const row = document.createElement('tr');
+                        const tdMensagem = document.createElement('td');
+                        tdMensagem.setAttribute('colspan', '4');
+                        tdMensagem.textContent = 'Nenhum aniversariante no mês.';
+                        row.appendChild(tdMensagem);
+                        tbody.appendChild(row);
+                    }
+                })
+                .catch(error => {
+                    console.error('Erro ao buscar os aniversariantes:', error);
+                });
+        }
+    
+        // Supondo que sua função abrirModalOptions é responsável por exibir os modais,
+        // vamos interceptá-la para atualizar os dados quando o modal de aniversariantes for aberto.
+        const modalAniversariantesSelector = '#modalAniversariantes';
+        const funcAbrirModalOriginal = window.abrirModalOptions || function(selector){ 
+            document.querySelector(selector).classList.add('active'); 
+        };
+    
+        window.abrirModalOptions = function(selector) {
+            funcAbrirModalOriginal(selector);
+            if (selector === modalAniversariantesSelector) {
+                atualizarTabelaAniversariantes();
+            }
+        }
+    });
+</script>
+    
+{% endblock %}
+
+
+

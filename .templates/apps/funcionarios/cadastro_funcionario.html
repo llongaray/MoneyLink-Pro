@@ -1,0 +1,294 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block addtitle %}<title>Cadastro de Funcionário</title>{% endblock %}
+
+{% block addcss_extra %}
+<link rel="stylesheet" href="{% static 'funcionarios/cadastro.css' %}">
+<style>
+    /* Adicione isso ao seu arquivo CSS */
+    .message {
+        padding: 10px;
+        margin: 10px 0;
+        border-radius: 5px;
+        font-size: 14px;
+        color: #fff;
+    }
+
+    .message.info {
+        background-color: #2196F3; /* Azul */
+    }
+
+    .message.success {
+        background-color: #4CAF50; /* Verde */
+    }
+
+    .message.error {
+        background-color: #f44336; /* Vermelho */
+    }
+
+    .message.warning {
+        background-color: #ff9800; /* Laranja */
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="particles-js"></div>
+{% if mensagem %}
+    <div class="message {{ mensagem|slice:':none' }}">
+        {{ mensagem }}
+    </div>
+{% endif %}
+<section class="container">
+
+    <form method="post" enctype="multipart/form-data" onsubmit="return validarSenhas()">
+        <div class="container-basic">
+            <!-- Título do Formulário -->
+            <div class="box">
+                <h2>Novo Funcionário</h2>
+            </div>
+            <!-- Informações Básicas -->
+            {% csrf_token %}
+            <div class="info-basic">
+                <!-- Nome, PIS, CPF -->
+                <span class="nome-pis-cpf">
+                    <p>
+                        <label for="nome">Nome:</label>
+                        <input type="text" id="nome" name="nome" required placeholder="Nome Completo" oninput="formatNome(this)">
+                    </p>
+                    <p>
+                        <label for="pis">PIS:</label>
+                        <input type="text" id="pis" name="pis" placeholder="Número PIS" oninput="formatPIS(this)">
+                    </p>
+                    <p>
+                        <label for="cpf">CPF:</label>
+                        <input type="text" id="cpf" name="cpf" required placeholder="Número CPF" oninput="formatCPF(this)">
+                    </p>
+                </span>
+                <!-- Matrícula, Empresa, Status -->
+                <span class="matri-emp-status">
+                    <p>
+                        <label for="matricula">Matrícula:</label>
+                        <input type="text" id="matricula" name="matricula" placeholder="Matrícula">
+                    </p>
+                    <p>
+                        <!-- Empresa (Select) -->
+                        <label for="empresa">Empresa:</label>
+                        <select id="empresa" name="empresa">
+                            <option value="">Selecione a empresa</option>
+                            {% for empresa in empresas %}
+                                <option value="{{ empresa.id }}">{{ empresa.nome }}</option>
+                            {% endfor %}
+                        </select>
+                    </p>
+                    <p class="status">
+                        <label>Status:</label>
+                        <span>
+                            <label for="ativo">Ativo</label>
+                            <input type="checkbox" id="ativo" name="status" value="ativo" checked>
+                        </span>
+                        <span>
+                            <label for="inativo">Inativo</label>
+                            <input type="checkbox" id="inativo" name="status" value="inativo">
+                        </span>
+                    </p>
+                    
+                </span>
+                <!-- Data de Admissão, Início, Horário -->
+                <span class="hor-date">
+                    <span class="data">
+                        <p>
+                            <label for="admissao">Data de Admissão:</label>
+                            <input type="date" id="admissao" name="admissao">
+                        </p>
+                        <p>
+                            <label for="inicio">Data de Início:</label>
+                            <input type="date" id="inicio" name="inicio">
+                        </p>
+                    </span>
+                    <span class="hor">
+                        <p>
+                            <!-- Horário (Select) -->
+                            <label for="horario">Horário:</label>
+                            <select id="horario" name="horario">
+                                <option value="">Selecione o horário</option>
+                                {% for horario in horarios %}
+                                    <option value="{{ horario.id }}">{{ horario.nome }} ({{ horario.horario_entrada }} - {{ horario.horario_saida }})</option>
+                                {% endfor %}
+                            </select>
+                        </p>
+                    </span>
+                </span>
+            </div>
+        </div>
+
+        <!-- Menu de opções (labs) -->
+        <div class="lab">
+            <ul>
+                <li><button type="button" class="tab" data-target="geral">Informações Gerais</button></li>
+                <li><button type="button" class="tab" data-target="dados-pessoais">Dados Pessoais</button></li>
+                <li><button type="button" class="tab" data-target="usuario">Usuário</button></li>
+                <li><button type="button" class="tab" data-target="documentos">Arquivos</button></li>
+            </ul>
+
+            <!-- Modal Informações Gerais (display block por padrão) -->
+            <div id="geral" class="modal" style="display: flex;">
+                <p>
+                    <!-- Departamento (Select) -->
+                    <label for="departamento">Departamento:</label>
+                    <select id="departamento" name="departamento">
+                        <option value="">Selecione o departamento</option>
+                        {% for departamento in departamentos %}
+                            <option value="{{ departamento.id }}">{{ departamento.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </p>
+                <p>
+                    <!-- Cargo (Select) -->
+                    <label for="cargo">Cargo:</label>
+                    <select id="cargo" name="cargo">
+                        <option value="">Selecione o cargo</option>
+                        {% for cargo in cargos %}
+                            <option value="{{ cargo.id }}">{{ cargo.nome }} ({{ cargo.nivel }})</option>
+                        {% endfor %}
+                    </select>
+                </p>
+                <p>
+                    <label for="num-folha">Número da Folha:</label>
+                    <input type="text" id="num-folha" name="num_folha">
+                </p>
+                <p>
+                    <label for="ctps">CTPS:</label>
+                    <input type="text" id="ctps" name="ctps">
+                </p>
+                <p>
+                    <label for="superior">Superior Direto:</label>
+                    <select id="superior" name="superior">
+                        <option value="">Selecione</option>
+                        <!-- Lista de funcionários recebida via views -->
+                    </select>
+                </p>
+            </div>
+
+            <!-- Modal Dados Pessoais -->
+            <div id="dados-pessoais" class="modal">
+                <p>
+                    <label for="rg">RG:</label>
+                    <input type="text" id="rg" name="rg" oninput="formatRG(this)">
+                </p>
+                <p>
+                    <label for="nascimento">Data de Nascimento:</label>
+                    <input type="date" id="nascimento" name="nascimento">
+                </p>
+                <p>
+                    <label for="cep">CEP:</label>
+                    <input type="text" id="cep" name="cep">
+                </p>
+                <p>
+                    <label for="endereco">Endereço:</label>
+                    <input type="text" id="endereco" name="endereco" placeholder="Rua XXXXX, 001">
+                </p>
+                <p>
+                    <label for="bairro">Bairro:</label>
+                    <input type="text" id="bairro" name="bairro">
+                </p>
+                <p>
+                    <label for="cidade">Cidade:</label>
+                    <input type="text" id="cidade" name="cidade">
+                </p>
+                <p>
+                    <label for="estado">Estado:</label>
+                    <select id="estado" name="estado">
+                        <option value="">Selecione o estado</option>
+                        {% for sigla, nome in estados %}
+                            <option value="{{ sigla }}">{{ nome }}</option>
+                        {% endfor %}
+                    </select>
+                </p>
+                <p>
+                    <label for="celular">Celular para Contato:</label>
+                    <input type="text" id="celular" name="celular">
+                    <input type="checkbox" id="whatsapp" name="contato" value="whatsapp"> Whatsapp
+                    <input type="checkbox" id="sms" name="contato" value="sms"> SMS
+                    <input type="checkbox" id="ligacao" name="contato" value="ligacao"> Ligação
+                </p>
+            </div>
+
+            <!-- Modal Usuário -->
+            <div id="usuario" class="modal">
+                <p>
+                    <label for="email">Email:</label>
+                    <input type="email" id="email" name="email" required>
+                </p>
+                <p>
+                    <label for="senha">Senha:</label>
+                    <input type="password" id="senha" name="senha" required>
+                </p>
+                <p>
+                    <label for="confirmar-senha">Confirme a Senha:</label>
+                    <input type="password" id="confirmar-senha" name="confirmar_senha" required>
+                </p>
+                <p>
+                    <label for="nivel">Nível de Permissão:</label>
+                    <select id="nivel" name="nivel" required>
+                        <option value="">Selecione</option>
+                        {% for autoridade in autoridades %}
+                            <option value="{{ autoridade.id }}">{{ autoridade.name }}</option>
+                        {% endfor %}
+                    </select>
+                </p>
+                <p>
+                    <label for="setor">Setor:</label>
+                    <select id="setor" name="setor">
+                        <option value="">Selecione</option>
+                        {% for setor in setores %}
+                            <option value="{{ setor.id }}">{{ setor.name }}</option>
+                        {% endfor %}
+                    </select>
+                </p>
+            </div>
+
+            <!-- Modal para Documentos -->
+            <div id="documentos" class="modal">
+                <p>
+                    <label for="foto">Foto:</label>
+                    <input type="file" id="foto" name="foto" accept="image/*">
+                </p>
+                <p>
+                    <label for="identidade">Identidade (RG):</label>
+                    <input type="file" id="identidade" name="identidade" accept="application/pdf,image/*">
+                </p>
+                <p>
+                    <label for="carteira_de_trabalho">Carteira de Trabalho:</label>
+                    <input type="file" id="carteira_de_trabalho" name="carteira_de_trabalho" accept="application/pdf,image/*">
+                </p>
+                <p>
+                    <label for="comprovante_de_escolaridade">Comprovante de Escolaridade:</label>
+                    <input type="file" id="comprovante_de_escolaridade" name="comprovante_de_escolaridade" accept="application/pdf,image/*">
+                </p>
+                <p>
+                    <label for="pdf_contrato">PDF do Contrato:</label>
+                    <input type="file" id="pdf_contrato" name="pdf_contrato" accept="application/pdf">
+                </p>
+                <p>
+                    <label for="certidao_de_nascimento">Certidão de Nascimento:</label>
+                    <input type="file" id="certidao_de_nascimento" name="certidao_de_nascimento" accept="application/pdf,image/*">
+                </p>
+            </div>
+
+        </div>
+
+        <!-- Botões de Salvar e Cancelar -->
+        <div class="actions">
+            <button type="submit">Salvar</button>
+            <button type="button" onclick="window.location.href='/gen_funcionarios'">Cancelar</button>
+        </div>
+    </form>
+</section>
+
+{% endblock %}
+{% block addjs_extra %}
+<script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
+<script src="{% static 'inss/cadastro.js' %}"></script>
+{% endblock %}

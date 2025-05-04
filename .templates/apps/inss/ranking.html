@@ -1,0 +1,175 @@
+{% extends 'base-plus.html' %}
+{% load static %}
+
+{% block title %}Ranking INSS{% endblock %}
+{% block header_title %}Ranking INSS{% endblock %}
+
+{% block addcss_extra %}
+<link rel="stylesheet" href="{% static '/inss/ranking.css' %}">
+<link rel="stylesheet" href="{% static 'darkmode.css' %}">
+<link href="https://fonts.googleapis.com/css2?family=Russo+One&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+    console.log("Debug: percentual_conf");
+</script>
+{% endblock %}
+
+{% block pre_content %}
+{% include 'partials/_dark_mode_toggle.html' %}
+{% include 'partials/_messages.html' %}
+{% endblock %}
+
+{% block content %}
+
+<div class="dashboard-cards">
+    <div class="dashboard-card meta-geral">
+        <div class="card-icon">
+            <i class="fas fa-bullseye"></i>
+        </div>
+        <div class="card-content">
+            <h3 class="card-title">Meta Geral</h3>
+            <h5 class="card-value"></h5>
+            <span class="card-percentage">
+                <p class="percentage-value"></p><p class="percentage-text"> da Meta</p>
+            </span>
+        </div>
+    </div>
+    <div class="dashboard-card meta-empresa">
+        <div class="card-icon">
+            <i class="fas fa-building"></i>
+        </div>
+        <div class="card-content">
+            <h3 class="card-title">Meta Empresa</h3>
+            <h5 class="card-value"></h5>
+            <span class="card-percentage">
+                <p class="percentage-value"></p><p class="percentage-text"> da Meta</p>
+            </span>
+        </div>
+    </div>
+    <div class="dashboard-card meta-setor">
+        <div class="card-icon">
+            <i class="fas fa-users"></i>
+        </div>
+        <div class="card-content">
+            <h3 class="card-title">Meta Setor</h3>
+            <h5 class="card-value"></h5>
+            <span class="card-percentage">
+                <p class="percentage-value"></p><p class="percentage-text"> da Meta</p>
+            </span>
+        </div>
+    </div>
+    <div class="dashboard-card quantidade">
+        <div class="card-icon">
+            <i class="fas fa-chart-bar"></i>
+        </div>
+        <div class="card-content">
+            <h3 class="card-title">Qtd Em Loja</h3>
+            <h5 class="card-value"></h5>
+        </div>
+    </div>
+    <div class="dashboard-card agendamentos">
+        <div class="card-icon">
+            <i class="fas fa-calendar-alt"></i>
+        </div>
+        <div class="card-content">
+            <h3 class="card-title">Qtd Confirmados</h3>
+            <h5 class="card-value"></h5>
+        </div>
+    </div>
+</div>
+
+<section class="ranking-section">
+    <div class="ranking-container">
+        <div class="top3-container container">
+            <div class="subcontainer__top_ranking">
+                <!-- Top 2 -->
+                <div class="top2 box__ranking">
+                    <div class="info__foto">
+                        <div class="foto__pos">
+                            <img src="/static/img/default-store.png" alt="Posição Disponível">
+                            <div class="circle__position">2</div>
+                        </div>
+                        <div class="valor">0</div>
+                    </div>
+                    <div class="bar">
+                        <div class="nome">Posição Disponível</div>
+                        <div class="icon"><i class="fa fa-medal"></i></div>
+                    </div>
+                </div>
+
+                <!-- Top 1 -->
+                <div class="top1 box__ranking">
+                    <div class="info__foto">
+                        <div class="foto__pos">
+                            <img src="/static/img/default-store.png" alt="Posição Disponível">
+                            <div class="circle__position">1</div>
+                        </div>
+                        <div class="valor">0</div>
+                    </div>
+                    <div class="bar">
+                        <div class="nome">Posição Disponível</div>
+                        <div class="icon"><i class="fa fa-trophy"></i></div>
+                    </div>
+                </div>
+
+                <!-- Top 3 -->
+                <div class="top3 box__ranking">
+                    <div class="info__foto">
+                        <div class="foto__pos">
+                            <img src="/static/img/default-store.png" alt="Posição Disponível">
+                            <div class="circle__position">3</div>
+                        </div>
+                        <div class="valor">0</div>
+                    </div>
+                    <div class="bar">
+                        <div class="nome">Posição Disponível</div>
+                        <div class="icon"><i class="fa fa-medal"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="ranking-table-container container mt-4">
+            <table class="ranking-table">
+                <thead>
+                    <tr>
+                        <th>
+                            Rank
+                            <span class="sort-icon" data-column="rank">
+                                <i class="fas fa-sort"></i>
+                            </span>
+                        </th>
+                        <th>Foto</th>
+                        <th>
+                            Nome
+                            <span class="sort-icon" data-column="nome">
+                                <i class="fas fa-sort"></i>
+                            </span>
+                        </th>
+                        <th>Agendados</th>
+                        <th>
+                            Em Loja
+                            <span class="sort-icon" data-column="taxa">
+                                <i class="fas fa-sort"></i>
+                            </span>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- As linhas da tabela serão preenchidas via jQuery com os dados das APIs -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block addjs_extra %}
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="{% static 'darkmode.js' %}"></script>
+<script src="{% static 'conjunto/initialConfig.js' %}"></script>
+<script src="{% static 'conjunto/ranking_data.js' %}"></script>
+<script src="{% static 'inss/ranking.js' %}"></script>
+{% endblock %}

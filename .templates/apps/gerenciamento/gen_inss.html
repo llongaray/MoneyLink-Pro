@@ -1,0 +1,242 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block addtitle %}
+<title>Gerenciamento de Funcionários</title>
+{% endblock %}
+
+{% block addcss_extra %}
+<link rel="stylesheet" href="{% static 'gerenciamento/cards.css' %}">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap">
+<style>
+    #mensagem-sucesso {
+        display: {% if messages %}block{% else %}none{% endif %};
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Div para mostrar mensagens de sucesso -->
+<div id="mensagem-sucesso" class="alert alert-success" role="alert">
+    <button class="close-btn" onclick="document.getElementById('mensagem-sucesso').style.display='none';">&times;</button>
+    {% if messages %}
+        {% for message in messages %}
+            {{ message }}
+        {% endfor %}
+    {% endif %}
+</div>
+<div class="container mt-4">
+    <h2 class="text-center">Gerenciamento de INSS</h2>
+    <div class="body">
+        <div class="slider">
+
+            <!-- 1. AGENDAMENTO -->
+            <div class="container__card">
+                <div class="background__sup"></div>
+                <div class="background__sub"></div>
+                <div class="content__card">
+                    <div class="sup-photo">
+                        <div class="photo">
+                            <img src="{% static 'inss/exemplo.png' %}" alt="exemplo.png">
+                        </div>
+                    </div>
+                    <div class="sub-text">
+                        <div class="title">
+                            <h2>Agendamento</h2>
+                            <p>Sistema para agendar clientes em visita a loja por atendentes.</p>
+                        </div>
+                        <div class="button">
+                            <a href="{% url 'inss:agendamento' %}" class="btn btn-custom" target="_blank">Abrir</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. CONFIRMAÇÃO DE AGENDAMENTO -->
+            <div class="container__card">
+                <div class="background__sup"></div>
+                <div class="background__sub"></div>
+                <div class="content__card">
+                    <div class="sup-photo">
+                        <div class="photo">
+                            <img src="{% static 'inss/exemplo.png' %}" alt="exemplo.png">
+                        </div>
+                    </div>
+                    <div class="sub-text">
+                        <div class="title">
+                            <h2>Confirmação de Agendamento</h2>
+                            <p>Sistema com uma lista de cliente agendados ainda NÃO confirmados que devem receber confirmação.</p>
+                        </div>
+                        <div class="button">
+                            <a href="{% url 'inss:confirmacao_agem' %}" class="btn btn-custom" target="_blank">Abrir</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. RELISE CLIENTES -->
+            <div class="container__card">
+                <div class="background__sup"></div>
+                <div class="background__sub"></div>
+                <div class="content__card">
+                    <div class="sup-photo">
+                        <div class="photo">
+                            <img src="{% static 'inss/exemplo.png' %}" alt="exemplo.png">
+                        </div>
+                    </div>
+                    <div class="sub-text">
+                        <div class="title">
+                            <h2>Relise Clientes</h2>
+                            <p>Tabela que mostra cliente agendados mas que ainda não vieram.</p>
+                        </div>
+                        <div class="button">
+                            <a href="{% url 'inss:relise_clientes' %}" class="btn btn-custom" target="_blank">Abrir</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. LOJA POA -->
+            <div class="container__card">
+                <div class="background__sup"></div>
+                <div class="background__sub"></div>
+                <div class="content__card">
+                    <div class="sup-photo">
+                        <div class="photo">
+                            <img src="{% static 'inss/exemplo.png' %}" alt="exemplo.png">
+                        </div>
+                    </div>
+                    <div class="sub-text">
+                        <div class="title">
+                            <h2>Loja POA</h2>
+                            <p>Tabela com clientes agendados com range para o dia vigente.</p>
+                        </div>
+                        <div class="button">
+                            <a href="{% url 'inss:loja_poa' %}" class="btn btn-custom" target="_blank">Abrir</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 5. LOJA SLE -->
+            <div class="container__card">
+                <div class="background__sup"></div>
+                <div class="background__sub"></div>
+                <div class="content__card">
+                    <div class="sup-photo">
+                        <div class="photo">
+                            <img src="{% static 'inss/exemplo.png' %}" alt="exemplo.png">
+                        </div>
+                    </div>
+                    <div class="sub-text">
+                        <div class="title">
+                            <h2>Loja SLE</h2>
+                            <p>Tabela com clientes agendados com range para o dia vigente.</p>
+                        </div>
+                        <div class="button">
+                            <a href="{% url 'inss:loja_sle' %}" class="btn btn-custom" target="_blank">Abrir</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 6. LOJA SM -->
+            <div class="container__card">
+                <div class="background__sup"></div>
+                <div class="background__sub"></div>
+                <div class="content__card">
+                    <div class="sup-photo">
+                        <div class="photo">
+                            <img src="{% static 'inss/exemplo.png' %}" alt="exemplo.png">
+                        </div>
+                    </div>
+                    <div class="sub-text">
+                        <div class="title">
+                            <h2>Loja SM</h2>
+                            <p>Tabela com clientes agendados com range para o dia vigente..</p>
+                        </div>
+                        <div class="button">
+                            <a href="{% url 'inss:loja_sm' %}" class="btn btn-custom" target="_blank">Abrir</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        
+            
+        </div>        
+    </div>
+</div>
+
+
+{% endblock %}
+
+
+{% block addjs_extra %}
+<script>
+    $(document).ready(function() {
+        // Exibir mensagem de sucesso se houver
+        if ($('#mensagem-sucesso').is(':visible')) {
+            setTimeout(function() {
+                $('#mensagem-sucesso').fadeOut();
+            }, 5000);
+        }
+    });
+</script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Selecionar os botões de abrir modais
+        var openModalButtons = document.querySelectorAll('[data-toggle="modal"]');
+        
+        // Adicionar evento de clique para cada botão
+        openModalButtons.forEach(function(button) {
+            button.addEventListener('click', function() {
+                var targetModalId = button.getAttribute('data-target');
+                var targetModal = document.querySelector(targetModalId);
+                
+                if (targetModal) {
+                    targetModal.style.display = 'flex';  // Exibir modal
+                }
+            });
+        });
+
+        // Selecionar todos os modais
+        var modals = document.querySelectorAll('.modal');
+
+        // Adicionar evento de clique para fechar modais
+        modals.forEach(function(modal) {
+            var closeButton = modal.querySelector('.close');
+            closeButton.addEventListener('click', function() {
+                modal.style.display = 'none';  // Ocultar modal
+            });
+
+            // Fechar o modal ao clicar fora dele
+            window.addEventListener('click', function(event) {
+                if (event.target == modal) {
+                    modal.style.display = 'none';  // Ocultar modal
+                }
+            });
+        });
+
+        // Função para abrir o modal
+        function openModal(modalId) {
+            var modal = document.getElementById(modalId);
+            if (modal) {
+                modal.style.display = 'flex';  // Exibir modal
+            }
+        }
+
+        // Função para fechar o modal
+        function closeModal(modalId) {
+            var modal = document.getElementById(modalId);
+            if (modal) {
+                modal.style.display = 'none';  // Ocultar modal
+            }
+        }
+
+        // Exemplo de uso:
+        // openModal('modal-id');
+        // closeModal('modal-id');
+    });
+</script>
+
+{% endblock %}
