@@ -7,6 +7,8 @@ import logging
 import decimal
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
+from django.contrib.auth.models import User
+from django.db import IntegrityError
 
 # 🏗️ Django
 from django.shortcuts import render
@@ -514,7 +516,6 @@ def api_list_campaigns(request):
     return JsonResponse({"campanhas": campanhas_list})
 
 
-
 @require_GET
 @login_required(login_url='/')
 def api_get_baseclientes(request):
@@ -548,15 +549,13 @@ def api_get_baseclientes(request):
 
     if controle:
         cliente = controle.db_cliente
-
     else:
-        # 2º tenta encontrar DBCliente que ainda não está no controle
+        # 2º encontra próximo DBCliente não tabulado
         tabulados_ids = ControleClientesCampanha.objects.filter(
             campanha=campanha,
             db_cliente__isnull=False
-        ).exclude(status=ControleClientesCampanha.STATUS_ENTREGUE)
-
-        tabulados_ids = tabulados_ids.values_list('db_cliente_id', flat=True)
+        ).exclude(status=ControleClientesCampanha.STATUS_ENTREGUE) \
+         .values_list('db_cliente_id', flat=True)
 
         cliente = DBCliente.objects.filter(
             campanha=campanha
@@ -570,7 +569,7 @@ def api_get_baseclientes(request):
                 status=ControleClientesCampanha.STATUS_ENTREGUE
             )
 
-    # 3º Se ainda não achou, tenta pegar FGTSCliente com status ENTREGUE
+    # 3º se ainda não achou DBCliente, tenta FGTSCliente
     if not cliente:
         controle_fgts = ControleClientesCampanha.objects.filter(
             user=user,
@@ -582,15 +581,12 @@ def api_get_baseclientes(request):
         if controle_fgts:
             cliente = controle_fgts.fgts_cliente
             is_fgts = True
-
         else:
-            # 4º procura FGTSCliente que ainda não foi tabulado
             tabulados_fgts_ids = ControleClientesCampanha.objects.filter(
                 campanha=campanha,
                 fgts_cliente__isnull=False
-            ).exclude(status=ControleClientesCampanha.STATUS_ENTREGUE)
-
-            tabulados_fgts_ids = tabulados_fgts_ids.values_list('fgts_cliente_id', flat=True)
+            ).exclude(status=ControleClientesCampanha.STATUS_ENTREGUE) \
+             .values_list('fgts_cliente_id', flat=True)
 
             cliente = FGTSCliente.objects.filter(
                 campanha=campanha
@@ -598,16 +594,21 @@ def api_get_baseclientes(request):
 
             if cliente:
                 is_fgts = True
-                ControleClientesCampanha.objects.create(
-                    user=user,
-                    campanha=campanha,
-                    fgts_cliente=cliente,
-                    status=ControleClientesCampanha.STATUS_ENTREGUE
-                )
+                try:
+                    ControleClientesCampanha.objects.create(
+                        user=user,
+                        campanha=campanha,
+                        fgts_cliente=cliente,
+                        status=ControleClientesCampanha.STATUS_ENTREGUE
+                    )
+                except IntegrityError:
+                    # registro já existe, ignora para não causar 500 ❌
+                    pass
 
     if not cliente:
         return JsonResponse({"error": "Nenhum cliente disponível."}, status=404)
 
+    # Monta resposta
     if is_fgts:
         c = cliente
         cliente_data = {
@@ -643,7 +644,6 @@ def api_get_baseclientes(request):
             "email1": c.email1,
         }
         debitos_data = []
-
     else:
         c = cliente
         cliente_data = {

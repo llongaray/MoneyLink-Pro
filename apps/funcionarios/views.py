@@ -395,9 +395,7 @@ def api_get_userFuncionario(request, user_id):
         print(f"Erro em api_get_userFuncionario: {e}")
         return JsonResponse({'error': f'Erro ao buscar funcionário pelo usuário: {e}'}, status=500)
 
-# @csrf_exempt # Descomente APENAS se o AJAX não puder enviar o token CSRF
 @require_POST
-#@login_required # Proteja esta API se necessário
 def api_post_userfuncionario(request):
     """
     API para criar um User e um Funcionario associado a partir de dados multipart/form-data.
@@ -407,138 +405,142 @@ def api_post_userfuncionario(request):
     print("Dados POST:", request.POST)
     print("Arquivos FILES:", request.FILES)
 
-    # 1. & 2. Extrair e preparar dados para User (agora de request.POST)
+    # 1. Extrair dados básicos
     apelido = request.POST.get('apelido')
     nome_completo = request.POST.get('nome_completo')
-
+    print(f"Apelido recebido: {apelido}")
+    print(f"Nome completo recebido: {nome_completo}")
+    
     if not apelido or not nome_completo:
         print("Erro: Apelido e Nome Completo são obrigatórios.")
-        return JsonResponse({'error': 'Apelido e Nome Completo são obrigatórios'}, status=400)
+        return JsonResponse({'error': 'Apelido e Nome Completo são obrigatórios.'}, status=400)
 
     username = apelido.lower().replace(' ', '_')
-    print(f"Username gerado: {username}")
-
     ano_atual = timezone.now().year
     password = f"Money@{ano_atual}"
-    print(f"Senha padrão gerada: Money@{ano_atual}")
+    print(f"Username gerado: {username}")
+    print(f"Senha gerada: {password}")
 
     partes_nome = nome_completo.split(' ', 1)
     first_name = partes_nome[0]
     last_name = partes_nome[1] if len(partes_nome) > 1 else ''
+    print(f"First name: {first_name}, Last name: {last_name}")
 
-    # Verificar campos obrigatórios para Funcionário (de request.POST)
-    required_fields = ['cpf', 'data_nascimento', 'empresa', 'departamento', 'setor', 'cargo']
-    missing_fields = [field for field in required_fields if not request.POST.get(field)]
-    if missing_fields:
-        print(f"Erro: Campos obrigatórios faltando para funcionário: {', '.join(missing_fields)}")
-        return JsonResponse({'error': f"Campos obrigatórios faltando: {', '.join(missing_fields)}"}, status=400)
+    # 2. Verifica obrigatórios do funcionário
+    required = ['cpf', 'data_nascimento', 'empresa', 'departamento', 'setor', 'cargo']
+    missing = [f for f in required if not request.POST.get(f)]
+    if missing:
+        print(f"Campos obrigatórios faltando: {', '.join(missing)}")
+        return JsonResponse({'error': f"Campos faltando: {', '.join(missing)}"}, status=400)
 
-    # Formatar CPF para remover caracteres especiais e espaços
-    cpf_raw = request.POST.get('cpf', '')
+    # 3. Formatar CPF
+    cpf_raw = request.POST['cpf']
     cpf_formatado = ''.join(filter(str.isdigit, cpf_raw))
-    print(f"CPF original: {cpf_raw}")
-    print(f"CPF formatado (apenas números): {cpf_formatado}")
+    print(f"CPF raw: {cpf_raw}, CPF formatado: {cpf_formatado}")
 
-    # Obter o arquivo da foto (de request.FILES)
-    foto_file = request.FILES.get('foto') # A chave 'foto' deve corresponder à usada no FormData
-    if foto_file:
-         print(f"Arquivo de foto recebido: {foto_file.name}")
-    else:
-         print("Nenhum arquivo de foto recebido.")
+    # 4. Arquivo de foto (opcional)
+    foto_file = request.FILES.get('foto')
+    print(f"Arquivo de foto recebido: {foto_file}")
 
     try:
         with transaction.atomic():
-            print("Iniciando transação atômica.")
-            # 3. Criar usuário
+            print("Iniciando transação atômica")
+            
+            # 5. Criar User
             try:
+                print("Criando usuário...")
                 user = User.objects.create_user(
                     username=username,
                     password=password,
                     first_name=first_name,
                     last_name=last_name,
-                    # email=request.POST.get('email') # Obter de POST se enviado
                 )
-                print(f"User criado com sucesso. ID: {user.id}")
-                user_id = user.id
+                print(f"Usuário criado com sucesso. ID: {user.id}")
             except IntegrityError:
                 print(f"Erro: Username '{username}' já existe.")
-                return JsonResponse({'error': f"Usuário com apelido/username '{username}' já existe."}, status=400)
+                return JsonResponse({'error': f"Username '{username}' já existe."}, status=400)
 
-            # 5. Criar funcionário
+            # 6. Resgatar FK obrigatórias
+            print("Resgatando FKs obrigatórias...")
+            empresa = get_object_or_404(Empresa, pk=request.POST['empresa'])
+            departamento = get_object_or_404(Departamento, pk=request.POST['departamento'])
+            setor = get_object_or_404(Setor, pk=request.POST['setor'])
+            cargo = get_object_or_404(Cargo, pk=request.POST['cargo'])
+            print("FKs obrigatórias resgatadas com sucesso")
+
+            # 7. Campos FK opcionais
+            print("Processando FKs opcionais...")
+            horario_pk = request.POST.get('horario')
+            horario = HorarioTrabalho.objects.filter(pk=horario_pk).first() if horario_pk else None
+            print(f"Horario: {horario}")
+
+            equipe_pk = request.POST.get('equipe')
+            equipe = Equipe.objects.filter(pk=equipe_pk).first() if equipe_pk else None
+            print(f"Equipe: {equipe}")
+
+            loja_pk = request.POST.get('loja')
+            loja = Loja.objects.filter(pk=loja_pk).first() if loja_pk else None
+            print(f"Loja: {loja}")
+
+            # 8. Converter data de nascimento
             try:
-                # Validar e buscar ForeignKeys (de request.POST)
-                empresa = get_object_or_404(Empresa, pk=request.POST.get('empresa'))
-                departamento = get_object_or_404(Departamento, pk=request.POST.get('departamento'))
-                setor = get_object_or_404(Setor, pk=request.POST.get('setor'))
-                cargo = get_object_or_404(Cargo, pk=request.POST.get('cargo'))
-                horario = HorarioTrabalho.objects.filter(pk=request.POST.get('horario')).first()
-                equipe = Equipe.objects.filter(pk=request.POST.get('equipe')).first()
-                loja = Loja.objects.filter(pk=request.POST.get('loja')).first()
+                data_nasc = datetime.strptime(request.POST['data_nascimento'], '%Y-%m-%d').date()
+                print(f"Data de nascimento convertida: {data_nasc}")
+            except (ValueError, TypeError):
+                print("Erro: Formato inválido para data_nascimento")
+                raise ValidationError("Formato inválido para data_nascimento. Use YYYY-MM-DD.")
 
-                # Converter data de nascimento (de request.POST)
-                try:
-                    data_nascimento_obj = datetime.strptime(request.POST.get('data_nascimento'), '%Y-%m-%d').date()
-                except (ValueError, TypeError):
-                    raise ValidationError("Formato inválido para data_nascimento. Use YYYY-MM-DD.")
+            # 9. Criar Funcionario
+            print("Criando funcionário...")
+            funcionario = Funcionario.objects.create(
+                usuario=user,
+                apelido=apelido,
+                nome_completo=nome_completo,
+                cpf=cpf_formatado,
+                data_nascimento=data_nasc,
+                foto=foto_file,
+                empresa=empresa,
+                departamento=departamento,
+                setor=setor,
+                cargo=cargo,
+                horario=horario,
+                equipe=equipe,
+                loja=loja,
+                genero=request.POST.get('genero'),
+                estado_civil=request.POST.get('estado_civil'),
+                cep=request.POST.get('cep'),
+                endereco=request.POST.get('endereco'),
+                bairro=request.POST.get('bairro'),
+                cidade=request.POST.get('cidade'),
+                estado=request.POST.get('estado'),
+                celular1=request.POST.get('celular1'),
+                celular2=request.POST.get('celular2'),
+                nome_mae=request.POST.get('nome_mae'),
+                nome_pai=request.POST.get('nome_pai'),
+                nacionalidade=request.POST.get('nacionalidade'),
+                naturalidade=request.POST.get('naturalidade'),
+                matricula=request.POST.get('matricula'),
+                pis=request.POST.get('pis'),
+            )
+            print(f"Funcionário criado com sucesso. ID: {funcionario.id}")
 
-                funcionario = Funcionario.objects.create(
-                    usuario=user,
-                    apelido=apelido,
-                    nome_completo=nome_completo,
-                    cpf=cpf_formatado,  # Usa o CPF já formatado (somente números)
-                    data_nascimento=data_nascimento_obj,
-                    foto=foto_file, # Passa o arquivo para o campo ImageField/FileField
-                    empresa=empresa,
-                    departamento=departamento,
-                    setor=setor,
-                    cargo=cargo,
-                    horario=horario,
-                    equipe=equipe,
-                    loja=loja,
-                    genero=request.POST.get('genero'),
-                    estado_civil=request.POST.get('estado_civil'),
-                    cep=request.POST.get('cep'),
-                    endereco=request.POST.get('endereco'),
-                    bairro=request.POST.get('bairro'),
-                    cidade=request.POST.get('cidade'),
-                    estado=request.POST.get('estado'),
-                    celular1=request.POST.get('celular1'),
-                    celular2=request.POST.get('celular2'),
-                    nome_mae=request.POST.get('nome_mae'),
-                    nome_pai=request.POST.get('nome_pai'),
-                    nacionalidade=request.POST.get('nacionalidade'),
-                    naturalidade=request.POST.get('naturalidade'),
-                    matricula=request.POST.get('matricula'),
-                    pis=request.POST.get('pis'),
-                    # status=request.POST.get('status') == 'true' # Exemplo se enviar status
-                )
-                print(f"Funcionário criado com sucesso. ID: {funcionario.id}")
-                funcionario_id = funcionario.id
+        # 10. Resposta de sucesso
+        print("Processo concluído com sucesso")
+        return JsonResponse({
+            'message': (
+                f"Usuário '{username}' criado com sucesso!\n"
+                f"Funcionario ID: {funcionario.id}\n"
+                f"User ID: {user.id}"
+            )
+        }, status=201)
 
-            except (Empresa.DoesNotExist, Departamento.DoesNotExist, Setor.DoesNotExist, Cargo.DoesNotExist):
-                print("Erro: Empresa, Departamento, Setor ou Cargo não encontrado.")
-                return JsonResponse({'error': 'Empresa, Departamento, Setor ou Cargo inválido.'}, status=400)
-            except ValidationError as e:
-                print(f"Erro de validação ao criar funcionário: {e}")
-                return JsonResponse({'error': f'Erro de validação: {e.message if hasattr(e, "message") else e}'}, status=400) # Ajuste para diferentes versões do Django
-            except Exception as e:
-                print(f"Erro inesperado ao criar funcionário: {e}")
-                print(traceback.format_exc())  # Adicione esta linha
-                return JsonResponse({'error': f'Erro interno ao criar funcionário: {e}'}, status=500)
-
-        # 6. Mensagem de retorno
-        mensagem_sucesso = f"""
-Usuario criado '{username}'!
-Funcionario registrado com sucesso!
-ID funcionario: {funcionario_id}
-ID User: {user_id}
-"""
-        print("Operação concluída com sucesso.")
-        return JsonResponse({'message': mensagem_sucesso.strip()}, status=201) # 201 Created
-
+    except ValidationError as e:
+        print(f"Erro de validação: {e}")
+        return JsonResponse({'error': str(e)}, status=400)
     except Exception as e:
-        print(f"Erro geral na API (fora da transação): {e}")
-        return JsonResponse({'error': f'Erro interno no servidor: {e}'}, status=500)
+        print(f"Erro inesperado em api_post_userfuncionario: {e}")
+        traceback.print_exc()
+        return JsonResponse({'error': 'Erro interno no servidor.'}, status=500)
 
 # ----- Views de API POST para Cadastros Administrativos -----
 

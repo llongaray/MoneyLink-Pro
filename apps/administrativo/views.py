@@ -6,15 +6,19 @@ from django.contrib.auth.decorators import login_required
 from django.db.models import Sum, Count, Q, F, Case, When, Value, DecimalField, CharField
 from django.db.models.functions import Coalesce, ExtractYear, ExtractMonth
 from django.utils import timezone
+import datetime
 from decimal import Decimal
 import datetime
 import json
 from django.forms.models import model_to_dict
+from datetime import timedelta
+import re
 
 # Import models from other apps
-from apps.funcionarios.models import Empresa, Loja, Funcionario, Comissionamento, Setor, Equipe
-from apps.siape.models import RegisterMoney, RegisterMeta, Produto
+from apps.funcionarios.models import *
+from apps.siape.models import *
 from apps.inss.models import Agendamento as INSS_Agendamento, PresencaLoja as INSS_PresencaLoja
+from apps.inss.models import *
 
 
 
@@ -103,32 +107,42 @@ def format_percentage(value):
 # Funções relacionadas às requisições da dashboard administrativa
 # -------------------------------------------
 
-@login_required # Ensure user is logged in
+import traceback
+from datetime import timedelta
+from decimal import Decimal
+
+from django.db.models import Sum, Q
+from django.db.models.functions import Coalesce
+
+from django.utils import timezone
+
+
+@login_required
 @require_GET
 def api_get_dashboard(request):
     """
-    API endpoint to fetch all necessary data for the administrative dashboard.
+    API endpoint para retornar todos os dados do Dashboard Administrativo.
     """
     try:
         now = timezone.now()
-        current_year = now.year
-        current_month = now.month
 
-        # --- Date Ranges ---
-        start_year = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-        end_year = now.replace(month=12, day=31, hour=23, minute=59, second=59, microsecond=999999)
+        # --- Intervalos de Data ---
+        start_year  = now.replace(month=1, day=1,  hour=0, minute=0, second=0, microsecond=0)
+        end_year    = now.replace(month=12, day=31, hour=23, minute=59, second=59, microsecond=999999)
         start_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        # Find the last day of the current month
+
+        # Primeiro dia do próximo mês
         next_month = start_month.replace(month=start_month.month % 12 + 1, day=1)
         if start_month.month == 12:
-             next_month = next_month.replace(year=start_month.year + 1)
-        end_month = next_month - datetime.timedelta(microseconds=1)
+            next_month = next_month.replace(year=start_month.year + 1)
 
+        # Último instante do mês atual
+        end_month = next_month - timedelta(microseconds=1)
 
-        # --- Base QuerySet for Financial Data ---
+        # Base para dados financeiros ativos
         registros_financeiros = RegisterMoney.objects.filter(status=True)
 
-        # --- Estrutura de Dados de Retorno ---
+        # Estrutura inicial de resposta
         data = {
             'financeiro': {
                 'empresas_list': [],
@@ -144,7 +158,7 @@ def api_get_dashboard(request):
             'rh': {
                 'geral': {'ativos': 0, 'inativos': 0},
                 'funcionarios_list': [],
-                'desempenho': {}, # Keyed by funcionario.id
+                'desempenho': {},
             },
             'metas': {
                 'ativas_list': [],
@@ -154,32 +168,23 @@ def api_get_dashboard(request):
         }
 
         # ==========================================
-        # SESSÃO: FINANCEIRO
+        # FINANCEIRO
         # ==========================================
-        print("Calculando seção Financeiro...")
-
-        # 1. Categoria: Empresa
         empresas = Empresa.objects.filter(status=True).order_by('nome')
-        empresas_data = []
-        for empresa in empresas:
+        for emp in empresas:
             fat_ano = registros_financeiros.filter(
-                empresa=empresa, data__range=(start_year, end_year)
+                empresa=emp, data__range=(start_year, end_year)
             ).aggregate(total=Coalesce(Sum('valor_est'), Decimal(0)))['total']
-
             fat_mes = registros_financeiros.filter(
-                empresa=empresa, data__range=(start_month, end_month)
+                empresa=emp, data__range=(start_month, end_month)
             ).aggregate(total=Coalesce(Sum('valor_est'), Decimal(0)))['total']
-
-            empresas_data.append({
-                'id': empresa.id,
-                'nome': empresa.nome,
+            data['financeiro']['empresas_list'].append({
+                'id': emp.id,
+                'nome': emp.nome,
                 'faturamento_ano': fat_ano,
                 'faturamento_mes': fat_mes
             })
-        data['financeiro']['empresas_list'] = empresas_data
 
-        # 2. Categoria: Interno (Sedes) - Faturamento NÃO associado a Lojas Franquia
-        # Inclui faturamento sem loja OU faturamento de lojas não-franquia (sede ou filial)
         interno_ano = registros_financeiros.filter(
             Q(loja__isnull=True) | Q(loja__franquia=False),
             data__range=(start_year, end_year)
@@ -188,340 +193,243 @@ def api_get_dashboard(request):
             Q(loja__isnull=True) | Q(loja__franquia=False),
             data__range=(start_month, end_month)
         ).aggregate(total=Coalesce(Sum('valor_est'), Decimal(0)))['total']
-        data['financeiro']['interno'] = {'faturamento_ano': interno_ano, 'faturamento_mes': interno_mes}
+        data['financeiro']['interno'] = {
+            'faturamento_ano': interno_ano,
+            'faturamento_mes': interno_mes
+        }
 
-        # 3. Categoria: Franquia - Faturamento de Lojas Franquia
-        franquia_ano = registros_financeiros.filter(
+        franq_ano = registros_financeiros.filter(
             loja__franquia=True, data__range=(start_year, end_year)
         ).aggregate(total=Coalesce(Sum('valor_est'), Decimal(0)))['total']
-        franquia_mes = registros_financeiros.filter(
+        franq_mes = registros_financeiros.filter(
             loja__franquia=True, data__range=(start_month, end_month)
         ).aggregate(total=Coalesce(Sum('valor_est'), Decimal(0)))['total']
-        data['financeiro']['franquia'] = {'faturamento_ano': franquia_ano, 'faturamento_mes': franquia_mes}
+        data['financeiro']['franquia'] = {
+            'faturamento_ano': franq_ano,
+            'faturamento_mes': franq_mes
+        }
 
-        # 4. Categoria: Filial - Faturamento de Lojas Filial
         filial_ano = registros_financeiros.filter(
             loja__filial=True, data__range=(start_year, end_year)
         ).aggregate(total=Coalesce(Sum('valor_est'), Decimal(0)))['total']
         filial_mes = registros_financeiros.filter(
             loja__filial=True, data__range=(start_month, end_month)
         ).aggregate(total=Coalesce(Sum('valor_est'), Decimal(0)))['total']
-        data['financeiro']['filial'] = {'faturamento_ano': filial_ano, 'faturamento_mes': filial_mes}
-        print("Seção Financeiro OK.")
+        data['financeiro']['filial'] = {
+            'faturamento_ano': filial_ano,
+            'faturamento_mes': filial_mes
+        }
 
         # ==========================================
-        # SESSÃO: LOJAS
+        # LOJAS
         # ==========================================
-        print("Calculando seção Lojas...")
-        lojas = Loja.objects.filter(status=True).select_related('empresa').order_by('nome')
-        sede_lojas = lojas.filter(filial=False, franquia=False)
-        filial_lojas = lojas.filter(filial=True)
+        lojas          = Loja.objects.filter(status=True).order_by('nome')
+        sede_lojas     = lojas.filter(filial=False, franquia=False)
+        filial_lojas   = lojas.filter(filial=True)
         franquia_lojas = lojas.filter(franquia=True)
 
-        # --- Helper function for Loja Metrics ---
-        def get_loja_metrics(loja_instance):
-            metrics = {
-                'faturamento_ano': Decimal(0), 'faturamento_mes': Decimal(0),
-                'taxa_comparecimento': Decimal(0), 'clientes_rua': 0,
-                'negocios_fechados': 0, 'agendamentos': 0, 'sem_interesse': 0
+        def get_loja_metrics(loja_inst):
+            m = {
+                'faturamento_ano': Decimal(0),
+                'faturamento_mes': Decimal(0),
+                'taxa_comparecimento': Decimal(0),
+                'clientes_rua': 0,
+                'negocios_fechados': 0,
+                'agendamentos': 0,
+                'sem_interesse': 0
             }
-
-            # Faturamento (RegisterMoney)
-            metrics['faturamento_ano'] = registros_financeiros.filter(
-                loja=loja_instance, data__range=(start_year, end_year)
+            m['faturamento_ano'] = registros_financeiros.filter(
+                loja=loja_inst, data__range=(start_year, end_year)
             ).aggregate(total=Coalesce(Sum('valor_est'), Decimal(0)))['total']
-            metrics['faturamento_mes'] = registros_financeiros.filter(
-                loja=loja_instance, data__range=(start_month, end_month)
+            m['faturamento_mes'] = registros_financeiros.filter(
+                loja=loja_inst, data__range=(start_month, end_month)
             ).aggregate(total=Coalesce(Sum('valor_est'), Decimal(0)))['total']
 
-            # Métricas INSS (Agendamento, PresencaLoja) - Filtrar por mês atual
-            agendamentos_mes = INSS_Agendamento.objects.filter(
-                loja=loja_instance, dia_agendado__range=(start_month, end_month)
+            ag_m = INSS_Agendamento.objects.filter(
+                loja=loja_inst, dia_agendado__range=(start_month, end_month)
+            ).count()
+            pr_qs = INSS_PresencaLoja.objects.filter(
+                loja_comp=loja_inst, data_presenca__range=(start_month, end_month)
             )
-            presencas_mes = INSS_PresencaLoja.objects.filter(
-                loja_comp=loja_instance, data_presenca__range=(start_month, end_month)
-            )
-
-            total_agendamentos_mes = agendamentos_mes.count()
-            total_presencas_mes = presencas_mes.count() # Presenças registradas no mês
-
-            metrics['agendamentos'] = total_agendamentos_mes # Total agendado para o mês
-
-            # Calcula comparecimentos do mês (presenças não de rua vinculadas a agendamentos do mês OU presenças de agend. anteriores que ocorreram no mes)
-            # Simplificação: Considerando presenças registradas no mês como base para taxa
-            comparecimentos_mes = presencas_mes.exclude(cliente_rua=True).count()
-
-            if total_agendamentos_mes > 0:
-                # Taxa pode ser baseada em comparecimentos/agendados OU comparecimentos/(agendados que deveriam ter vindo)
-                # Usando a contagem de presenças do mês como base simplificada:
-                 metrics['taxa_comparecimento'] = (Decimal(comparecimentos_mes) / Decimal(total_agendamentos_mes)) * 100
-            else:
-                 metrics['taxa_comparecimento'] = Decimal(0)
-
-
-            metrics['clientes_rua'] = presencas_mes.filter(cliente_rua=True).count()
-            metrics['negocios_fechados'] = presencas_mes.filter(
+            m['agendamentos'] = ag_m
+            if ag_m > 0:
+                comp = pr_qs.exclude(cliente_rua=True).count()
+                m['taxa_comparecimento'] = (Decimal(comp) / Decimal(ag_m)) * 100
+            m['clientes_rua']      = pr_qs.filter(cliente_rua=True).count()
+            m['negocios_fechados'] = pr_qs.filter(
                 tabulacao_venda=INSS_PresencaLoja.TabulacaoVendaChoices.NEGOCIO_FECHADO
             ).count()
-            metrics['sem_interesse'] = presencas_mes.filter(
+            m['sem_interesse']     = pr_qs.filter(
                 tabulacao_venda__in=[
                     INSS_PresencaLoja.TabulacaoVendaChoices.NAO_ACEITOU,
                     INSS_PresencaLoja.TabulacaoVendaChoices.NAO_QUIS_OUVIR,
                     INSS_PresencaLoja.TabulacaoVendaChoices.INELEGIVEL
                 ]
             ).count()
+            return m
 
-            return metrics
-
-        # 1. Categoria: Sede
-        # Assumindo que pode haver mais de uma sede, somamos as métricas
-        sede_metrics_total = {
-            'faturamento_ano': Decimal(0), 'faturamento_mes': Decimal(0),
-            'taxa_comparecimento': Decimal(0), 'clientes_rua': 0,
-            'negocios_fechados': 0, 'agendamentos': 0, 'sem_interesse': 0
+        # Sede agregado
+        sede_tot = {
+            'faturamento_ano': Decimal(0),
+            'faturamento_mes': Decimal(0),
+            'taxa_comparecimento': Decimal(0),
+            'clientes_rua': 0,
+            'negocios_fechados': 0,
+            'agendamentos': 0,
+            'sem_interesse': 0
         }
-        total_agendamentos_sede_mes = 0
-        total_comparecimentos_sede_mes = 0
+        sum_age = sum_comp = 0
+        for s in sede_lojas:
+            mt = get_loja_metrics(s)
+            for k in sede_tot:
+                sede_tot[k] += mt[k]
+            ag_ct = INSS_Agendamento.objects.filter(
+                loja=s, dia_agendado__range=(start_month, end_month)
+            ).count()
+            cp_ct = INSS_PresencaLoja.objects.filter(
+                loja_comp=s, data_presenca__range=(start_month, end_month)
+            ).exclude(cliente_rua=True).count()
+            sum_age += ag_ct
+            sum_comp += cp_ct
+        sede_tot['taxa_comparecimento'] = (
+            (Decimal(sum_comp) / Decimal(sum_age) * 100) if sum_age else Decimal(0)
+        )
+        data['lojas']['sede'] = sede_tot
 
-        for sede in sede_lojas:
-            metrics = get_loja_metrics(sede)
-            sede_metrics_total['faturamento_ano'] += metrics['faturamento_ano']
-            sede_metrics_total['faturamento_mes'] += metrics['faturamento_mes']
-            sede_metrics_total['clientes_rua'] += metrics['clientes_rua']
-            sede_metrics_total['negocios_fechados'] += metrics['negocios_fechados']
-            sede_metrics_total['agendamentos'] += metrics['agendamentos']
-            sede_metrics_total['sem_interesse'] += metrics['sem_interesse']
-
-            # Para taxa de comparecimento agregada:
-            agendamentos_mes_sede = INSS_Agendamento.objects.filter(loja=sede, dia_agendado__range=(start_month, end_month)).count()
-            presencas_mes_sede = INSS_PresencaLoja.objects.filter(loja_comp=sede, data_presenca__range=(start_month, end_month))
-            comparecimentos_mes_sede = presencas_mes_sede.exclude(cliente_rua=True).count()
-
-            total_agendamentos_sede_mes += agendamentos_mes_sede
-            total_comparecimentos_sede_mes += comparecimentos_mes_sede
-
-        if total_agendamentos_sede_mes > 0:
-            sede_metrics_total['taxa_comparecimento'] = (Decimal(total_comparecimentos_sede_mes) / Decimal(total_agendamentos_sede_mes)) * 100
-        else:
-            sede_metrics_total['taxa_comparecimento'] = Decimal(0)
-
-        data['lojas']['sede'] = sede_metrics_total
-
-
-        # 2. Categoria: Filial
-        filiais_data = []
-        for filial in filial_lojas:
-            metrics = get_loja_metrics(filial)
-            filiais_data.append({
-                'id': filial.id,
-                'nome': filial.nome,
-                'metrics': metrics
+        # Filiais e Franquias
+        for f in filial_lojas:
+            data['lojas']['filiais_list'].append({
+                'id': f.id,
+                'nome': f.nome,
+                'metrics': get_loja_metrics(f)
             })
-        data['lojas']['filiais_list'] = filiais_data
-
-        # 3. Categoria: Franquia
-        franquias_data = []
-        for franquia in franquia_lojas:
-            metrics = get_loja_metrics(franquia)
-            franquias_data.append({
-                'id': franquia.id,
-                'nome': franquia.nome,
-                'metrics': metrics
+        for fq in franquia_lojas:
+            data['lojas']['franquias_list'].append({
+                'id': fq.id,
+                'nome': fq.nome,
+                'metrics': get_loja_metrics(fq)
             })
-        data['lojas']['franquias_list'] = franquias_data
-        print("Seção Lojas OK.")
 
         # ==========================================
-        # SESSÃO: RECURSOS HUMANOS
+        # RH
         # ==========================================
-        print("Calculando seção RH...")
-        funcionarios = Funcionario.objects.select_related(
-            'usuario', 'cargo', 'empresa', 'departamento', 'setor', 'equipe'
-        ).prefetch_related('regras_comissionamento') # Prefetch M2M
+        funcs = Funcionario.objects.select_related('usuario').prefetch_related('regras_comissionamento')
+        data['rh']['geral']['ativos']   = funcs.filter(status=True).count()
+        data['rh']['geral']['inativos'] = funcs.filter(status=False).count()
 
-        # 1. Categoria: Funcionários (Geral)
-        data['rh']['geral']['ativos'] = funcionarios.filter(status=True).count()
-        data['rh']['geral']['inativos'] = funcionarios.filter(status=False).count()
+        for fn in funcs.filter(status=True).order_by('nome_completo'):
+            # Lista para selector
+            data['rh']['funcionarios_list'].append({
+                'id': fn.id,
+                'nome': fn.apelido or fn.nome_completo
+            })
+            # Desempenho
+            desempenho = {
+                'faturamento_ano': Decimal(0),
+                'faturamento_mes': Decimal(0),
+                'clientes_concluidos': 0,
+                'comissao_total_mes': Decimal(0)
+            }
+            if fn.usuario:
+                ur = registros_financeiros.filter(user=fn.usuario)
+                desempenho['faturamento_ano'] = ur.filter(
+                    data__range=(start_year, end_year)
+                ).aggregate(total=Coalesce(Sum('valor_est'), Decimal(0)))['total']
+                desempenho['faturamento_mes'] = ur.filter(
+                    data__range=(start_month, end_month)
+                ).aggregate(total=Coalesce(Sum('valor_est'), Decimal(0)))['total']
+                desempenho['clientes_concluidos'] = ur.filter(
+                    data__range=(start_month, end_month)
+                ).values('cpf_cliente').distinct().count()
 
-        # 2. Categoria: Desempenho por Funcionário
-        rh_funcionarios_list = []
-        rh_desempenho = {}
+                # Cálculo de comissão simples
+                total_com = Decimal(0)
+                regras = fn.regras_comissionamento.filter(status=True)
+                for rg in regras:
+                    base = desempenho['faturamento_mes']
+                    if rg.percentual is not None:
+                        if ((rg.valor_de is None or base >= rg.valor_de) and
+                            (rg.valor_ate is None or base <= rg.valor_ate)):
+                            total_com += (base * rg.percentual) / Decimal(100)
+                    elif rg.valor_fixo is not None:
+                        if ((rg.valor_de is None or base >= rg.valor_de) and
+                            (rg.valor_ate is None or base <= rg.valor_ate)):
+                            total_com += rg.valor_fixo
+                desempenho['comissao_total_mes'] = total_com
 
-        funcionarios_ativos = funcionarios.filter(status=True).order_by('nome_completo')
-
-        for func in funcionarios_ativos:
-             # Lista para o selector
-             rh_funcionarios_list.append({
-                 'id': func.id,
-                 'nome': func.apelido or func.nome_completo # Usar apelido se disponível
-             })
-
-             # Dados de Desempenho
-             desempenho_func = {
-                 'faturamento_ano': Decimal(0),
-                 'faturamento_mes': Decimal(0),
-                 'clientes_concluidos': 0,
-                 'comissao_total_mes': Decimal(0),
-             }
-
-             if func.usuario:
-                 user_registros = registros_financeiros.filter(user=func.usuario)
-
-                 # Faturamento Ano/Mês
-                 desempenho_func['faturamento_ano'] = user_registros.filter(
-                     data__range=(start_year, end_year)
-                 ).aggregate(total=Coalesce(Sum('valor_est'), Decimal(0)))['total']
-
-                 fat_mes_func = user_registros.filter(
-                     data__range=(start_month, end_month)
-                 ).aggregate(total=Coalesce(Sum('valor_est'), Decimal(0)))['total']
-                 desempenho_func['faturamento_mes'] = fat_mes_func
-
-                 # Clientes Concluídos (CPFs únicos no mês)
-                 desempenho_func['clientes_concluidos'] = user_registros.filter(
-                     data__range=(start_month, end_month)
-                 ).values('cpf_cliente').distinct().count()
-
-                 # Calcular Comissão Total do Mês
-                 total_comissao_mes = Decimal(0)
-                 regras_aplicaveis = func.regras_comissionamento.filter(
-                     status=True
-                     # Adicionar filtro de data_inicio/data_fim se necessário:
-                     # Q(data_inicio__lte=now.date()) | Q(data_inicio__isnull=True),
-                     # Q(data_fim__gte=now.date()) | Q(data_fim__isnull=True)
-                 )
-
-                 for regra in regras_aplicaveis:
-                     # Aplicar a lógica da regra baseada no faturamento do mês
-                     # Simplificação: Apenas percentual sobre fat_mes_func ou valor fixo
-                     # A lógica de faixas (valor_de, valor_ate) e escopo (escopo_base) precisaria
-                     # de implementação mais detalhada aqui se fosse o caso.
-                     comissao_regra = Decimal(0)
-                     if regra.percentual is not None:
-                         # Verificar faixas (exemplo simples)
-                         if (regra.valor_de is None or fat_mes_func >= regra.valor_de) and \
-                            (regra.valor_ate is None or fat_mes_func <= regra.valor_ate):
-                            comissao_regra = (fat_mes_func * regra.percentual) / 100
-                     elif regra.valor_fixo is not None:
-                         # Verificar faixas (exemplo simples)
-                         if (regra.valor_de is None or fat_mes_func >= regra.valor_de) and \
-                            (regra.valor_ate is None or fat_mes_func <= regra.valor_ate):
-                             comissao_regra = regra.valor_fixo
-
-                     total_comissao_mes += comissao_regra
-
-                 desempenho_func['comissao_total_mes'] = total_comissao_mes
-
-             rh_desempenho[func.id] = desempenho_func
-
-        data['rh']['funcionarios_list'] = rh_funcionarios_list
-        data['rh']['desempenho'] = rh_desempenho
-        print("Seção RH OK.")
+            data['rh']['desempenho'][fn.id] = desempenho
 
         # ==========================================
-        # SESSÃO: METAS
+        # METAS
         # ==========================================
-        print("Calculando seção Metas...")
-
-        # --- Helper function for Meta Calculation ---
-        def calcular_meta_atingida(meta_instance):
-            atingido = Decimal(0)
-            q_filter = Q(status=True, data__range=(meta_instance.data_inicio, meta_instance.data_fim))
-
-            # Aplicar filtros com base na categoria da meta
-            if meta_instance.categoria == 'GERAL':
-                # Sem filtro adicional além da data
-                 pass
-            elif meta_instance.categoria == 'EMPRESA':
-                 # Soma faturamento de qualquer registro associado a uma empresa
-                 q_filter &= Q(empresa__isnull=False)
-            elif meta_instance.categoria == 'FRANQUIA':
-                 q_filter &= Q(loja__franquia=True)
-            elif meta_instance.categoria == 'LOJAS':
-                 # Soma faturamento de qualquer registro associado a uma loja
-                 q_filter &= Q(loja__isnull=False)
-            elif meta_instance.categoria == 'SETOR' and meta_instance.setor:
-                 q_filter &= Q(setor=meta_instance.setor)
-            elif meta_instance.categoria == 'OUTROS' and meta_instance.equipe.exists(): # 'Outros' é interpretado como 'Equipe'
-                 q_filter &= Q(equipe__in=meta_instance.equipe.all())
+        def calcular_meta_atingida(meta):
+            q = Q(status=True, data__range=(meta.data_inicio, meta.data_fim))
+            if meta.categoria == 'GERAL':
+                pass
+            elif meta.categoria == 'EMPRESA':
+                q &= Q(empresa__isnull=False)
+            elif meta.categoria == 'FRANQUIA':
+                q &= Q(loja__franquia=True)
+            elif meta.categoria == 'LOJAS':
+                q &= Q(loja__isnull=False)
+            elif meta.categoria == 'SETOR' and meta.setor:
+                q &= Q(setor=meta.setor)
+            elif meta.categoria == 'OUTROS' and meta.equipe.exists():
+                q &= Q(equipe__in=meta.equipe.all())
             else:
-                 # Categoria não tratada ou sem filtro específico, retorna 0
-                 return Decimal(0)
-
-            # Executa a agregação
-            result = RegisterMoney.objects.filter(q_filter).aggregate(
+                return Decimal(0)
+            return RegisterMoney.objects.filter(q).aggregate(
                 total=Coalesce(Sum('valor_est'), Decimal(0))
-            )
-            atingido = result['total']
-            return atingido
+            )['total']
 
-        # 1. Categoria: Metas Ativas
         metas_ativas = RegisterMeta.objects.filter(
-            status=True,
-            data_inicio__lte=now,
-            data_fim__gte=now
-        ).select_related('setor').prefetch_related('equipe').order_by('titulo')
-
-        metas_ativas_data = []
-        for meta in metas_ativas:
-            valor_meta = meta.valor or Decimal(0)
-            valor_atingido = calcular_meta_atingida(meta)
-            valor_restante = max(Decimal(0), valor_meta - valor_atingido)
-            percentual_atingido = (valor_atingido / valor_meta * 100) if valor_meta > 0 else Decimal(100) # Se meta é 0, considera 100%
-
-            status_str = "Em andamento"
-            if percentual_atingido >= 100:
-                status_str = "Concluída"
-            elif percentual_atingido >= 85: # Exemplo: Quase lá >= 85%
-                status_str = "Quase lá"
-
-            metas_ativas_data.append({
-                'id': meta.id,
-                'titulo': meta.titulo,
-                'valor_meta': valor_meta,
-                'valor_atingido': valor_atingido,
-                'valor_restante': valor_restante,
-                'status': status_str,
-                'percentual': percentual_atingido # Adiciona o percentual
+            status=True, data_inicio__lte=now, data_fim__gte=now
+        )
+        for m in metas_ativas:
+            vm = m.valor or Decimal(0)
+            va = calcular_meta_atingida(m)
+            restante = max(Decimal(0), vm - va)
+            pct = (va / vm * 100) if vm > 0 else Decimal(100)
+            status = 'Concluída' if pct >= 100 else 'Quase lá' if pct >= 85 else 'Em andamento'
+            data['metas']['ativas_list'].append({
+                'id': m.id,
+                'titulo': m.titulo,
+                'valor_meta': vm,
+                'valor_atingido': va,
+                'valor_restante': restante,
+                'percentual': pct,
+                'status': status
             })
-        data['metas']['ativas_list'] = metas_ativas_data
 
-        # 2. Categoria: Metas Inativadas (ou Concluídas/Expiradas)
-        metas_inativadas = RegisterMeta.objects.filter(
-             Q(status=False) | Q(data_fim__lt=now) # Inativas OU que já terminaram
-        ).exclude(
-            pk__in=[m['id'] for m in metas_ativas_data] # Exclui as ativas já listadas
-        ).select_related('setor').prefetch_related('equipe').order_by('-data_fim', 'titulo')[:20] # Limita a 20 mais recentes
-
-        metas_inativadas_data = []
-        for meta in metas_inativadas:
-            valor_meta = meta.valor or Decimal(0)
-            valor_atingido = calcular_meta_atingida(meta) # Recalcula o atingido final
-            valor_restante = max(Decimal(0), valor_meta - valor_atingido)
-            status_str = "Concluída" if valor_atingido >= valor_meta else "Não atingida"
-            if not meta.status:
-                 status_str = "Cancelada" # Ou outro termo se status=False tiver outro significado
-
-            metas_inativadas_data.append({
-                'id': meta.id,
-                'titulo': meta.titulo,
-                'valor_meta': valor_meta,
-                'valor_atingido': valor_atingido,
-                'valor_restante': valor_restante,
-                'status': status_str
+        metas_inativas = RegisterMeta.objects.filter(
+            Q(status=False) | Q(data_fim__lt=now)
+        ).exclude(pk__in=[m['id'] for m in data['metas']['ativas_list']])[:20]
+        for m in metas_inativas:
+            vm = m.valor or Decimal(0)
+            va = calcular_meta_atingida(m)
+            restante = max(Decimal(0), vm - va)
+            st = 'Concluída' if va >= vm else 'Não atingida'
+            if not m.status:
+                st = 'Cancelada'
+            data['metas']['inativadas_list'].append({
+                'id': m.id,
+                'titulo': m.titulo,
+                'valor_meta': vm,
+                'valor_atingido': va,
+                'valor_restante': restante,
+                'status': st
             })
-        data['metas']['inativadas_list'] = metas_inativadas_data
-        print("Seção Metas OK.")
 
-        # --- Resposta Final ---
         return JsonResponse(data)
 
     except Exception as e:
-        # Log detailed error in production
-        import traceback
         print(f"Erro geral na API do Dashboard Administrativo: {e}")
         print(traceback.format_exc())
-        return JsonResponse({'error': 'Erro interno ao processar dados do dashboard.', 'details': str(e)}, status=500)
+        return JsonResponse({
+            'error': 'Erro interno ao processar dados do dashboard.',
+            'details': str(e)
+        }, status=500)
+
 
 
 # -------------------------------------------
@@ -733,197 +641,7 @@ def api_post_novameta(request):
 # FIM Views Controle de Metas
 # -------------------------------------------
 
-from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
-from apps.siape.models import Reembolso # Importar o modelo Reembolso
 
-@login_required
-@require_GET
-def api_get_inforeembolso(request):
-    """
-    API endpoint para buscar informações sobre registros financeiros
-    elegíveis para reembolso e registros já reembolsados.
-
-    Retorna dados paginados para popular as tabelas no template reembolso.html.
-    Suporta filtros básicos via GET parameters.
-    """
-    try:
-        # --- Parâmetros de Paginação e Filtro ---
-        page_registrar_param = request.GET.get('page_registrar', '1')
-        page_reverter_param = request.GET.get('page_reverter', '1')
-        per_page_param = request.GET.get('per_page', '10')
-
-        # Validar parâmetros de paginação
-        try:
-            page_registrar = int(page_registrar_param)
-            page_reverter = int(page_reverter_param)
-            per_page = int(per_page_param)
-            if per_page <= 0:
-                per_page = 10 # Default seguro
-        except ValueError:
-            # Se não for um número válido, usar defaults
-            page_registrar = 1
-            page_reverter = 1
-            per_page = 10
-
-        # Filtros para a tabela de registros a reembolsar (baseado no form do template)
-        filtro_cpf = request.GET.get('cpf_cliente', '').strip()
-        filtro_produto = request.GET.get('produto_nome', '').strip()
-        # Adicionar mais filtros conforme necessário (data, setor, etc.)
-
-        # --- Query para Registros Elegíveis para Reembolso ---
-        registros_qs = RegisterMoney.objects.filter(
-            status=True, # Apenas registros ativos (considerar se status=False pode ser reembolsado)
-            reembolso_info__isnull=True # Filtra apenas os que NÃO têm um Reembolso associado
-        ).select_related(
-            'user', 'produto', 'setor', 'loja' # Otimiza acesso a campos relacionados
-        ).order_by('-data') # Ordena pelos mais recentes primeiro
-
-        # Aplicar filtros da busca
-        if filtro_cpf:
-            # Usar __icontains para busca case-insensitive que contenha o CPF
-            registros_qs = registros_qs.filter(cpf_cliente__icontains=filtro_cpf)
-        if filtro_produto:
-            registros_qs = registros_qs.filter(produto__nome__icontains=filtro_produto)
-        # Adicionar lógica para outros filtros aqui...
-        # Ex: filtro_setor_id = request.GET.get('setor_id')
-        # if filtro_setor_id:
-        #     registros_qs = registros_qs.filter(setor_id=filtro_setor_id)
-
-        # Paginação para Registros Elegíveis
-        paginator_registrar = Paginator(registros_qs, per_page)
-        try:
-            registros_paginados = paginator_registrar.page(page_registrar)
-        except PageNotAnInteger:
-            # Se page não for um inteiro, entrega a primeira página.
-            registros_paginados = paginator_registrar.page(1)
-            page_registrar = 1
-        except EmptyPage:
-            # Se page estiver fora do range (e.g. 9999), entrega a última página.
-            registros_paginados = paginator_registrar.page(paginator_registrar.num_pages)
-            page_registrar = paginator_registrar.num_pages
-
-        # Formatar dados dos registros elegíveis para JSON
-        registros_data = []
-        for reg in registros_paginados:
-            # Tenta obter nome do funcionário associado ao usuário que registrou
-            usuario_nome = "Desconhecido" # Default
-            try:
-                # Assume que existe um Funcionario ligado ao User.
-                # Se a relação for opcional ou puder falhar, o try/except é importante.
-                funcionario = Funcionario.objects.select_related('usuario').get(usuario=reg.user)
-                # Usa apelido se disponível, senão o primeiro nome
-                usuario_nome = funcionario.apelido or funcionario.nome_completo.split()[0]
-            except Funcionario.DoesNotExist:
-                 # Se não há funcionário, usa o username do Django User
-                 if reg.user:
-                     usuario_nome = reg.user.username
-            except Exception as e_func:
-                 # Logar erro em produção seria ideal aqui
-                 print(f"Aviso: Erro ao buscar funcionário para User ID {reg.user_id}: {e_func}")
-                 usuario_nome = f"Erro ({reg.user.username})" if reg.user else "Erro"
-
-            registros_data.append({
-                'id': reg.id, # ID do RegisterMoney, usado para a ação de reembolsar
-                'cpf_cliente': reg.cpf_cliente or "N/Informado",
-                'produto_nome': reg.produto.nome if reg.produto else "N/A",
-                'valor': f"{reg.valor_est:.2f}" if reg.valor_est is not None else "0.00",
-                'data_registro': reg.data.strftime('%d/%m/%Y %H:%M') if reg.data else "N/A",
-                'usuario_nome': usuario_nome,
-                'setor_nome': reg.setor.nome if reg.setor else "N/A",
-                # Adicionar outros campos se forem necessários no template
-                # 'loja_nome': reg.loja.nome if reg.loja else "N/A",
-            })
-
-        # --- Query para Registros Já Reembolsados ---
-        reembolsados_qs = Reembolso.objects.select_related(
-            'registermoney', # Acessa o registro financeiro original via OneToOneField
-            'registermoney__produto',
-            'registermoney__setor',
-            # 'registermoney__user' # Descomentar se precisar do usuário original
-        ).filter(
-            status=True # Assume que status=True em Reembolso significa que foi efetivado
-        ).order_by('-data_reembolso') # Ordena pelos reembolsos mais recentes
-
-        # Aplicar filtros (se houver filtros específicos para esta tabela no futuro)
-        # Exemplo: Filtrar reembolsos por CPF do cliente original
-        # if filtro_cpf: # Reutilizando o filtro da outra tabela, se aplicável
-        #     reembolsados_qs = reembolsados_qs.filter(registermoney__cpf_cliente__icontains=filtro_cpf)
-
-        # Paginação para Registros Reembolsados
-        paginator_reverter = Paginator(reembolsados_qs, per_page)
-        try:
-            reembolsados_paginados = paginator_reverter.page(page_reverter)
-        except PageNotAnInteger:
-            reembolsados_paginados = paginator_reverter.page(1)
-            page_reverter = 1
-        except EmptyPage:
-            reembolsados_paginados = paginator_reverter.page(paginator_reverter.num_pages)
-            page_reverter = paginator_reverter.num_pages
-
-        # Formatar dados dos registros reembolsados para JSON
-        reembolsados_data = []
-        for remb in reembolsados_paginados:
-            reg_orig = remb.registermoney # Acessa o RegisterMoney associado
-            reembolsados_data.append({
-                # O ID do reembolso é a PK, que é a FK para RegisterMoney
-                'reembolso_id': remb.pk,
-                'cpf_cliente': reg_orig.cpf_cliente or "N/Informado",
-                'produto_nome': reg_orig.produto.nome if reg_orig.produto else "N/A",
-                'valor': f"{reg_orig.valor_est:.2f}" if reg_orig.valor_est is not None else "0.00",
-                'data_registro': reg_orig.data.strftime('%d/%m/%Y %H:%M') if reg_orig.data else "N/A",
-                'data_reembolso': remb.data_reembolso.strftime('%d/%m/%Y') if remb.data_reembolso else "N/A",
-                'setor_nome': reg_orig.setor.nome if reg_orig.setor else "N/A",
-                # Adicionar outros campos se forem necessários no template
-            })
-
-        # --- Estrutura de Resposta JSON ---
-        response_data = {
-            'registros_para_reembolsar': {
-                'items': registros_data,
-                'pagination': {
-                    'total_items': paginator_registrar.count,
-                    'total_pages': paginator_registrar.num_pages,
-                    'current_page': page_registrar,
-                    'per_page': per_page,
-                    'has_previous': registros_paginados.has_previous(),
-                    'has_next': registros_paginados.has_next(),
-                    'previous_page_number': registros_paginados.previous_page_number() if registros_paginados.has_previous() else None,
-                    'next_page_number': registros_paginados.next_page_number() if registros_paginados.has_next() else None,
-                }
-            },
-            'registros_reembolsados': {
-                'items': reembolsados_data,
-                'pagination': {
-                    'total_items': paginator_reverter.count,
-                    'total_pages': paginator_reverter.num_pages,
-                    'current_page': page_reverter,
-                    'per_page': per_page,
-                    'has_previous': reembolsados_paginados.has_previous(),
-                    'has_next': reembolsados_paginados.has_next(),
-                    'previous_page_number': reembolsados_paginados.previous_page_number() if reembolsados_paginados.has_previous() else None,
-                    'next_page_number': reembolsados_paginados.next_page_number() if reembolsados_paginados.has_next() else None,
-                }
-            },
-            # Adicionar estatísticas gerais se necessário (ex: contagens totais)
-            'stats': {
-                 'total_elegiveis': paginator_registrar.count,
-                 'total_reembolsados': paginator_reverter.count,
-                 # Poderia adicionar totais por período aqui se calculado no backend
-                 # Ex: total_reembolsado_mes = Reembolso.objects.filter(data_reembolso__month=timezone.now().month, data_reembolso__year=timezone.now().year).aggregate(Sum('registermoney__valor_est'))['registermoney__valor_est__sum'] or 0
-            }
-        }
-
-        return JsonResponse(response_data)
-
-    except Exception as e:
-        # É crucial logar o erro em um ambiente de produção
-        # import logging
-        # logger = logging.getLogger(__name__)
-        # logger.error(f"Erro em api_get_inforeembolso: {e}", exc_info=True)
-        print(f"Erro em api_get_inforeembolso: {e}")
-        import traceback
-        traceback.print_exc() # Imprime o traceback no console do servidor para debug
-        return JsonResponse({'error': 'Erro interno ao buscar informações de reembolso.', 'details': str(e)}, status=500)
 
 # -------------------------------------------
 # Views Reembolso
@@ -938,33 +656,32 @@ def api_get_inforeembolso(request):
     """
     Retorna:
     - registros_para_reembolsar: lista de RegisterMoney pendentes
-    - registros_reembolsados: lista de Reembolso já feitos (com dados extras)
+    - registros_reembolsados:   lista de Reembolso já feitos
     - stats: contagens de Reembolso nos períodos 90d, 60d e mês atual
     """
-
-    cpf = request.GET.get('cpf_cliente', '').strip()
+    cpf     = request.GET.get('cpf_cliente', '').strip()
     produto = request.GET.get('produto_nome', '').strip()
 
     # — Registros ainda para reembolsar —
     qs_para = RegisterMoney.objects.filter(
         status=True,
         reembolso_info__isnull=True
-    ).select_related('produto')
+    ).select_related('produto', 'setor')
     if cpf:
         qs_para = qs_para.filter(cpf_cliente__icontains=cpf)
     if produto:
         qs_para = qs_para.filter(produto__nome__icontains=produto)
 
-    registros_para = [
-        {
-            'id': reg.id,
-            'cpf_cliente': reg.cpf_cliente,
-            'produto_nome': reg.produto.nome,
-            'valor': f"{reg.valor_est:.2f}",
-            'data_registro': reg.data.strftime('%d/%m/%Y %H:%M'),
-        }
-        for reg in qs_para
-    ]
+    registros_para = []
+    for reg in qs_para:
+        nome_prod = reg.produto.nome if reg.produto else 'N/A'
+        registros_para.append({
+            'id':           reg.id,
+            'cpf_cliente':  reg.cpf_cliente,
+            'produto_nome': nome_prod,
+            'valor':        f"{reg.valor_est:.2f}",
+            'data_registro': reg.data.strftime('%d/%m/%Y %H:%M') if reg.data else 'N/A',
+        })
 
     # — Registros já reembolsados —
     qs_remb = Reembolso.objects.filter(status=True).select_related(
@@ -975,21 +692,23 @@ def api_get_inforeembolso(request):
 
     registros_remb = []
     for remb in qs_remb:
-        orig = remb.registermoney
+        orig       = remb.registermoney
+        nome_prod  = orig.produto.nome if orig.produto else 'N/A'
+        nome_setor = orig.setor.nome   if orig.setor   else 'N/A'
         registros_remb.append({
-            'reembolso_id': remb.pk,
-            'cpf_cliente': orig.cpf_cliente,
-            'produto_nome': orig.produto.nome if orig.produto else 'N/A',
-            'valor': f"{orig.valor_est:.2f}",
-            'setor_nome': orig.setor.nome if orig.setor else 'N/A',
-            'data_registro': orig.data.strftime('%d/%m/%Y %H:%M'),
-            'data_reembolso': remb.data_reembolso.strftime('%d/%m/%Y'),
+            'reembolso_id':  remb.pk,
+            'cpf_cliente':   orig.cpf_cliente,
+            'produto_nome':  nome_prod,
+            'valor':         f"{orig.valor_est:.2f}",
+            'setor_nome':    nome_setor,
+            'data_registro': orig.data.strftime('%d/%m/%Y %H:%M') if orig.data else 'N/A',
+            'data_reembolso': remb.data_reembolso.strftime('%d/%m/%Y')
+                               if remb.data_reembolso else 'N/A',
         })
 
     # — Estatísticas de Reembolso —
-    hoje = timezone.now().date()
+    hoje     = timezone.now().date()
     qs_todos = Reembolso.objects.filter(status=True)
-
     total_90d = qs_todos.filter(data_reembolso__gte=hoje - timedelta(days=90)).count()
     total_60d = qs_todos.filter(data_reembolso__gte=hoje - timedelta(days=60)).count()
     total_mes_atual = qs_todos.filter(
@@ -999,10 +718,10 @@ def api_get_inforeembolso(request):
 
     return JsonResponse({
         'registros_para_reembolsar': registros_para,
-        'registros_reembolsados': registros_remb,
+        'registros_reembolsados':   registros_remb,
         'stats': {
-            'reembolsos_90d': total_90d,
-            'reembolsos_60d': total_60d,
+            'reembolsos_90d':       total_90d,
+            'reembolsos_60d':       total_60d,
             'reembolsos_mes_atual': total_mes_atual,
         }
     })
@@ -1290,40 +1009,51 @@ def api_post_csvclientec2(request):
 @require_POST
 @login_required
 def api_post_csvagendamento(request):
-    """
-    Recebe JSON com lista de agendamentos e importa para Agendamento.
-    Headers esperados por linha: cpf_cliente, dia_agendado (ISO), loja_id,
-    atendente_id, tabulacao_agendamento.
-    """
     print("Iniciando api_post_csvagendamento")
     try:
         rows = json.loads(request.body)
         print(f"Total de linhas recebidas: {len(rows)}")
     except json.JSONDecodeError:
-        print("Erro ao decodificar JSON")
         return JsonResponse({'success': False, 'error': 'JSON inválido'}, status=400)
 
     created, errors = 0, []
     for i, row in enumerate(rows):
         print(f"Processando linha {i}: {row}")
         try:
-            cliente = ClienteAgendamento.objects.get(cpf=row['cpf_cliente'])
+            # limpa o CPF recebido (remove . e -)
+            raw_cpf = row['cpf_cliente']
+            cleaned = re.sub(r'\D', '', raw_cpf)
+            
+            # primeiro, tenta achar exato
+            try:
+                cliente = ClienteAgendamento.objects.get(cpf=row['cpf_cliente'])
+            except ClienteAgendamento.DoesNotExist:
+                # senão, busca pelo CPF sem formatação
+                cliente = None
+                for c in ClienteAgendamento.objects.all():
+                    if re.sub(r'\D', '', c.cpf) == cleaned:
+                        cliente = c
+                        break
+                if not cliente:
+                    raise ClienteAgendamento.DoesNotExist(f"CPF {raw_cpf} não encontrado")
+            
+            # continua com resto do processamento
             dia     = parse_datetime(row['dia_agendado'])
             loja    = Loja.objects.get(pk=row['loja_id'])
             user    = User.objects.get(pk=row['atendente_id'])
-            print(f"Objetos relacionados obtidos: Cliente({cliente.id}), Loja({loja.id}), User({user.id})")
 
-            agendamento = Agendamento.objects.create(
-                cliente_agendamento  = cliente,
-                dia_agendado         = dia,
-                loja                 = loja,
-                atendente_agendou    = user,
-                tabulacao_agendamento= row.get('tabulacao_agendamento', '')
+            Agendamento.objects.create(
+                cliente_agendamento   = cliente,
+                dia_agendado          = dia,
+                loja                  = loja,
+                atendente_agendou     = user,
+                tabulacao_agendamento = row.get('tabulacao_agendamento', '')
             )
-            print(f"Agendamento criado com ID: {agendamento.id}")
             created += 1
+            print(f"Agendamento criado para cliente {cliente.id}")
+
         except Exception as e:
-            print(f"Erro na linha {i}: {str(e)}")
+            print(f"Erro na linha {i}: {e}")
             errors.append({'row': i, 'error': str(e)})
 
     print(f"Processamento concluído. Criados: {created}, Erros: {len(errors)}")

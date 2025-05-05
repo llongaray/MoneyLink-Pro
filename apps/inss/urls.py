@@ -53,4 +53,5 @@ urlpatterns = [
     # APIs Financeiro
     path('api/get/cardsfinanceiro/', api_get_cardsfinanceiro, name='api_get_cardsfinanceiro'),
     path('api/get/historicopagamentos/', api_get_historicopagamentos, name='api_get_historicopagamentos'),
+    path('api/get/clientesAtrasadoLoja/', api_get_clientesAtrasadoLoja, name='api_get_clientesAtrasadoLoja'),
 ]

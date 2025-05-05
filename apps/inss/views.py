@@ -733,51 +733,54 @@ def api_post_attvalortac(request):
 # -------------------------------------------
 
 def _local(dt):
-    """Return an aware datetime if USE_TZ, else return dt unchanged."""
+    """Garante que dt seja aware antes de chamar localtime."""
     if not dt:
         return None
-    return timezone.localtime(dt) if settings.USE_TZ else dt
-
+    if settings.USE_TZ:
+        # torna aware se for naive
+        if timezone.is_naive(dt):
+            dt = timezone.make_aware(dt, timezone.get_default_timezone())
+        return timezone.localtime(dt)
+    return dt
 
 @login_required
 @require_GET
+@controle_acess('SCT23')
 def api_get_agendadosHoje(request):
     user = request.user
-    if not user.is_authenticated:
-        return JsonResponse({'error': 'Usuário não autenticado'}, status=401)
-
-    now = timezone.now()
-    hoje = _local(now).date()
+    hoje = _local(timezone.now()).date()
 
     base_qs = Agendamento.objects.filter(dia_agendado__date=hoje) \
         .select_related('cliente_agendamento', 'loja', 'atendente_agendou')
 
+    func = Funcionario.objects.filter(usuario=user, status=True) \
+        .select_related('cargo', 'loja').first()
+    if not func or not func.loja:
+        return JsonResponse({'agendamentos': [], 'message': 'Sem permissão'}, status=200)
+
+    hier = func.cargo.hierarquia if func.cargo else Cargo.HierarquiaChoices.PADRAO
+
     if user.is_superuser:
         qs = base_qs
+    elif hier >= Cargo.HierarquiaChoices.SUPERVISOR_GERAL:
+        qs = base_qs
+    elif hier == Cargo.HierarquiaChoices.GERENTE:
+        qs = base_qs.exclude(loja__is_franquia=True)
     else:
-        func = Funcionario.objects.filter(usuario=user, status=True) \
-            .select_related('cargo', 'loja').first()
-        if not func or not func.loja:
-            return JsonResponse({'agendamentos': [], 'message': 'Sem permissão'}, status=403)
-        hier = func.cargo.hierarquia if func.cargo else None
-        if hier in (Cargo.HierarquiaChoices.COORDENADOR, Cargo.HierarquiaChoices.GERENTE) or hier > Cargo.HierarquiaChoices.GERENTE:
-            qs = base_qs
-        else:
-            qs = base_qs.filter(loja=func.loja)
+        qs = base_qs.filter(loja=func.loja)
 
-    # filtros opcionais
-    nome  = request.GET.get('nomeCliente','').strip()
-    cpf   = ''.join(c for c in request.GET.get('cpfCliente','') if c.isdigit())
-    aten  = request.GET.get('atendente','').strip()
-    stat  = request.GET.get('status','').strip()
+    # filtros
+    nome = request.GET.get('nomeCliente','').strip()
+    cpf  = ''.join(c for c in request.GET.get('cpfCliente','') if c.isdigit())
+    aten = request.GET.get('atendente','').strip()
     if nome:
         qs = qs.filter(cliente_agendamento__nome_completo__icontains=nome)
     if cpf:
         qs = qs.filter(cliente_agendamento__cpf__icontains=cpf)
     if aten:
         qs = qs.filter(
-            Q(atendente_agendou__first_name__icontains=aten)|
-            Q(atendente_agendou__last_name__icontains=aten) |
+            Q(atendente_agendou__first_name__icontains=aten) |
+            Q(atendente_agendou__last_name__icontains=aten)   |
             Q(atendente_agendou__username__icontains=aten)
         )
 
@@ -802,42 +805,45 @@ def api_get_agendadosHoje(request):
     return JsonResponse({'agendamentos': resultado, 'total': len(resultado)}, status=200)
 
 
+
+
 @login_required
 @require_GET
+@controle_acess('SCT23')
 def api_get_agendPendentes(request):
     user = request.user
-    if not user.is_authenticated:
-        return JsonResponse({'error': 'Usuário não autenticado'}, status=401)
-
     base_qs = Agendamento.objects.exclude(tabulacao_agendamento='CONFIRMADO') \
         .select_related('cliente_agendamento', 'loja', 'atendente_agendou')
 
+    func = Funcionario.objects.filter(usuario=user, status=True) \
+        .select_related('cargo', 'loja').first()
+    if not func or not func.loja:
+        return JsonResponse({'agendamentos': [], 'message': 'Sem permissão'}, status=200)
+
+    hier = func.cargo.hierarquia if func.cargo else Cargo.HierarquiaChoices.PADRAO
+
     if user.is_superuser:
         qs = base_qs
+    elif hier >= Cargo.HierarquiaChoices.SUPERVISOR_GERAL:
+        qs = base_qs
+    elif hier == Cargo.HierarquiaChoices.GERENTE:
+        qs = base_qs.exclude(loja__is_franquia=True)
     else:
-        func = Funcionario.objects.filter(usuario=user, status=True) \
-            .select_related('cargo', 'loja').first()
-        if not func or not func.loja:
-            return JsonResponse({'agendamentos': [], 'message': 'Sem permissão'}, status=403)
-        hier = func.cargo.hierarquia if func.cargo else None
-        if hier in (Cargo.HierarquiaChoices.COORDENADOR, Cargo.HierarquiaChoices.GERENTE) or hier > Cargo.HierarquiaChoices.GERENTE:
-            qs = base_qs
-        else:
-            qs = base_qs.filter(loja=func.loja)
+        qs = base_qs.filter(loja=func.loja)
 
-    # filtros opcionais
-    nome  = request.GET.get('nomeCliente','').strip()
-    cpf   = ''.join(c for c in request.GET.get('cpfCliente','') if c.isdigit())
-    aten  = request.GET.get('atendente','').strip()
-    stat  = request.GET.get('status','').strip()
+    # filtros opcionais iguais ao outro endpoint...
+    nome = request.GET.get('nomeCliente','').strip()
+    cpf  = ''.join(c for c in request.GET.get('cpfCliente','') if c.isdigit())
+    aten = request.GET.get('atendente','').strip()
+    stat = request.GET.get('status','').strip()
     if nome:
         qs = qs.filter(cliente_agendamento__nome_completo__icontains=nome)
     if cpf:
         qs = qs.filter(cliente_agendamento__cpf__icontains=cpf)
     if aten:
         qs = qs.filter(
-            Q(atendente_agendou__first_name__icontains=aten)|
-            Q(atendente_agendou__last_name__icontains=aten) |
+            Q(atendente_agendou__first_name__icontains=aten) |
+            Q(atendente_agendou__last_name__icontains=aten)   |
             Q(atendente_agendou__username__icontains=aten)
         )
     if stat:
@@ -864,6 +870,94 @@ def api_get_agendPendentes(request):
 
     return JsonResponse({'agendamentos': resultado, 'total': len(resultado)}, status=200)
 
+@login_required
+@require_GET
+@controle_acess('SCT23')
+def api_get_clientesAtrasadoLoja(request):
+    """
+    Lista clientes com dia_agendado < hoje, tabulacao != 'CONFIRMADO'
+    e sem PresencaLoja registrada.
+    Aplica permissão por cargo/loja igual aos outros endpoints.
+    """
+    print(f"Iniciando api_get_clientesAtrasadoLoja. User: {request.user}")
+    user = request.user
+    hoje = _local(timezone.now()).date()
+    print(f"Data de hoje: {hoje}")
+
+    # base: agendamentos passados que não foram confirmados
+    base_qs = (
+        Agendamento.objects
+        .filter(dia_agendado__date__lt=hoje)
+        .exclude(tabulacao_agendamento='CONFIRMADO')
+        .select_related('cliente_agendamento', 'loja', 'atendente_agendou')
+        .exclude(presenca__isnull=False)
+    )
+    print(f"Total de agendamentos base: {base_qs.count()}")
+
+    # recupera funcionário logado
+    func = Funcionario.objects.filter(usuario=user, status=True)\
+        .select_related('cargo', 'loja').first()
+    if not func or not func.loja:
+        print("Usuário sem permissão - funcionário ou loja não encontrado")
+        return JsonResponse({'agendamentos': [], 'message': 'Sem permissão'}, status=200)
+
+    hier = func.cargo.hierarquia if func.cargo else Cargo.HierarquiaChoices.PADRAO
+    print(f"Hierarquia do usuário: {hier}")
+
+    # visibilidade por hierarquia
+    if user.is_superuser:
+        qs = base_qs
+        print("Superuser - acessando todos os agendamentos")
+    elif hier >= Cargo.HierarquiaChoices.SUPERVISOR_GERAL:
+        qs = base_qs
+        print("Supervisor Geral - acessando todos os agendamentos")
+    elif hier == Cargo.HierarquiaChoices.GERENTE:
+        qs = base_qs.exclude(loja__is_franquia=True)
+        print("Gerente - excluindo franquias")
+    else:
+        qs = base_qs.filter(loja=func.loja)
+        print(f"Funcionário comum - filtrando pela loja: {func.loja.nome}")
+
+    # filtros opcionais (mesmos campos do formulário)
+    nome = request.GET.get('nomeCliente','').strip()
+    cpf  = ''.join(c for c in request.GET.get('cpfCliente','') if c.isdigit())
+    aten = request.GET.get('atendente','').strip()
+    stat = request.GET.get('status','').strip()
+    print(f"Filtros aplicados - Nome: {nome}, CPF: {cpf}, Atendente: {aten}, Status: {stat}")
+
+    if nome:
+        qs = qs.filter(cliente_agendamento__nome_completo__icontains=nome)
+    if cpf:
+        qs = qs.filter(cliente_agendamento__cpf__icontains=cpf)
+    if aten:
+        qs = qs.filter(
+            Q(atendente_agendou__first_name__icontains=aten) |
+            Q(atendente_agendou__last_name__icontains=aten)   |
+            Q(atendente_agendou__username__icontains=aten)
+        )
+    if stat:
+        qs = qs.filter(tabulacao_agendamento__icontains=stat)
+    print(f"Total de agendamentos após filtros: {qs.count()}")
+
+    resultado = []
+    for a in qs.order_by('dia_agendado'):
+        dt = _local(a.dia_agendado)
+        data_hora = dt.strftime('%d/%m/%Y %H:%M') if dt else ''
+        usr = a.atendente_agendou
+        nome_at = (usr.get_full_name() or usr.username) if usr else ''
+        resultado.append({
+            'id_agendamento': a.id,
+            'nome': a.cliente_agendamento.nome_completo,
+            'cpf': a.cliente_agendamento.cpf,
+            'numero': a.cliente_agendamento.numero,
+            'dia_agendado': data_hora,
+            'atendente': nome_at,
+            'status': a.tabulacao_agendamento,
+            'loja': a.loja.nome if a.loja else 'Sem loja'
+        })
+
+    print(f"Total de resultados encontrados: {len(resultado)}")
+    return JsonResponse({'agendamentos': resultado, 'total': len(resultado)}, status=200)
 
 @login_required
 @require_GET
@@ -1699,7 +1793,7 @@ def api_get_emloja(request):
 
 
 # -------------------------------------------
-# INICIO RANKING
+# INICIO RANKING : inss/ranking.html
 # Funções relacionadas ao Ranking
 # -------------------------------------------
 
@@ -1719,115 +1813,138 @@ def api_get_cards(request, periodo='meta'):
     hoje = timezone.now().date()
     print(f"[DEBUG] Hoje: {hoje}")
 
-    # ====================================================
-    # Card 1: Meta Geral
-    # ====================================================
-    print("[DEBUG] Calculating Meta Geral...")
-    meta_geral_qs = RegisterMeta.objects.filter(
-        categoria='GERAL', status=True,
-        data_inicio__date__lte=hoje,
-        data_fim__date__gte=hoje
-    )
-    if meta_geral_qs.exists():
-        m = meta_geral_qs.first()
-        si = datetime.combine(m.data_inicio.date(), time.min)
-        sf = datetime.combine(m.data_fim.date(),     time.max)
-        mv_geral = m.valor or Decimal('0.0')
-        fat_geral = RegisterMoney.objects.filter(
-            data__range=[si, sf], status=True
-        ).aggregate(total=Sum('valor_est'))['total'] or Decimal('0.0')
-        print(f"[DEBUG] Meta Geral found: intervalo {si} a {sf}, valor_meta={mv_geral}, faturamento={fat_geral}")
-    else:
-        fat_geral = Decimal('0.0')
-        mv_geral   = Decimal('0.0')
-        print("[DEBUG] Nenhuma meta geral ativa encontrada.")
+    # helpers
+    fmt = lambda v: f"R$ {v:,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
+    pct = lambda f, m: round((f / m) * 100, 2) if m > 0 else 0
 
     # ====================================================
-    # Card 2: Meta Empresa
+    # Carrega a meta INSS (usada por vários cards)
     # ====================================================
-    print("[DEBUG] Calculating Meta Empresa...")
-    meta_emp_qs = RegisterMeta.objects.filter(
-        categoria='EMPRESA', status=True,
-        data_inicio__date__lte=hoje,
-        data_fim__date__gte=hoje
-    )
-    if meta_emp_qs.exists():
-        m = meta_emp_qs.first()
-        si = datetime.combine(m.data_inicio.date(), time.min)
-        sf = datetime.combine(m.data_fim.date(),     time.max)
-        mv_emp = m.valor or Decimal('0.0')
-        fat_emp = RegisterMoney.objects.filter(
-            data__range=[si, sf], status=True, loja__franquia=False
-        ).aggregate(total=Sum('valor_est'))['total'] or Decimal('0.0')
-        print(f"[DEBUG] Meta Empresa: intervalo {si} a {sf}, valor_meta={mv_emp}, faturamento={fat_emp}")
-    else:
-        fat_emp = Decimal('0.0')
-        mv_emp  = Decimal('0.0')
-        print("[DEBUG] Nenhuma meta empresa ativa encontrada.")
-
-    # ====================================================
-    # Card 3: Meta Setor INSS
-    # ====================================================
-    print("[DEBUG] Calculating Meta Setor INSS...")
     meta_set_qs = RegisterMeta.objects.filter(
-        categoria='SETOR', status=True,
+        categoria='SETOR',
+        status=True,
         data_inicio__date__lte=hoje,
         data_fim__date__gte=hoje,
         setor__nome='INSS'
     )
     if meta_set_qs.exists():
-        m = meta_set_qs.first()
-        si = datetime.combine(m.data_inicio.date(), time.min)
-        sf = datetime.combine(m.data_fim.date(),     time.max)
-        mv_set = m.valor or Decimal('0.0')
-        fat_set = RegisterMoney.objects.filter(
-            data__range=[si, sf], status=True
-        ).exclude(loja__isnull=True).aggregate(total=Sum('valor_est'))['total'] or Decimal('0.0')
-        print(f"[DEBUG] Meta Setor INSS: intervalo {si} a {sf}, valor_meta={mv_set}, faturamento={fat_set}")
+        m_set = meta_set_qs.first()
+        si_set = datetime.combine(m_set.data_inicio.date(), time.min)
+        sf_set = datetime.combine(m_set.data_fim.date(),     time.max)
+        mv_set = m_set.valor or Decimal('0.0')
+        print(f"[DEBUG] Meta INSS interval: {si_set} → {sf_set}, valor_meta={mv_set}")
     else:
-        fat_set = Decimal('0.0')
-        mv_set  = Decimal('0.0')
-        print("[DEBUG] Nenhuma meta setor INSS ativa encontrada.")
+        si_set = sf_set = None
+        mv_set = Decimal('0.0')
+        print("[DEBUG] Sem meta SETOR INSS ativa")
+
+    # função para somar reembolsos no intervalo, opcionalmente filtrado
+    def sum_refunds(start, end, **rq_kwargs):
+        qs = Reembolso.objects.filter(
+            status=True,
+            data_reembolso__range=[start, end],
+            registermoney__status=True,
+            **{f"registermoney__{k}": v for k, v in rq_kwargs.items()}
+        )
+        total = qs.aggregate(t=Sum('registermoney__valor_est'))['t'] or Decimal('0.0')
+        print(f"[DEBUG] Refunds filter={rq_kwargs}: {total}")
+        return total
 
     # ====================================================
-    # Card 4: Quantidade em Loja
+    # Card 1: Meta Geral
     # ====================================================
-    print("[DEBUG] Calculating Quantidade em Loja (CPFs únicos)...")
-    qtd_pres = 0
-    if meta_set_qs.exists():
-        m = meta_set_qs.first()
-        si = datetime.combine(m.data_inicio.date(), time.min)
-        sf = datetime.combine(m.data_fim.date(),     time.max)
-        qtd_pres = PresencaLoja.objects.filter(
-            data_presenca__range=[si, sf]
-        ).values('cliente_agendamento__cpf').distinct().count()
-        print(f"[DEBUG] Quantidade em Loja no intervalo: {qtd_pres}")
+    print("[DEBUG] Calculating Meta Geral...")
+    meta_geral = RegisterMeta.objects.filter(
+        categoria='GERAL',
+        status=True,
+        data_inicio__date__lte=hoje,
+        data_fim__date__gte=hoje
+    ).first()
+    if meta_geral:
+        si = datetime.combine(meta_geral.data_inicio.date(), time.min)
+        sf = datetime.combine(meta_geral.data_fim.date(),     time.max)
+        mv_geral = meta_geral.valor or Decimal('0.0')
+        fat_geral = RegisterMoney.objects.filter(
+            data__range=[si, sf],
+            status=True
+        ).aggregate(total=Sum('valor_est'))['total'] or Decimal('0.0')
+        ref_geral = sum_refunds(si, sf)
+        fat_geral -= ref_geral
+        print(f"[DEBUG] Meta Geral bruto={fat_geral + ref_geral}, refunds={ref_geral}, líquid o={fat_geral}")
     else:
-        print("[DEBUG] Pulando cálculo de quantidade em loja (sem meta setor INSS)")
+        fat_geral = mv_geral = Decimal('0.0')
+        print("[DEBUG] Nenhuma meta GERAL ativa")
+
+    # ====================================================
+    # Card 2: Meta Empresa (não franquia)
+    # ====================================================
+    print("[DEBUG] Calculating Meta Empresa...")
+    meta_emp = RegisterMeta.objects.filter(
+        categoria='EMPRESA',
+        status=True,
+        data_inicio__date__lte=hoje,
+        data_fim__date__gte=hoje
+    ).first()
+    if meta_emp:
+        si = datetime.combine(meta_emp.data_inicio.date(), time.min)
+        sf = datetime.combine(meta_emp.data_fim.date(),     time.max)
+        mv_emp = meta_emp.valor or Decimal('0.0')
+        fat_emp = RegisterMoney.objects.filter(
+            data__range=[si, sf],
+            status=True,
+            loja__franquia=False
+        ).aggregate(total=Sum('valor_est'))['total'] or Decimal('0.0')
+        ref_emp = sum_refunds(si, sf, loja__franquia=False)
+        fat_emp -= ref_emp
+        print(f"[DEBUG] Meta Empresa bruto={fat_emp + ref_emp}, refunds={ref_emp}, líquid o={fat_emp}")
+    else:
+        fat_emp = mv_emp = Decimal('0.0')
+        print("[DEBUG] Nenhuma meta EMPRESA ativa")
+
+    # ====================================================
+    # Card 3: Meta Setor INSS
+    # ====================================================
+    print("[DEBUG] Calculating Meta Setor INSS...")
+    if si_set and sf_set:
+        fat_set = RegisterMoney.objects.filter(
+            data__range=[si_set, sf_set],
+            status=True
+        ).exclude(loja__isnull=True).aggregate(total=Sum('valor_est'))['total'] or Decimal('0.0')
+        ref_set = sum_refunds(si_set, sf_set)  # sem filtro extra, pois setor já é INSS
+        fat_set -= ref_set
+        print(f"[DEBUG] Meta Setor INSS bruto={fat_set + ref_set}, refunds={ref_set}, líquid o={fat_set}")
+    else:
+        fat_set = Decimal('0.0')
+        ref_set = Decimal('0.0')
+
+    # ====================================================
+    # Card 4: Quantidade em Loja (únicos)
+    # ====================================================
+    print("[DEBUG] Calculating Quantidade em Loja...")
+    if si_set and sf_set:
+        qtd_pres = PresencaLoja.objects.filter(
+            data_presenca__range=[si_set, sf_set]
+        ).values('cliente_agendamento__cpf').distinct().count()
+        print(f"[DEBUG] Presenças únicas: {qtd_pres}")
+    else:
+        qtd_pres = 0
 
     # ====================================================
     # Card 5: Quantidade Confirmados
     # ====================================================
     print("[DEBUG] Calculating Quantidade Confirmados...")
-    qtd_conf = 0
-    if meta_set_qs.exists():
-        m = meta_set_qs.first()
-        si = datetime.combine(m.data_inicio.date(), time.min)
-        sf = datetime.combine(m.data_fim.date(),     time.max)
+    if si_set and sf_set:
         qtd_conf = Agendamento.objects.filter(
-            dia_agendado__range=[si, sf],
+            dia_agendado__range=[si_set, sf_set],
             tabulacao_agendamento='CONFIRMADO'
         ).count()
-        print(f"[DEBUG] Quantidade Confirmados no intervalo: {qtd_conf}")
+        print(f"[DEBUG] Confirmados: {qtd_conf}")
     else:
-        print("[DEBUG] Pulando cálculo de confirmados (sem meta setor INSS)")
+        qtd_conf = 0
 
     # ====================================================
     # Montagem da resposta
     # ====================================================
-    fmt = lambda v: f"R$ {v:,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
-    pct = lambda f, m: round((f / m) * 100, 2) if m > 0 else 0
-
     response_data = {
         'meta_geral': {
             'valor':      fmt(fat_geral),
@@ -1853,8 +1970,8 @@ def api_get_cards(request, periodo='meta'):
             'label': 'Confirmados (Meta INSS)'
         },
         'periodo': {
-            'inicio': (meta_set_qs.first().data_inicio.date() if meta_set_qs.exists() else hoje.replace(day=1)).strftime("%Y-%m-%d"),
-            'fim':    (meta_set_qs.first().data_fim.date()     if meta_set_qs.exists() else hoje.strftime("%Y-%m-%d")).strftime("%Y-%m-%d"),
+            'inicio': si_set.date().isoformat() if si_set else hoje.replace(day=1).isoformat(),
+            'fim':    sf_set.date().isoformat() if sf_set else hoje.isoformat(),
             'tipo':   periodo
         }
     }

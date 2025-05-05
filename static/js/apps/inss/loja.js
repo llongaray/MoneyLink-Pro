@@ -534,7 +534,7 @@ document.addEventListener('DOMContentLoaded', function() {
      * Função para abrir o modal de atendimento e carregar os dados do agendamento/cliente
      * @param {number} agendamentoId - ID do agendamento a ser exibido no modal
      */
-    function abrirModalAtendimento(agendamentoId) {
+    window.abrirModalAtendimento = function(agendamentoId) {
         if (!agendamentoId) {
             console.error("ID do agendamento não fornecido para abrir o modal");
             return;
@@ -1285,4 +1285,84 @@ document.addEventListener('DOMContentLoaded', function() {
         // Carregar lojas, funcionários e produtos
         carregarLojasEFuncionarios();
     });
+});
+
+
+// --- FUNÇÃO PARA CARREGAR "Clientes que Não Compareceram na Loja" ---
+function carregarClientesNaoPresentes(filtros = {}) {
+    let url = '/inss/api/get/clientesAtrasadoLoja/';
+    const params = new URLSearchParams();
+    if (filtros.nomeCliente) params.append('nomeCliente', filtros.nomeCliente);
+    if (filtros.cpfCliente)   params.append('cpfCliente', filtros.cpfCliente);
+    if (filtros.atendente)    params.append('atendente', filtros.atendente);
+    if (filtros.status)       params.append('status', filtros.status);
+    if (params.toString()) url += '?' + params.toString();
+
+    console.log('🔄 Carregando clientes não presentes – URL:', url);
+    const $tbody = $('#tabelaClientesNaoPresentes tbody');
+    const $alert = $('#nenhumResultadoClientesNaoPresentes');
+    $alert.hide();
+    $tbody.html('<tr><td colspan="8" class="text-center"><i class="bx bx-loader-alt bx-spin"></i> Carregando...</td></tr>');
+
+    $.ajax({
+        url, type: 'GET', dataType: 'json',
+        success(response) {
+            $tbody.empty();
+            if (response.agendamentos && response.agendamentos.length) {
+                response.agendamentos.forEach(a => {
+                    const dia = a.dia_agendado.split(' ')[0]; // "DD/MM/YYYY"
+                    const row = `
+                        <tr data-id="${a.id_agendamento}">
+                          <td>${a.nome}</td>
+                          <td>${a.cpf}</td>
+                          <td>${a.numero}</td>
+                          <td>${dia}</td>
+                          <td>${a.atendente}</td>
+                          <td>${a.status}</td>
+                          <td>${a.loja}</td>
+                          <td class="text-center">
+                            <button class="btn btn-sm btn-primary btn-atender" data-id="${a.id_agendamento}">
+                              <i class="bx bx-check-circle"></i> Atender
+                            </button>
+                          </td>
+                        </tr>`;
+                    $tbody.append(row);
+                });
+                
+                // após popular as linhas, adicionar o handler:
+                $('.btn-atender')
+                  .off('click')
+                  .on('click', function() {
+                    const id = $(this).data('id');
+                    abrirModalAtendimento(id);
+                  });
+            } else {
+                $alert.show();
+            }
+        },
+        error(xhr, status, err) {
+            console.error('❌ Erro ao carregar clientes não presentes:', status, err);
+            $tbody.html('<tr><td colspan="8" class="text-center text-danger">Erro ao carregar dados.</td></tr>');
+        }
+    });
+}
+
+// --- INTEGRAÇÃO COM FILTROS NO DOMContentLoaded ---
+document.addEventListener('DOMContentLoaded', function() {
+    // evitar submit padrão
+    $('#formFiltroClientesNaoPresentes').on('submit', e => e.preventDefault());
+
+    // recarregar ao digitar/mudar filtro
+    $('#formFiltroClientesNaoPresentes input').on('keyup change', function() {
+        const filtros = {
+            nomeCliente:   $('#filtroNomeClientesNaoPresentes').val(),
+            cpfCliente:    $('#filtroCPFClientesNaoPresentes').val(),
+            atendente:     $('#filtroAtendenteClientesNaoPresentes').val(),
+            status:        $('#filtroStatusClientesNaoPresentes').val()
+        };
+        carregarClientesNaoPresentes(filtros);
+    });
+
+    // chamada inicial
+    carregarClientesNaoPresentes();
 });

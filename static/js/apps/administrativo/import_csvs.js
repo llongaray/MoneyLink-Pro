@@ -1,6 +1,9 @@
 $(document).ready(function() {
+    console.log('Script de importação de CSV inicializado');
+    
     // Função para criar e baixar um CSV modelo
     function downloadCSV(filename, headers) {
+        console.log(`Preparando download do modelo: ${filename}`);
         const csvContent = "data:text/csv;charset=ISO-8859-1," + headers.join(";");
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");
@@ -9,6 +12,7 @@ $(document).ready(function() {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        console.log(`Modelo ${filename} baixado com sucesso`);
     }
 
     // Botões de modelo...
@@ -64,6 +68,7 @@ $(document).ready(function() {
 
 // Função para processar o CSV e enviar para a API
 function processarCSV(formId, apiUrl) {
+    console.log(`Iniciando processamento do CSV para ${apiUrl}`);
     const form = $(formId);
     const fileInput = form.find('input[type="file"]')[0];
     const file = fileInput.files[0];
@@ -78,7 +83,6 @@ function processarCSV(formId, apiUrl) {
              .html(`<i class='bx bx-loader bx-spin me-2'></i> Processando...`);
 
     const reader = new FileReader();
-    // forçar ISO-8859-1 (ABNT2) na leitura
     reader.readAsText(file, 'ISO-8859-1');
     reader.onload = function(e) {
         try {
@@ -88,33 +92,51 @@ function processarCSV(formId, apiUrl) {
             const jsonData = [];
 
             for (let i = 1; i < rows.length; i++) {
-                const row = rows[i].split(';');
-                if (row.length === headers.length) {
-                    const obj = {};
-                    headers.forEach((header, idx) => {
-                        obj[header] = row[idx] ? row[idx].trim() : null;
-                    });
-                    jsonData.push(obj);
-                }
+                const cols = rows[i].split(';');
+                if (cols.length !== headers.length) continue;
+
+                const obj = {};
+                headers.forEach((header, idx) => {
+                    let val = cols[idx] ? cols[idx].trim() : null;
+
+                    // Formatar CPF genérico
+                    if ((header === 'cpf' || header === 'cpf_cliente') && val) {
+                        let d = val.replace(/\D/g, '').padStart(11, '0');
+                        val = d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+                    }
+
+                    // Converter data DD/MM/YYYY para ISO
+                    if (header === 'dia_agendado' && val) {
+                        const parts = val.split('/');
+                        if (parts.length === 3) {
+                            // ISO sem hora -> T00:00:00
+                            val = `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}T00:00:00`;
+                        }
+                    }
+
+                    obj[header] = val;
+                });
+                jsonData.push(obj);
             }
 
+            console.log('JSON a ser enviado:', jsonData);
             $.ajax({
                 url: apiUrl,
                 method: 'POST',
                 contentType: 'application/json; charset=utf-8',
                 data: JSON.stringify(jsonData),
                 headers: {
-                    'X-CSRFToken': form.find('input[name="csrfmiddlewaretoken"]').val()
+                  'X-CSRFToken': form.find('input[name="csrfmiddlewaretoken"]').val()
                 },
                 success(response) {
                     if (response.success) {
-                        mostrarMensagem(`Importação concluída! ${response.created} registros criados.`, 'success');
+                        mostrarMensagem(`Importação concluída! ${response.created} criados.`, 'success');
                     } else {
-                        mostrarMensagem(`Erro na importação: ${response.error || 'desconhecido'}`, 'danger');
+                        mostrarMensagem(`Erro na importação: ${response.errors?.length || 1} linha(s) com problema.`, 'danger');
                     }
                 },
-                error() {
-                    mostrarMensagem('Erro ao enviar dados para o servidor.', 'danger');
+                error(xhr) {
+                    mostrarMensagem('Erro ao enviar dados ao servidor.', 'danger');
                 },
                 complete() {
                     submitBtn.prop('disabled', false)
@@ -136,17 +158,16 @@ function processarCSV(formId, apiUrl) {
     };
 }
 
-// Mensagens de feedback
-function mostrarMensagem(mensagem, tipo) {
+// Feedback visual
+function mostrarMensagem(msg, tipo) {
     $('#message-container').html(`
         <div class="alert alert-${tipo} alert-dismissible fade show" role="alert">
-            ${mensagem}
+            ${msg}
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    `);
+        </div>`);
 }
 
-// Associa submit dos formulários
+// Vincula os formulários
 $('#form-importar-funcionarios').submit(e => {
     e.preventDefault();
     processarCSV('#form-importar-funcionarios', '/api/csv/funcionarios/');

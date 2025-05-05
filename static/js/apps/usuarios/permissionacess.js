@@ -188,7 +188,55 @@ $(function() {
           box.html('<p class="text-danger text-center">Erro ao carregar acessos do grupo.</p>');
         });
     });
-  
+    
+    // ⭐️ Ao mudar usuário ou método, marcar os acessos já cadastrados (só em manual)
+    $('#controle_acesso_usuario, #controle_acesso_metodo').on('change', function() {
+        console.log('DEBUG: Evento change acionado para usuário/método');
+        
+        const userId = $('#controle_acesso_usuario').val();
+        const metodo = $('#controle_acesso_metodo').val();
+        console.log(`DEBUG: Usuário selecionado: ${userId}, Método selecionado: ${metodo}`);
+
+        // só continua se for manual e user selecionado
+        if (!userId || metodo !== 'manual') {
+            console.log('DEBUG: Abortando pré-seleção (não é manual ou user vazio)');
+            // limpa checkboxes manual
+            $('#controle_acesso_acessos_container input[type=checkbox]').prop('checked', false);
+            return;
+        }
+
+        console.log('DEBUG: Iniciando pré-seleção de acessos (manual)');
+        // limpa todas as checagens antigas
+        $('#controle_acesso_acessos_container input[type=checkbox]')
+        .prop('checked', false);
+
+        // busca lista completa de controles de usuário
+        $.getJSON('/autenticacao/api/users-acessos/')
+        .done(res => {
+            console.log('DEBUG: Dados recebidos da API:', res);
+            
+            // encontra o controle do user selecionado
+            const controle = res.user_acessos.find(u => String(u.user_id) === userId);
+            if (!controle) {
+                console.log('DEBUG: Nenhum controle encontrado para o usuário selecionado');
+                return;
+            }
+
+            const ids = controle.acessos || [];
+            console.log(`DEBUG: Acessos encontrados para o usuário: ${ids.join(', ')}`);
+
+            // marca no container manual
+            ids.forEach(id => {
+                $(`#controle_acesso_acessos_container input[value="${id}"]`)
+                .prop('checked', true);
+            });
+        })
+        .fail(() => {
+            console.error('ERRO: Falha ao carregar os acessos do usuário para pré-seleção');
+        });
+    });
+
+
     // --- Inicialização ---
     loadAll();
     toggleContainers();
