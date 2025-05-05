@@ -17,7 +17,7 @@ SECRET_KEY = str(os.getenv('SECRET_KEY'))
 DEBUG = True
 
 # Hosts permitidos durante o desenvolvimento
-ALLOWED_HOSTS = ['127.0.0.1', '192.168.18.236', '192.168.18.223', '192.168.18.171', '192.168.18.246', '192.168.18.246:8000', 'borealpoa.dyndns.org', 'borealpoa.dyndns.org:8000', '186.214.123.244', 'money.local', 'local.host', 'sistema.moneypromotora.com.br', '192.168.18.167']
+ALLOWED_HOSTS = ['168.231.97.235', '127.0.0.1', '0.0.0.0', '192.168.18.236', '192.168.18.223', '192.168.18.171', '192.168.18.246', '192.168.18.246:8000', 'borealpoa.dyndns.org', 'borealpoa.dyndns.org:8000', '186.214.123.244', 'money.local', 'local.host', 'sistema.moneypromotora.com.br', '192.168.18.167']
 
 CSRF_TRUSTED_ORIGINS = [
     'https://192.168.18.246',
@@ -25,6 +25,8 @@ CSRF_TRUSTED_ORIGINS = [
     'http://192.168.18.246:8000',
     'http://borealpoa.dyndns.org:8000',
     'https://sistema.moneypromotora.com.br'
+    'http://168.231.97.235:7000',
+    'http://168.231.97.235',
 ]
 
 
@@ -95,20 +97,16 @@ WSGI_APPLICATION = 'setup.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'moneydb',
-        'USER': 'root',
-        'PASSWORD': '142536475869.Money@2025',
-        'HOST': 'localhost',
-        'PORT': '3306',
+        'ENGINE':   'django.db.backends.mysql',
+        'NAME':     'moneylinkpro',
+        'USER':     'moneylink',
+        'PASSWORD': 'M@k9m3p1',
+        'HOST':     '127.0.0.1',    # ou 'SEU_IP_SERVIDOR' para acesso externo 🌐
+        'PORT':     '3306',
         'OPTIONS': {
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
             'charset': 'utf8mb4',
-            'isolation_level': 'read committed',  # Melhor para ambientes com múltiplos acessos
         },
-        'ATOMIC_REQUESTS': True,  # Garante integridade dos dados
-        'CONN_MAX_AGE': 60,  # Mantém conexões ativas por 60 segundos para reduzir overhead de conexão
-        'CONN_HEALTH_CHECKS': True,  # Verifica a saúde das conexões antes de usá-las
     }
 }
 
@@ -194,8 +192,13 @@ LOGGING = {
 
 CSRF_COOKIE_SECURE = False  # Permite CSRF em HTTP
 SESSION_COOKIE_SECURE = False  # Permite sessões sem HTTPS
-CSRF_USE_SESSIONS = True  # Usa a sessão para validar CSRF
+#CSRF_USE_SESSIONS = True  # Usa a sessão para validar CSRF
 CSRF_COOKIE_HTTPONLY = False  # Permite acesso ao cookie via JavaScript
 CSRF_COOKIE_NAME = "csrftoken"  # Nome do cookie CSRF padrão
 CSRF_COOKIE_DOMAIN = None  # Permite CSRF funcionar sem um domínio específico
 CSRF_COOKIE_SAMESITE = 'Lax'  # Permite CSRF funcionar entre origens confiáveis
+
+# Em settings.py, logo abaixo de ALLOWED_HOSTS:
+LOGIN_URL = '/autenticacao/login/'
+LOGIN_REDIRECT_URL = '/'      # (ou outra URL padrão depois do login)
+LOGOUT_REDIRECT_URL = '/autenticacao/login/'

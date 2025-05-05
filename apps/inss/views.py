@@ -36,6 +36,8 @@ from .models import *
 from apps.funcionarios.models import *
 from apps.siape.models import *
 import re
+from django.views.decorators.csrf import ensure_csrf_cookie
+
 
 # renderização de paginas
 
@@ -80,6 +82,7 @@ def render_loja(request):
 
 @login_required(login_url='/')
 @controle_acess('SCT24')   # 24 – INSS | FINANCEIRO
+@ensure_csrf_cookie
 def render_financeiro(request):
     """
     Renderiza a página de acompanhamento financeiro do INSS.
@@ -274,6 +277,7 @@ def _serialize_agendamento(a):
 
 @login_required
 @require_GET
+@ensure_csrf_cookie
 def api_get_historicopagamentos(request):
     try:
         base_query = PresencaLoja.objects.filter(
@@ -334,6 +338,7 @@ def api_get_historicopagamentos(request):
 
 @login_required
 @require_GET
+@ensure_csrf_cookie
 def api_get_cardsfinanceiro(request):
     try:
         hoje = timezone.now().date()
@@ -452,6 +457,7 @@ def api_get_cardsfinanceiro(request):
 
 @login_required
 @require_GET
+@ensure_csrf_cookie
 def api_get_tac(request):
     """
     API para buscar presenças em loja com valor TAC pendente.
@@ -656,6 +662,7 @@ def api_post_tac(request):
 @login_required
 @require_POST
 @csrf_exempt # << TEMPORÁRIO PARA DIAGNÓSTICO
+@ensure_csrf_cookie
 def api_post_attvalortac(request):
     """
     API para atualizar o valor TAC de uma presença em loja.
@@ -746,20 +753,27 @@ def _local(dt):
 @login_required
 @require_GET
 @controle_acess('SCT23')
+@ensure_csrf_cookie
 def api_get_agendadosHoje(request):
     user = request.user
     hoje = _local(timezone.now()).date()
 
-    base_qs = Agendamento.objects.filter(dia_agendado__date=hoje) \
-        .select_related('cliente_agendamento', 'loja', 'atendente_agendou')
+    # 1️⃣ Busca todos os agendamentos de hoje, SEM presenca associada
+    base_qs = Agendamento.objects.filter(
+        dia_agendado__date=hoje,
+        presenca__isnull=True
+    ).select_related('cliente_agendamento', 'loja', 'atendente_agendou')
 
-    func = Funcionario.objects.filter(usuario=user, status=True) \
-        .select_related('cargo', 'loja').first()
+    # 2️⃣ Recupera o perfil do funcionário logado
+    func = Funcionario.objects.filter(
+        usuario=user, status=True
+    ).select_related('cargo', 'loja').first()
     if not func or not func.loja:
         return JsonResponse({'agendamentos': [], 'message': 'Sem permissão'}, status=200)
 
     hier = func.cargo.hierarquia if func.cargo else Cargo.HierarquiaChoices.PADRAO
 
+    # 3️⃣ Aplica filtro de acesso por hierarquia
     if user.is_superuser:
         qs = base_qs
     elif hier >= Cargo.HierarquiaChoices.SUPERVISOR_GERAL:
@@ -769,7 +783,7 @@ def api_get_agendadosHoje(request):
     else:
         qs = base_qs.filter(loja=func.loja)
 
-    # filtros
+    # 4️⃣ Filtros opcionais de querystring
     nome = request.GET.get('nomeCliente','').strip()
     cpf  = ''.join(c for c in request.GET.get('cpfCliente','') if c.isdigit())
     aten = request.GET.get('atendente','').strip()
@@ -784,13 +798,14 @@ def api_get_agendadosHoje(request):
             Q(atendente_agendou__username__icontains=aten)
         )
 
+    # 5️⃣ Monta resultado
     resultado = []
     for a in qs:
         dt = _local(a.dia_agendado)
         data_hora = dt.strftime('%d/%m/%Y %H:%M') if dt else ''
         usr = a.atendente_agendou
         nome_at = (usr.get_full_name() or usr.username) if usr else ''
-        status = 'Atendido' if hasattr(a, 'presenca') else 'Aguardando'
+        status = 'Aguardando'  # nunca terá presenca, pois excluímos acima
         resultado.append({
             'id_agendamento': a.id,
             'nome': a.cliente_agendamento.nome_completo,
@@ -810,11 +825,17 @@ def api_get_agendadosHoje(request):
 @login_required
 @require_GET
 @controle_acess('SCT23')
+@ensure_csrf_cookie
 def api_get_agendPendentes(request):
     user = request.user
+
+    # só agendamentos não confirmados e agendados para hoje ou futuro
+    hoje = _local(timezone.now()).date()
     base_qs = Agendamento.objects.exclude(tabulacao_agendamento='CONFIRMADO') \
+        .filter(dia_agendado__date__gte=hoje) \
         .select_related('cliente_agendamento', 'loja', 'atendente_agendou')
 
+    # perfil do funcionário logado
     func = Funcionario.objects.filter(usuario=user, status=True) \
         .select_related('cargo', 'loja').first()
     if not func or not func.loja:
@@ -822,6 +843,7 @@ def api_get_agendPendentes(request):
 
     hier = func.cargo.hierarquia if func.cargo else Cargo.HierarquiaChoices.PADRAO
 
+    # controle de acesso por hierarquia
     if user.is_superuser:
         qs = base_qs
     elif hier >= Cargo.HierarquiaChoices.SUPERVISOR_GERAL:
@@ -831,7 +853,7 @@ def api_get_agendPendentes(request):
     else:
         qs = base_qs.filter(loja=func.loja)
 
-    # filtros opcionais iguais ao outro endpoint...
+    # filtros opcionais
     nome = request.GET.get('nomeCliente','').strip()
     cpf  = ''.join(c for c in request.GET.get('cpfCliente','') if c.isdigit())
     aten = request.GET.get('atendente','').strip()
@@ -865,7 +887,7 @@ def api_get_agendPendentes(request):
             'agendamento_tabulacao': a.tabulacao_agendamento or '',
             'agendamento_loja_id': a.loja.id if a.loja else None,
             'agendamento_loja_nome': a.loja.nome if a.loja else 'Sem loja',
-            'tem_presenca': hasattr(a, 'presenca')
+            'tem_presenca': hasattr(a, 'presenca'),
         })
 
     return JsonResponse({'agendamentos': resultado, 'total': len(resultado)}, status=200)
@@ -873,6 +895,7 @@ def api_get_agendPendentes(request):
 @login_required
 @require_GET
 @controle_acess('SCT23')
+@ensure_csrf_cookie
 def api_get_clientesAtrasadoLoja(request):
     """
     Lista clientes com dia_agendado < hoje, tabulacao != 'CONFIRMADO'
@@ -961,6 +984,7 @@ def api_get_clientesAtrasadoLoja(request):
 
 @login_required
 @require_GET
+@ensure_csrf_cookie
 def api_get_infocliente(request):
     ag_id = request.GET.get('agendamento_id')
     if not ag_id:
@@ -1118,21 +1142,18 @@ def api_post_novavenda(request):
 @login_required
 @require_POST
 def api_post_addvenda(request):
-    import logging
-    from datetime import datetime
-    logger = logging.getLogger(__name__)
+    ag_id   = request.POST.get('agendamento_id', '')
+    vend_id = request.POST.get('vendedor_id', '')
+    tab_v   = request.POST.get('tabulacao_vendedor', '')
+    loja_id = request.POST.get('loja_id', '')
 
-    ag_id = request.POST.get('agendamento_id','')
-    vend_id = request.POST.get('vendedor_id','')
-    tab_v   = request.POST.get('tabulacao_vendedor','')
-    loja_id = request.POST.get('loja_id','')
-
+    # validações iniciais
     if not all([ag_id, vend_id, tab_v]):
         return JsonResponse({'status':'error','message':'Campos obrigatórios faltando'}, status=400)
 
     try:
         ag = Agendamento.objects.select_related('cliente_agendamento').get(id=ag_id)
-    except:
+    except Agendamento.DoesNotExist:
         return JsonResponse({'status':'error','message':'Agendamento não encontrado'}, status=404)
 
     if PresencaLoja.objects.filter(agendamento=ag).exists():
@@ -1140,47 +1161,54 @@ def api_post_addvenda(request):
 
     try:
         vend = User.objects.get(id=vend_id)
-    except:
+    except User.DoesNotExist:
         return JsonResponse({'status':'error','message':'Vendedor não encontrado'}, status=404)
 
-    loja = None
     if loja_id:
         try:
             loja = Loja.objects.get(id=loja_id)
-        except:
+        except Loja.DoesNotExist:
             return JsonResponse({'status':'error','message':'Loja não encontrada'}, status=404)
     else:
         loja = ag.loja
 
     pres_feats = []
-    if tab_v in ["FECHOU NEGOCIO","NEGOCIO FECHADO"]:
+
+    # fluxo de produtos (NEGÓCIO FECHADO)
+    if tab_v in ["FECHOU NEGOCIO", "NEGOCIO FECHADO"]:
         raw = request.POST.get('produtos_json') or request.POST.get('produtos','{}')
         try:
             produtos = json.loads(raw)
-            if isinstance(produtos,list):
-                produtos = {str(i):p for i,p in enumerate(produtos)}
-        except:
+            if isinstance(produtos, list):
+                produtos = {str(i): p for i, p in enumerate(produtos)}
+        except json.JSONDecodeError:
             return JsonResponse({'status':'error','message':'Produtos inválidos'}, status=400)
+
         if not produtos:
             return JsonResponse({'status':'error','message':'Produto obrigatório'}, status=400)
+
         total = Decimal('0')
         for info in produtos.values():
             sub = str(info.get('subsidio')).lower() in ['true','1','sim']
             ac  = str(info.get('acao')).lower()     in ['true','1','sim']
-            aso = str(info.get('associacao')).lower()in ['true','1','sim']
-            aum = str(info.get('aumento')).lower() in ['true','1','sim']
+            aso = str(info.get('associacao')).lower() in ['true','1','sim']
+            aum = str(info.get('aumento')).lower()  in ['true','1','sim']
             vt = info.get('valor_tac','0').replace('R$','').replace('.','').replace(',','.')
-            try: vt_dec = Decimal(vt)
-            except: vt_dec = Decimal('0')
+            try:
+                vt_dec = Decimal(vt)
+            except:
+                vt_dec = Decimal('0')
             total += vt_dec
+
             tipo = info.get('tipo_negociacao','').upper()
-            pid = info.get('produto_id')
+            pid  = info.get('produto_id')
             if pid:
                 try:
                     prod = Produto.objects.get(id=pid)
                     tipo = prod.nome.upper()
-                except:
+                except Produto.DoesNotExist:
                     pass
+
             p = PresencaLoja(
                 agendamento=ag,
                 loja_comp=loja,
@@ -1188,18 +1216,29 @@ def api_post_addvenda(request):
                 tabulacao_venda=tab_v,
                 tipo_negociacao=tipo,
                 banco=info.get('banco','').upper(),
-                subsidio=sub, valor_tac=vt_dec,
-                acao=ac, associacao=aso, aumento=aum,
-                status_pagamento='EM_ESPERA'
+                subsidio=sub,
+                valor_tac=vt_dec,
+                acao=ac,
+                associacao=aso,
+                aumento=aum,
+                status_pagamento=PresencaLoja.StatusPagamentoChoices.EM_ESPERA
             )
             p.save()
             pres_feats.append(p.id)
+
+        # marca o Agendamento como CONFIRMADO
+        if ag.tabulacao_agendamento != 'CONFIRMADO':
+            ag.tabulacao_agendamento = 'CONFIRMADO'
+            ag.save()
+
         return JsonResponse({
             'status':'success',
-            'message':f'{len(pres_feats)} produtos registrados',
+            'message': f'{len(pres_feats)} produtos registrados',
             'presencas_ids': pres_feats,
             'valor_total_tac': f'R$ {total:.2f}'.replace('.',',')
         })
+
+    # fluxo padrão (sem produtos)
     else:
         p = PresencaLoja(
             agendamento=ag,
@@ -1208,7 +1247,17 @@ def api_post_addvenda(request):
             tabulacao_venda=tab_v
         )
         p.save()
-        return JsonResponse({'status':'success','message':'Presença registrada','presenca_id':p.id})
+
+        # marca o Agendamento como CONFIRMADO
+        if ag.tabulacao_agendamento != 'CONFIRMADO':
+            ag.tabulacao_agendamento = 'CONFIRMADO'
+            ag.save()
+
+        return JsonResponse({
+            'status':'success',
+            'message':'Presença registrada',
+            'presenca_id': p.id
+        })
 
 
 @login_required
@@ -1222,72 +1271,109 @@ def api_get_infolojaefuncionario(request):
     - 'funcionarios': Um dicionário com ID do usuário como chave e {'id', 'nome'} como valor.
     - 'produtos': Um dicionário com ID do produto como chave e {'id', 'nome'} como valor.
 
-    A lista de funcionários depende do nível hierárquico do usuário logado:
-    - Superusuários ou usuários com cargo de hierarquia superior a PADRAO veem todos os funcionários ativos com usuário associado.
-    - Usuários com cargo ESTAGIO ou PADRAO veem apenas a si mesmos.
-    - Usuários sem perfil de funcionário associado ou sem cargo definido (e não superusuários) veem apenas a si mesmos (se tiverem perfil).
+    A lista de funcionários e de lojas depende do nível hierárquico do usuário logado:
+    - Superusuários ou cargos SUPERVISOR_GERAL e GESTOR veem todas as lojas ativas e todos os funcionários dessas lojas.
+    - Cargos de nível superior a PADRAO (COORDENADOR, GERENTE, FRANQUEADO) veem apenas a própria loja e todos os funcionários dessa loja.
+    - Cargos ESTAGIO ou PADRAO veem apenas a própria loja e apenas a si mesmos.
+    - Usuários sem perfil de funcionário ou sem cargo definido (e não superusuários) veem apenas a si mesmos, sem nenhuma loja adicional.
     """
     try:
-        # 1. Buscar Lojas Ativas
-        lojas_qs = Loja.objects.filter(status=True).order_by('nome')
-        lojas_dict = {loja.id: {'id': loja.id, 'nome': loja.nome} for loja in lojas_qs}
-
-        # 2. Determinar quais funcionários listar
         user = request.user
-        funcionarios_queryset = Funcionario.objects.none() # Inicia com queryset vazio
-        mostrar_todos = False
 
-        if user.is_superuser:
-            mostrar_todos = True
-        else:
-            # Tenta buscar o perfil do funcionário logado
-            funcionario_logado = Funcionario.objects.filter(
-                usuario=user, status=True
-            ).select_related('cargo').first()
-
-            if funcionario_logado and funcionario_logado.cargo:
-                # Verifica a hierarquia do cargo
-                nivel_hierarquico = funcionario_logado.cargo.hierarquia
-                if nivel_hierarquico not in [Cargo.HierarquiaChoices.ESTAGIO, Cargo.HierarquiaChoices.PADRAO]:
-                    mostrar_todos = True
-            # Se não for superuser e não tiver cargo de nível superior, mostrar_todos continua False
-
-        # 3. Buscar Funcionários com base na permissão
-        if mostrar_todos:
-            # Busca todos os funcionários ativos que têm um usuário Django associado
-            funcionarios_queryset = Funcionario.objects.filter(
-                status=True, usuario__isnull=False
-            ).select_related('usuario').order_by('nome_completo')
-        else:
-            # Busca apenas o funcionário logado, se ele existir e tiver usuário associado
-            # Re-consulta para garantir que temos o objeto correto, mesmo que já tenhamos pego antes
-            funcionario_logado_qs = Funcionario.objects.filter(
-                usuario=user, status=True, usuario__isnull=False
-            ).select_related('usuario')
-            if funcionario_logado_qs.exists():
-                 funcionarios_queryset = funcionario_logado_qs
-
-
-        # 4. Formatar dicionário de funcionários
-        # A chave é o ID do User, o valor contém ID do User e nome completo do Funcionário
-        funcionarios_dict = {
-            f.usuario.id: {'id': f.usuario.id, 'nome': f.nome_completo}
-            for f in funcionarios_queryset if f.usuario # Garante que f.usuario não seja None
+        # 1. Produtos ativos
+        produtos_qs = Produto.objects.filter(ativo=True).order_by('nome')
+        produtos_dict = {
+            p.id: {'id': p.id, 'nome': p.nome}
+            for p in produtos_qs
         }
 
-        # 5. Buscar produtos ativos do Siape
-        from apps.siape.models import Produto
-        produtos_qs = Produto.objects.filter(ativo=True).order_by('nome')
-        produtos_dict = {produto.id: {'id': produto.id, 'nome': produto.nome} for produto in produtos_qs}
+        # 2. Determinar perfil do funcionário logado (se existir)
+        func_logado = Funcionario.objects.select_related('cargo', 'loja').filter(
+            usuario=user, status=True
+        ).first()
 
-        # 6. Retornar JSON
-        return JsonResponse({'lojas': lojas_dict, 'funcionarios': funcionarios_dict, 'produtos': produtos_dict})
+        # 3. Inicialização
+        lojas_qs = Loja.objects.filter(status=True)  # base de todas as lojas ativas
+        funcionarios_qs = Funcionario.objects.none()  # vazio por padrão
+
+        # 4. Superuser -> todas as lojas e todos os funcionários dessas lojas
+        if user.is_superuser:
+            # lojistas
+            lojas_permitidas = lojas_qs
+            # funcionários de todas essas lojas
+            funcionarios_qs = Funcionario.objects.filter(
+                status=True,
+                loja__in=lojas_permitidas,
+                usuario__isnull=False
+            ).select_related('usuario').order_by('nome_completo')
+
+        else:
+            # 5. Se não superuser, mas tem perfil de funcionário
+            if func_logado and func_logado.cargo:
+                hier = func_logado.cargo.hierarquia
+                minha_loja = func_logado.loja
+
+                # SUPERVISOR_GERAL ou GESTOR veem tudo também
+                if hier in [Cargo.HierarquiaChoices.SUPERVISOR_GERAL,
+                            Cargo.HierarquiaChoices.GESTOR]:
+                    lojas_permitidas = lojas_qs
+                    funcionarios_qs = Funcionario.objects.filter(
+                        status=True,
+                        loja__in=lojas_permitidas,
+                        usuario__isnull=False
+                    ).select_related('usuario').order_by('nome_completo')
+
+                # cargos superiores a PADRAO (COORDENADOR, GERENTE, FRANQUEADO)
+                elif hier not in [Cargo.HierarquiaChoices.ESTAGIO,
+                                  Cargo.HierarquiaChoices.PADRAO]:
+                    # vê apenas a própria loja, mas todos os funcionários dela
+                    lojas_permitidas = Loja.objects.filter(id=minha_loja.id, status=True)
+                    funcionarios_qs = Funcionario.objects.filter(
+                        status=True,
+                        loja=minha_loja,
+                        usuario__isnull=False
+                    ).select_related('usuario').order_by('nome_completo')
+
+                else:
+                    # ESTAGIO ou PADRAO: vê apenas a própria loja e somente a si mesmo
+                    lojas_permitidas = Loja.objects.filter(id=minha_loja.id, status=True)
+                    funcionarios_qs = Funcionario.objects.filter(
+                        usuario=user,
+                        status=True,
+                        loja=minha_loja,
+                        usuario__isnull=False
+                    ).select_related('usuario')
+
+            else:
+                # 6. Sem perfil de funcionário associado: só ele mesmo, sem loja
+                lojas_permitidas = Loja.objects.none()
+                funcionarios_qs = Funcionario.objects.filter(
+                    usuario=user, status=True, usuario__isnull=False
+                ).select_related('usuario')
+
+        # 7. Formatar dicionários de saída
+        lojas_dict = {
+            loja.id: {'id': loja.id, 'nome': loja.nome}
+            for loja in lojas_permitidas.order_by('nome')
+        }
+        funcionarios_dict = {
+            f.usuario.id: {'id': f.usuario.id, 'nome': f.nome_completo}
+            for f in funcionarios_qs if f.usuario
+        }
+
+        return JsonResponse({
+            'lojas': lojas_dict,
+            'funcionarios': funcionarios_dict,
+            'produtos': produtos_dict
+        })
 
     except Exception as e:
-        # Logar o erro seria ideal em produção
-        # logger.error(f"Erro em api_get_infolojaefuncionario: {e}", exc_info=True)
-        print(f"Erro em api_get_infolojaefuncionario: {e}") # Para depuração
-        return JsonResponse({'erro': 'Ocorreu um erro interno ao buscar dados.'}, status=500)
+        # Em produção, substituir print por logger.error(...)
+        print(f"Erro em api_get_infolojaefuncionario: {e}")
+        return JsonResponse(
+            {'erro': 'Ocorreu um erro interno ao buscar dados.'},
+            status=500
+        )
 
 
 @csrf_exempt
@@ -1785,6 +1871,43 @@ def api_get_emloja(request):
         import traceback
         traceback.print_exc()
         return JsonResponse({'texto': 'Erro interno ao obter clientes em loja.', 'classe': 'error'}, status=500)
+
+@login_required
+@require_GET
+@ensure_csrf_cookie
+def api_get_cpfclientenome(request):
+    """
+    Recebe ?cpf=000.000.000-00 (ou sem formatação),
+    busca em ClienteAgendamento.cpf (armazenado sem máscara)
+    e retorna {'nome': 'Fulano da Silva'} ou 404 com {'mensagem': 'Cliente não encontrado'}.
+    """
+    cpf = request.GET.get('cpf', '')
+    print(f"[DEBUG] CPF recebido: {cpf}")
+    
+    # remove tudo que não for dígito
+    cpf_digits = re.sub(r'\D', '', cpf)
+    print(f"[DEBUG] CPF formatado: {cpf_digits}")
+    
+    try:
+        # Remove caracteres especiais de todos os CPFs no banco antes de comparar
+        clientes = ClienteAgendamento.objects.all()
+        for cliente in clientes:
+            cpf_banco = re.sub(r'\D', '', cliente.cpf)
+            if cpf_banco == cpf_digits:
+                print(f"[DEBUG] Cliente encontrado: {cliente.nome_completo}")
+                return JsonResponse({'nome': cliente.nome_completo})
+        
+        print("[DEBUG] Cliente não encontrado")
+        return JsonResponse(
+            {'mensagem': 'Cliente não encontrado'},
+            status=404
+        )
+    except Exception as e:
+        print(f"[ERROR] Erro ao buscar cliente: {str(e)}")
+        return JsonResponse(
+            {'mensagem': 'Erro interno ao buscar cliente'},
+            status=500
+        )
 
 # -------------------------------------------
 # FIM TEMPLATE AGENDAMENTO.HTML

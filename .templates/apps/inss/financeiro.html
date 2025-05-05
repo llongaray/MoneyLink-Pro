@@ -11,6 +11,9 @@ Financeiro - INSS<span class="produto-text"></span>
 {% endblock %}
 
 {% block content %}
+<form id="dummy-csrf" style="display:none;">
+    {% csrf_token %}
+</form>
 <div class="container-fluid my-4">
     <!-- Nova seção de cards de resumo financeiro -->
     <div class="box financeiro" id="box-financeiro">

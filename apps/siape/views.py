@@ -656,201 +656,186 @@ import time as _time
 @csrf_exempt
 @require_POST
 def api_post_importar_csv(request):
-    print("\n----- Iniciando importação de dados CSV via API -----\n")
-
-    clientes_criados = 0
-    clientes_atualizados = 0
-    erros_processamento = 0
-    linhas_com_erro = []
+    """
+    Importa CSV/XLS para criar/atualizar Clientes e criar Débitos.
+    Garante que:
+      - só clientes com PK vão para bulk_update()
+      - não duplica criação de clientes para o mesmo CPF
+    """
+    print("\n----- Iniciando importação de dados CSV via API -----")
     start_time = _time.time()
 
-    # Obtendo o arquivo CSV e o ID da campanha a partir do request
+    # 1) arquivo + campanha_id
     csv_file, campanha_id = parse_json_post_file(request)
-    print("Valor recebido - csv_file:", csv_file)
-    print("Valor recebido - campanha_id:", campanha_id)
+    if not csv_file or not campanha_id:
+        return JsonResponse(
+            {'status': 'erro',
+             'mensagem': 'csv_file e campanha_id são obrigatórios.'},
+            status=400
+        )
 
-    if not csv_file:
-        print("Falha: Nenhum arquivo CSV foi enviado.")
-        return JsonResponse({'status': 'erro', 'mensagem': 'Nenhum arquivo CSV foi enviado.'}, status=400)
-
-    if not csv_file.name.endswith(('.csv', '.xlsx', '.xls')):
-        print("Falha: Formato inválido do arquivo -", csv_file.name)
-        return JsonResponse({'status': 'erro', 'mensagem': 'Formato inválido. Use .csv, .xlsx ou .xls.'}, status=400)
-
-    # Leitura do arquivo conforme seu formato
-    if csv_file.name.endswith('.csv'):
-        print("Arquivo CSV detectado:", csv_file.name)
-        df = pd.read_csv(csv_file, encoding='utf-8-sig', sep=';')
-    else:
-        print("Arquivo Excel detectado:", csv_file.name)
-        df = pd.read_excel(csv_file)
-
+    # 2) carrega DataFrame
+    name = csv_file.name.lower()
     try:
-        campanha = Campanha.objects.get(id=campanha_id)
-        print("Campanha encontrada:", campanha)
-    except Campanha.DoesNotExist:
-        print("Falha: Campanha com ID", campanha_id, "não encontrada.")
-        return JsonResponse({'status': 'erro', 'mensagem': f"Campanha com ID {campanha_id} não encontrada."}, status=404)
+        if name.endswith('.csv'):
+            df = pd.read_csv(csv_file, encoding='utf-8-sig', sep=';')
+        elif name.endswith(('.xls', '.xlsx')):
+            df = pd.read_excel(csv_file)
+        else:
+            raise ValueError("Formato inválido: use .csv, .xls ou .xlsx")
+    except Exception as e:
+        return JsonResponse({'status': 'erro', 'mensagem': str(e)}, status=400)
 
-    # Ajusta os nomes das colunas removendo espaços no início/fim
+    # 3) busca campanha
+    try:
+        campanha = Campanha.objects.get(id=int(campanha_id))
+    except Campanha.DoesNotExist:
+        return JsonResponse(
+            {'status': 'erro',
+             'mensagem': f"Campanha {campanha_id} não encontrada."},
+            status=404
+        )
+
+    # 4) saneamento
     df.columns = df.columns.str.strip()
     total_linhas = len(df)
-    print("Total de linhas do CSV:", total_linhas)
+    print(f"Total de linhas: {total_linhas}")
 
-    # Coleta CPFs para verificação em lote
-    cpfs_para_verificar = set()
-    for _, row in df.iterrows():
-        cpf_valor = row.get('CPF')
-        if cpf_valor:
-            cpf_normalizado = normalize_cpf(cpf_valor)
-            if cpf_normalizado:
-                cpfs_para_verificar.add(cpf_normalizado)
+    # 5) coleta CPFs únicos do CSV
+    cpfs_csv = [
+        cpf for cpf in (
+            normalize_cpf(str(row.get('CPF', ''))) for _, row in df.iterrows()
+        ) if cpf
+    ]
+    cpfs_unicos = set(cpfs_csv)
 
-    # Consulta clientes existentes em uma única operação
-    clientes_existentes = {
-        c.cpf: c for c in Cliente.objects.filter(cpf__in=cpfs_para_verificar)
+    # 6) busca os clientes que já existem no DB
+    clientes_existentes_db = {
+        c.cpf: c
+        for c in Cliente.objects.filter(cpf__in=cpfs_unicos)
     }
-    print(f"Encontrados {len(clientes_existentes)} clientes existentes no banco")
+    print(f"Clientes existentes no DB: {len(clientes_existentes_db)}")
 
-    # Conjunto para controle de débitos duplicados
-    debitos_existentes_chaves = set()
-    # Buscar débitos existentes para evitar duplicação
-    debitos_qs = Debito.objects.filter(
-        cliente__cpf__in=cpfs_para_verificar,
-        campanha=campanha
-    ).values('cliente__cpf', 'matricula', 'parcela', 'prazo_restante')
-    for d in debitos_qs:
-        key = (d['cliente__cpf'], d['matricula'], str(d['parcela']), str(d['prazo_restante']))
-        debitos_existentes_chaves.add(key)
-    print(f"Encontrados {len(debitos_existentes_chaves)} débitos existentes no banco")
-
-    # Listas para operações em lote
-    clientes_para_criar = []
-    clientes_para_atualizar = []
+    # preparar listas
+    criar_clientes = []          # instâncias sem PK
+    atualizar_clientes = []      # instâncias com PK (só do DB)
+    novos_por_cpf = {}           # cpf -> instância cria (sem PK) para acumular updates
     debitos_info = []
 
+    # 7) itera cada linha
+    for idx, row in df.iterrows():
+        linha = idx + 1
+        try:
+            cpf = normalize_cpf(str(row.get('CPF', '')))
+            if not cpf:
+                raise ValueError(f"CPF inválido na linha {linha}")
+
+            # mapeia ou cria o objeto Cliente apropriado
+            if cpf in clientes_existentes_db:
+                cliente = clientes_existentes_db[cpf]
+            elif cpf in novos_por_cpf:
+                cliente = novos_por_cpf[cpf]
+            else:
+                cliente = Cliente()  # sem PK ainda
+                cliente.cpf = cpf
+                criar_clientes.append(cliente)
+                novos_por_cpf[cpf] = cliente
+
+            # atualiza todos os campos (novo ou existente)
+            cliente.nome = clean_text_field(get_safe_value(row, 'Nome', ''), 100)
+            cliente.uf = clean_text_field(get_safe_value(row, 'UF', ''), 2)
+            cliente.rjur = clean_text_field(get_safe_value(row, 'RJur', ''), 50)
+            cliente.situacao_funcional = clean_text_field(
+                get_safe_value(row, 'Situacao_Funcional', ''), 50
+            )
+            cliente.renda_bruta = parse_valor_br(get_safe_value(row, 'Renda_Bruta', '0'))
+            cliente.bruta_5 = parse_valor_br(get_safe_value(row, 'Bruta_5', '0'))
+            cliente.util_5 = parse_valor_br(get_safe_value(row, 'Utilizado_5', '0'))
+            cliente.saldo_5 = parse_valor_br(get_safe_value(row, 'Saldo_5', '0'))
+            cliente.brutaBeneficio_5 = parse_valor_br(get_safe_value(row, 'Bruta_Beneficio_5', '0'))
+            cliente.utilBeneficio_5 = parse_valor_br(get_safe_value(row, 'Utilizado_Beneficio_5', '0'))
+            cliente.saldoBeneficio_5 = parse_valor_br(get_safe_value(row, 'Saldo_Beneficio_5', '0'))
+            cliente.bruta_35 = parse_valor_br(get_safe_value(row, 'Bruta_35', '0'))
+            cliente.util_35 = parse_valor_br(get_safe_value(row, 'Utilizado_35', '0'))
+            cliente.saldo_35 = parse_valor_br(get_safe_value(row, 'Saldo_35', '0'))
+            cliente.total_util = parse_valor_br(get_safe_value(row, 'Total_Utilizado', '0'))
+            cliente.total_saldo = parse_valor_br(get_safe_value(row, 'Total_Saldo', '0'))
+
+            # se for DB, marca para bulk_update
+            if hasattr(cliente, 'pk') and cliente.pk:
+                atualizar_clientes.append(cliente)
+            # se for novo, está em criar_clientes e em novos_por_cpf, sem PK
+
+            # prepara informação de débito
+            debitos_info.append({
+                'cpf': cpf,
+                'banco': clean_text_field(get_safe_value(row, 'Banco', ''), 100),
+                'matricula': clean_text_field(get_safe_value(row, 'Matricula', ''), 50),
+                'orgao': clean_text_field(get_safe_value(row, 'Orgao', ''), 50),
+                'parcela': parse_int(get_safe_value(row, 'Parcela', '0')),
+                'prazo_restante': parse_int(get_safe_value(row, 'Prazo_Restante', '0')),
+                'tipo_contrato': clean_text_field(get_safe_value(row, 'Tipo_de_Contrato', ''), 50),
+                'num_contrato': clean_text_field(get_safe_value(row, 'Numero_do_Contrato', ''), 50),
+            })
+
+        except Exception as e:
+            print(f"[Linha {linha}] erro: {e}")
+            continue
+
+    # 8) salva tudo em transação
     with transaction.atomic():
-        for index, row in df.iterrows():
-            linha_atual = index + 1
-            try:
-                # Normaliza CPF
-                cpf_valor = row.get('CPF')
-                cpf_cliente = normalize_cpf(cpf_valor)
-                if not cpf_cliente:
-                    raise ValueError(f"CPF inválido: {cpf_valor}")
+        # 8.1 cria os novos clientes
+        if criar_clientes:
+            Cliente.objects.bulk_create(criar_clientes, batch_size=100)
 
-                # Prepara dados do cliente
-                dados_cliente = {
-                    'nome': clean_text_field(get_safe_value(row, 'Nome', 'não informado'), 100),
-                    'uf': clean_text_field(get_safe_value(row, 'UF', 'não informado'), 2),
-                    'rjur': clean_text_field(get_safe_value(row, 'RJur', 'não informado'), 50),
-                    'situacao_funcional': clean_text_field(get_safe_value(row, 'Situacao_Funcional', 'não informado'), 50),
-                    'renda_bruta': parse_valor_br(get_safe_value(row, 'Renda_Bruta', '0')),
-                    'bruta_5': parse_valor_br(get_safe_value(row, 'Bruta_5', '0')),
-                    'util_5': parse_valor_br(get_safe_value(row, 'Utilizado_5', '0')),
-                    'saldo_5': parse_valor_br(get_safe_value(row, 'Saldo_5', '0')),
-                    'brutaBeneficio_5': parse_valor_br(get_safe_value(row, 'Bruta_Beneficio_5', '0')),
-                    'utilBeneficio_5': parse_valor_br(get_safe_value(row, 'Utilizado_Beneficio_5', '0')),
-                    'saldoBeneficio_5': parse_valor_br(get_safe_value(row, 'Saldo_Beneficio_5', '0')),
-                    'bruta_35': parse_valor_br(get_safe_value(row, 'Bruta_35', '0')),
-                    'util_35': parse_valor_br(get_safe_value(row, 'Utilizado_35', '0')),
-                    'saldo_35': parse_valor_br(get_safe_value(row, 'Saldo_35', '0')),
-                    'total_util': parse_valor_br(get_safe_value(row, 'Total_Utilizado', '0')),
-                    'total_saldo': parse_valor_br(get_safe_value(row, 'Total_Saldo', '0')),
-                }
-
-                if cpf_cliente in clientes_existentes:
-                    cliente = clientes_existentes[cpf_cliente]
-                    for attr, val in dados_cliente.items():
-                        setattr(cliente, attr, val)
-                    clientes_para_atualizar.append(cliente)
-                    clientes_atualizados += 1
-                else:
-                    dados_cliente['cpf'] = cpf_cliente
-                    novo = Cliente(**dados_cliente)
-                    clientes_para_criar.append(novo)
-                    clientes_existentes[cpf_cliente] = novo
-                    clientes_criados += 1
-
-                # Prepara dados do débito
-                matricula_valor = clean_text_field(get_safe_value(row, 'Matricula'), 50)
-                parcela = parse_valor_br(get_safe_value(row, 'Parcela', '0'))
-                prazo = parse_int(get_safe_value(row, 'Prazo_Restante', '0'))
-                debito_key = (cpf_cliente, matricula_valor, str(parcela), str(prazo))
-                if debito_key not in debitos_existentes_chaves:
-                    debitos_info.append({
-                        'cpf_cliente': cpf_cliente,
-                        'banco': clean_text_field(get_safe_value(row, 'Banco'), 100),
-                        'matricula': matricula_valor,
-                        'orgao': clean_text_field(get_safe_value(row, 'Orgao'), 50),
-                        'parcela': parcela,
-                        'prazo_restante': prazo,
-                        'tipo_contrato': clean_text_field(get_safe_value(row, 'Tipo_de_Contrato', 'Consignado'), 50),
-                        'num_contrato': clean_text_field(get_safe_value(row, 'Numero_do_Contrato'), 50),
-                    })
-                    debitos_existentes_chaves.add(debito_key)
-
-            except Exception as exc:
-                msg = f"Linha {linha_atual}: {str(exc)}"
-                print("Falha:", msg)
-                linhas_com_erro.append(msg)
-                erros_processamento += 1
-
-        # Bulk create/update clientes
-        BATCH_SIZE = 100
-        if clientes_para_criar:
-            Cliente.objects.bulk_create(clientes_para_criar, batch_size=BATCH_SIZE)
-        if clientes_para_atualizar:
+        # 8.2 atualiza só os que já tinham PK
+        if atualizar_clientes:
             Cliente.objects.bulk_update(
-                clientes_para_atualizar,
-                fields=list(dados_cliente.keys()),
-                batch_size=BATCH_SIZE
+                atualizar_clientes,
+                fields=[
+                    'nome', 'uf', 'rjur', 'situacao_funcional',
+                    'renda_bruta', 'bruta_5', 'util_5', 'saldo_5',
+                    'brutaBeneficio_5', 'utilBeneficio_5', 'saldoBeneficio_5',
+                    'bruta_35', 'util_35', 'saldo_35',
+                    'total_util', 'total_saldo'
+                ],
+                batch_size=100
             )
 
-        # Recarrega clientes para garantir IDs
-        cpfs = [c.cpf for c in clientes_para_criar] + [c.cpf for c in clientes_para_atualizar]
-        clientes_map = {c.cpf: c for c in Cliente.objects.filter(cpf__in=cpfs)}
+        # 8.3 recarrega TODOS os clientes (existentes + recém-criados) para obter PKs
+        todos = Cliente.objects.filter(cpf__in=cpfs_unicos)
+        mapa_clientes = {c.cpf: c for c in todos}
 
-        # Bulk create débitos
-        debitos_para_criar = []
+        # 8.4 cria os débitos
+        debs = []
         for info in debitos_info:
-            cliente_obj = clientes_map.get(info['cpf_cliente'])
-            if cliente_obj:
-                debitos_para_criar.append(Debito(
-                    cliente=cliente_obj,
-                    campanha=campanha,
-                    banco=info['banco'],
-                    matricula=info['matricula'],
-                    orgao=info['orgao'],
-                    parcela=info['parcela'],
-                    prazo_restante=info['prazo_restante'],
-                    tipo_contrato=info['tipo_contrato'],
-                    num_contrato=info['num_contrato'],
-                ))
-        if debitos_para_criar:
-            Debito.objects.bulk_create(debitos_para_criar, batch_size=BATCH_SIZE)
+            cli = mapa_clientes.get(info['cpf'])
+            if not cli:
+                continue
+            debs.append(Debito(
+                cliente=cli,
+                campanha=campanha,
+                banco=info['banco'],
+                matricula=info['matricula'],
+                orgao=info['orgao'],
+                parcela=info['parcela'],
+                prazo_restante=info['prazo_restante'],
+                tipo_contrato=info['tipo_contrato'],
+                num_contrato=info['num_contrato'],
+            ))
+        if debs:
+            Debito.objects.bulk_create(debs, batch_size=100)
 
-    # Calcula tempo total
-    tempo_total = _time.time() - start_time
-    print("\n----- Importação Concluída -----")
-    print(f"Tempo de execução: {tempo_total:.2f} segundos")
-    print(f"Clientes criados: {clientes_criados}")
-    print(f"Clientes atualizados: {clientes_atualizados}")
-    print(f"Débitos criados: {len(debitos_para_criar)}")
-    print(f"Erros de processamento: {erros_processamento}")
-    print("Linhas com erro:", linhas_com_erro)
+    elapsed = _time.time() - start_time
+    print(f"----- Importação concluída em {elapsed:.2f}s -----")
 
     return JsonResponse({
         'status': 'sucesso',
-        'clientes_novos': clientes_criados,
-        'clientes_atualizados': clientes_atualizados,
-        'debitos_criados': len(debitos_para_criar),
-        'debitos_info_coletados': len(debitos_info),
-        'total_processado': total_linhas,
-        'tempo_processamento': f"{tempo_total:.2f} segundos",
-        'batch_size': BATCH_SIZE,
-        'erros_total': erros_processamento,
-        'erros': linhas_com_erro
+        'linhas_processadas': total_linhas,
+        'clientes_novos': len(criar_clientes),
+        'clientes_atualizados': len(atualizar_clientes),
+        'debitos_criados': len(debs),
+        'tempo_segundos': f"{elapsed:.2f}"
     })
 
 

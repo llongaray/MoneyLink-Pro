@@ -8,7 +8,42 @@
  * 4. Atualizar o valor do TAC
  */
 
+/**
+ * Lê um cookie pelo nome
+ */
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        document.cookie.split(';').forEach(function(cookie) {
+            cookie = cookie.trim();
+            if (cookie.startsWith(name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+            }
+        });
+    }
+    return cookieValue;
+}
+$.ajaxSetup({
+    beforeSend: function(xhr, settings) {
+      if (!/^(GET|HEAD|OPTIONS|TRACE)$/.test(settings.type)) {
+        xhr.setRequestHeader('X-CSRFToken', getCookie('csrftoken'));
+      }
+    }
+  });
+
 $(document).ready(function() {
+    // 1) Pega o token do cookie
+    const csrftoken = getCookie('csrftoken');
+    console.log('CSRF token obtido no setup:', csrftoken);
+
+    // 2) Configura o jQuery para enviar X-CSRFToken em todas as requisições não-GET
+    $.ajaxSetup({
+        beforeSend: function(xhr, settings) {
+            if (!/^(GET|HEAD|OPTIONS|TRACE)$/.test(settings.type) && csrftoken) {
+                xhr.setRequestHeader('X-CSRFToken', csrftoken);
+            }
+        }
+    });
     console.log('Documento pronto, inicializando módulo financeiro INSS');
     // Carrega os TACs pendentes ao iniciar a página
     carregarTACs();
@@ -49,8 +84,11 @@ function carregarTACs() {
         success: function(response) {
             console.log('Resposta da API recebida:', response);
             if (response.success) {
-                console.log('Sucesso ao carregar TACs, atualizando tabela com', response.presencas.length, 'registros');
-                atualizarTabelaTACs(response.presencas);
+                const presencas = Array.isArray(response.presencas)
+                    ? response.presencas
+                    : (response.presencas ? [response.presencas] : []);
+                console.log('Sucesso ao carregar TACs, registros:', presencas.length);
+                atualizarTabelaTACs(presencas);
             } else {
                 console.error('Erro retornado pela API:', response.error);
                 exibirMensagemErro('Erro ao carregar TACs: ' + response.error);
@@ -66,106 +104,125 @@ function carregarTACs() {
 
 /**
  * Atualiza a tabela de TACs com os dados recebidos da API
- * 
  * @param {Array} presencas - Lista de presenças com TACs pendentes
  */
 function atualizarTabelaTACs(presencas) {
     console.log('Iniciando atualização da tabela de TACs');
-    const tabela = $('#tabelaAgendamentosTAC tbody');
-    tabela.empty();
-    console.log('Tabela limpa, preparando para inserir novos dados');
-    
-    if (presencas && presencas.length > 0) {
-        console.log('Processando', presencas.length, 'presenças para exibição');
-        // Oculta a mensagem de nenhum resultado
-        $('#nenhumResultadoTAC').hide();
-        console.log('Mensagem "nenhum resultado" ocultada');
-        
-        // Adiciona cada presença à tabela
-        presencas.forEach(function(presenca, index) {
-            console.log('Adicionando presença', index + 1, ':', presenca);
-            
-            // Extrai o valor numérico do valor_tac formatado (remove R$ e converte vírgula para ponto)
-            const valorTacNumerico = presenca.valor_tac.replace('R$', '').replace('.', '').replace(',', '.').trim();
-            
-            tabela.append(`
-                <tr>
-                    <td>${presenca.nome_cliente}</td>
-                    <td>${presenca.cpf_cliente}</td>
-                    <td>${presenca.loja}</td>
-                    <td>${presenca.data}</td>
-                    <td class="text-end">
-                        <form class="form-valor-tac">
-                            <input type="hidden" name="presenca_id" value="${presenca.id}">
-                            <input type="text" class="form-control form-control-sm input-valor-tac" 
-                                   name="valor_tac" value="${valorTacNumerico}" 
-                                   data-valor-original="${valorTacNumerico}">
-                        </form>
-                    </td>
-                    <td class="text-center">
-                        <button class="btn btn-sm btn-success btn-confirmar-tac" 
-                                data-id="${presenca.id}" 
-                                data-bs-toggle="tooltip" 
-                                title="Confirmar Pagamento">
-                            <i class="bx bx-check"></i> Confirmar
-                        </button>
-                    </td>
-                </tr>
-            `);
-        });
-        
-        // Adiciona evento de clique aos botões de confirmação
-        console.log('Adicionando eventos de clique aos botões de confirmação');
-        $('.btn-confirmar-tac').on('click', function() {
-            const presencaId = $(this).data('id');
-            console.log('Botão de confirmação clicado para presença ID:', presencaId);
-            confirmarPagamentoTAC(presencaId);
-        });
-        
-        // Adiciona evento de blur (quando o campo perde o foco) aos inputs de valor TAC
-        console.log('Adicionando eventos de blur aos inputs de valor TAC');
-        $('.input-valor-tac').on('blur', function() {
-            const form = $(this).closest('form');
-            const presencaId = form.find('input[name="presenca_id"]').val();
-            const novoValor = $(this).val();
-            const valorOriginal = $(this).data('valor-original');
-            
-            // Só atualiza se o valor foi alterado
-            if (novoValor !== valorOriginal) {
-                console.log(`Valor TAC alterado para presença ID ${presencaId}: ${valorOriginal} -> ${novoValor}`);
-                atualizarValorTAC(presencaId, novoValor, $(this));
-            }
-        });
-    } else {
-        // Exibe mensagem de nenhum resultado
-        console.log('Nenhuma presença encontrada, exibindo mensagem');
-        $('#nenhumResultadoTAC').show();
-    }
-}
+    presencas = Array.isArray(presencas) ? presencas : (presencas ? [presencas] : []);
+    const $tabela = $('#tabelaAgendamentosTAC tbody');
+    $tabela.empty();
 
-/**
- * Atualiza o valor do TAC de uma presença
- * 
- * @param {number} presencaId - ID da presença
- * @param {string} novoValor - Novo valor do TAC
- * @param {Object} inputElement - Elemento jQuery do input que foi alterado
- */
-function atualizarValorTAC(presencaId, novoValor, inputElement) {
-    console.log('Iniciando atualização de valor TAC para presença ID:', presencaId);
-    
-    // Obtém o token CSRF do cookie
-    const csrftoken = getCookie('csrftoken');
-    console.log('Token CSRF obtido:', csrftoken);
-    
-    if (!csrftoken) {
-        console.error('Token CSRF não encontrado no cookie.');
-        exibirMensagemErro('Erro: Token CSRF não encontrado. Por favor, recarregue a página.');
+    if (presencas.length === 0) {
+        $('#nenhumResultadoTAC').show();
         return;
     }
-    
-    // Desabilita o input durante a atualização
-    inputElement.prop('disabled', true);
-    
+    $('#nenhumResultadoTAC').hide();
+
+    // Tenta obter CSRF do cookie
+    let csrftoken = getCookie('csrftoken');
+    if (!csrftoken) {
+        // fallback: lê do form escondido no HTML
+        csrftoken = $('#dummy-csrf input[name="csrfmiddlewaretoken"]').val();
+        console.warn('CSRF via cookie não encontrado, usando dummy form.');
+    }
+
+    presencas.forEach(function(presenca) {
+        const valorTacNumerico = presenca.valor_tac
+            .replace('R$', '').replace(/\./g, '').replace(',', '.').trim();
+
+        // Formulário para atualizar valor
+        const formValor = `
+            <form class="form-valor-tac">
+              <input type="hidden" name="csrfmiddlewaretoken" value="${csrftoken}">
+              <input type="hidden" name="presenca_id" value="${presenca.id}">
+              <input type="text"
+                     class="form-control form-control-sm input-valor-tac"
+                     name="valor_tac"
+                     value="${valorTacNumerico}"
+                     data-valor-original="${valorTacNumerico}">
+            </form>`;
+
+        // Formulário para confirmar pagamento
+        const formConfirmar = `
+            <form class="form-confirmar-tac">
+              <input type="hidden" name="csrfmiddlewaretoken" value="${csrftoken}">
+              <input type="hidden" name="presenca_id" value="${presenca.id}">
+              <button type="submit" class="btn btn-sm btn-success">
+                <i class="bx bx-check"></i> Confirmar
+              </button>
+            </form>`;
+
+        // Monta a linha da tabela
+        const $tr = $(`
+            <tr>
+              <td>${presenca.nome_cliente}</td>
+              <td>${presenca.cpf_cliente}</td>
+              <td>${presenca.loja}</td>
+              <td>${presenca.data}</td>
+              <td class="text-end">${formValor}</td>
+              <td class="text-center">${formConfirmar}</td>
+            </tr>
+        `);
+
+        $tabela.append($tr);
+    });
+
+    // Bind blur no input de valor TAC
+    $('.form-valor-tac').off('blur', '.input-valor-tac').on('blur', '.input-valor-tac', function() {
+        const $form = $(this).closest('form');
+        const id    = $form.find('input[name="presenca_id"]').val();
+        const novo  = $(this).val();
+        const orig  = $(this).data('valor-original');
+        if (novo !== orig) {
+            atualizarValorTAC($form);
+        }
+    });
+
+    // Bind submit no form de confirmação
+    $('.form-confirmar-tac').off('submit').on('submit', function(e) {
+        e.preventDefault();
+        const $form = $(this);
+        const id    = $form.find('input[name="presenca_id"]').val();
+        confirmarPagamentoTAC(id);
+    });
+
+    // Reinicia tooltips
+    $('[data-bs-toggle="tooltip"]').tooltip();
+}
+
+
+/**
+ * Faz o POST para atualizar o valor do TAC
+ * @param {jQuery} $form - o form .form-valor-tac onde veio o input
+ */
+function atualizarValorTAC($form) {
+    // Lê o ID e o novo valor diretamente do form
+    const presencaId = $form.find('input[name="presenca_id"]').val();
+    const $input     = $form.find('input[name="valor_tac"]');
+    const novoValor  = $input.val();
+    const original   = $input.data('valor-original');
+
+    // Se não houve alteração, sai
+    if (novoValor === original) {
+        return;
+    }
+
+    console.log('Iniciando atualização de valor TAC para presença ID:', presencaId);
+
+    // Tenta CSRF via cookie
+    let csrftoken = getCookie('csrftoken');
+    if (!csrftoken) {
+        // fallback: lê do dummy form
+        csrftoken = $('#dummy-csrf input[name="csrfmiddlewaretoken"]').val();
+        if (!csrftoken) {
+            exibirMensagemErro('Erro: Token CSRF não encontrado. Recarregue a página.');
+            return;
+        }
+    }
+
+    // Desabilita o input enquanto atualiza
+    $input.prop('disabled', true);
+
     $.ajax({
         url: '/inss/api/post/attvalortac/',
         type: 'POST',
@@ -178,51 +235,33 @@ function atualizarValorTAC(presencaId, novoValor, inputElement) {
             'X-CSRFToken': csrftoken
         },
         success: function(response) {
-            console.log('Resposta da API recebida:', response);
             if (response.success) {
-                // Atualiza o valor original no data-attribute
-                inputElement.data('valor-original', novoValor);
-                
-                // Exibe mensagem de sucesso
-                console.log('Valor TAC atualizado com sucesso');
+                // atualiza o valor original e mostra sucesso
+                $input.data('valor-original', novoValor);
                 exibirMensagemSucesso(response.message);
             } else {
-                console.error('Erro retornado pela API:', response.message);
+                // mostra erro e restaura valor
                 exibirMensagemErro(response.message);
-                
-                // Restaura o valor original em caso de erro
-                inputElement.val(inputElement.data('valor-original'));
+                $input.val(original);
             }
         },
         error: function(xhr, status, error) {
-            console.error('Erro na requisição AJAX:', status, error);
-            console.error('Detalhes do XHR:', xhr);
-            
-            let mensagemErro = 'Erro ao atualizar valor TAC';
-            
+            let msg = 'Erro ao atualizar valor TAC';
             try {
-                const resposta = JSON.parse(xhr.responseText);
-                console.log('Resposta de erro parseada:', resposta);
-                if (resposta.message) {
-                    mensagemErro = resposta.message;
-                }
-            } catch (e) {
-                console.error('Erro ao parsear resposta:', e);
-                mensagemErro += ': ' + error;
-            }
-            
-            console.error('Mensagem de erro final:', mensagemErro);
-            exibirMensagemErro(mensagemErro);
-            
-            // Restaura o valor original em caso de erro
-            inputElement.val(inputElement.data('valor-original'));
+                const r = JSON.parse(xhr.responseText);
+                if (r.message) msg = r.message;
+            } catch(_) {}
+            exibirMensagemErro(msg + ': ' + error);
+            $input.val(original);
         },
         complete: function() {
-            // Reabilita o input após a conclusão da requisição
-            inputElement.prop('disabled', false);
+            // reabilita o input
+            $input.prop('disabled', false);
         }
     });
 }
+
+
 
 /**
  * Envia requisição para confirmar o pagamento de um TAC
@@ -230,69 +269,46 @@ function atualizarValorTAC(presencaId, novoValor, inputElement) {
  * @param {number} presencaId - ID da presença a ser confirmada
  */
 function confirmarPagamentoTAC(presencaId) {
-    console.log('Iniciando confirmação de pagamento para presença ID:', presencaId);
-    // Confirmação antes de processar
+    // tenta CSRF via cookie
+    let csrftoken = getCookie('csrftoken');
+    if (!csrftoken) {
+        // fallback: lê do dummy form escondido no HTML
+        csrftoken = $('#dummy-csrf input[name="csrfmiddlewaretoken"]').val();
+        console.warn('CSRF token não encontrado no cookie; usando dummy form.');
+    }
+    if (!csrftoken) {
+        console.error('Token CSRF não encontrado.');
+        return exibirMensagemErro('Erro: Token CSRF não encontrado. Recarregue a página.');
+    }
+
     if (!confirm('Confirmar o pagamento deste TAC?')) {
         console.log('Confirmação cancelada pelo usuário');
         return;
     }
-    
-    console.log('Confirmação aceita pelo usuário, obtendo token CSRF do cookie');
-    // Obtém o token CSRF do cookie (método padrão Django para AJAX)
-    const csrftoken = getCookie('csrftoken');
-    console.log('Valor do cookie csrftoken obtido:', csrftoken); // Log para verificar o token
-    
-    if (!csrftoken) {
-        console.error('Token CSRF não encontrado no cookie.');
-        exibirMensagemErro('Erro: Token CSRF não encontrado. Por favor, recarregue a página.');
-        return;
-    }
-    
-    console.log('Token CSRF obtido, enviando requisição para API');
+
     $.ajax({
         url: '/inss/api/post/tac/',
         type: 'POST',
         dataType: 'json',
-        data: {
-            presenca_id: presencaId
-        },
-        headers: {
-            'X-CSRFToken': csrftoken
-        },
+        data: { presenca_id: presencaId },
+        headers: { 'X-CSRFToken': csrftoken },
         success: function(response) {
             console.log('Resposta da API recebida:', response);
             if (response.success) {
-                // Exibe mensagem de sucesso
-                console.log('Pagamento confirmado com sucesso');
                 exibirMensagemSucesso(response.message);
-                
-                // Recarrega a tabela
-                console.log('Recarregando tabela após confirmação');
                 carregarTACs();
             } else {
-                console.error('Erro retornado pela API:', response.message);
                 exibirMensagemErro(response.message);
             }
         },
         error: function(xhr, status, error) {
             console.error('Erro na requisição AJAX:', status, error);
-            console.error('Detalhes do XHR:', xhr);
-            
-            let mensagemErro = 'Erro ao processar pagamento';
-            
+            let msg = 'Erro ao processar pagamento';
             try {
-                const resposta = JSON.parse(xhr.responseText);
-                console.log('Resposta de erro parseada:', resposta);
-                if (resposta.message) {
-                    mensagemErro = resposta.message;
-                }
-            } catch (e) {
-                console.error('Erro ao parsear resposta:', e);
-                mensagemErro += ': ' + error;
-            }
-            
-            console.error('Mensagem de erro final:', mensagemErro);
-            exibirMensagemErro(mensagemErro);
+                const r = JSON.parse(xhr.responseText);
+                if (r.message) msg = r.message;
+            } catch(_) {}
+            exibirMensagemErro(msg + ': ' + error);
         }
     });
 }
@@ -391,21 +407,22 @@ function carregarHistoricoPagamentos() {
             xhr.setRequestHeader("X-CSRFToken", getCookie("csrftoken"));
         },
         success: function(response) {
-            console.log('Resposta da API de histórico recebida:', response);
-            
-            if (response && response.historico) {
-                atualizarTabelaHistorico(response.historico);
-            } else if (response && response.error) {
+            console.log('Resposta da API de histórico:', response);
+            if (response.historico) {
+                const historico = Array.isArray(response.historico)
+                    ? response.historico
+                    : [response.historico];
+                atualizarTabelaHistorico(historico);
+            } else if (response.error) {
                 console.error('Erro retornado pela API de histórico:', response.error);
                 exibirMensagemErro('Erro ao carregar histórico: ' + response.error);
             } else {
-                console.error('Resposta da API de histórico inválida:', response);
-                exibirMensagemErro('Erro: Resposta inválida da API de histórico');
+                console.error('Resposta inválida da API de histórico:', response);
+                exibirMensagemErro('Erro: resposta inválida da API de histórico');
             }
         },
         error: function(xhr, status, error) {
             console.error('Erro na requisição AJAX de histórico:', status, error);
-            console.error('Detalhes do XHR:', xhr);
             exibirMensagemErro('Erro ao carregar histórico: ' + error);
         }
     });
@@ -413,22 +430,21 @@ function carregarHistoricoPagamentos() {
 
 function atualizarTabelaHistorico(historico) {
     console.log('Atualizando tabela de histórico com', historico.length, 'registros');
+    historico = Array.isArray(historico) ? historico : [];
     const tabela = $('#tabelaHistoricoPagamentos tbody');
     tabela.empty();
     
-    if (historico && historico.length > 0) {
+    if (historico.length > 0) {
         $('#nenhumResultadoHistorico').hide();
-        
         historico.forEach(function(pagamento) {
-            const btnAcao = pagamento.status_pagamento === 'PAGO' 
+            const btnAcao = pagamento.status_pagamento === 'PAGO'
                 ? `<button class="btn btn-sm btn-info" disabled>Pago</button>`
-                : `<button class="btn btn-sm btn-success btn-confirmar-tac" 
-                          data-id="${pagamento.id}" 
-                          data-bs-toggle="tooltip" 
+                : `<button class="btn btn-sm btn-success btn-confirmar-tac"
+                          data-id="${pagamento.id}"
+                          data-bs-toggle="tooltip"
                           title="Confirmar Pagamento">
                        <i class="bx bx-check"></i> Confirmar
                    </button>`;
-            
             tabela.append(`
                 <tr>
                     <td>${pagamento.cliente_nome}</td>
@@ -447,18 +463,12 @@ function atualizarTabelaHistorico(historico) {
                 </tr>
             `);
         });
-        
-        // Inicializa tooltips para novos botões
         $('[data-bs-toggle="tooltip"]').tooltip();
-        
-        // Adiciona evento aos botões de confirmação
-        $('.btn-confirmar-tac').on('click', function() {
+        $('.btn-confirmar-tac').off('click').on('click', function() {
             const presencaId = $(this).data('id');
-            console.log('Botão de confirmação clicado no histórico para ID:', presencaId);
             confirmarPagamentoTAC(presencaId);
         });
     } else {
-        console.log('Nenhum histórico de pagamento encontrado');
         $('#nenhumResultadoHistorico').show();
     }
 }
@@ -470,12 +480,16 @@ function carregarLojas() {
         type: 'GET',
         dataType: 'json',
         success: function(response) {
-            if (response && response.lojas) {
-                const selectLoja = $('#filtro_loja');
-                response.lojas.forEach(function(loja) {
-                    selectLoja.append(`<option value="${loja.nome}">${loja.nome}</option>`);
-                });
-            }
+            console.log('Resposta da API lojas:', response.lojas);
+            // Garante que temos um array (mesmo que venha objeto ou undefined)
+            const lojas = Array.isArray(response.lojas) 
+                ? response.lojas 
+                : (response.lojas ? [response.lojas] : []);
+            
+            const selectLoja = $('#filtro_loja');
+            lojas.forEach(function(loja) {
+                selectLoja.append(`<option value="${loja.nome}">${loja.nome}</option>`);
+            });
         },
         error: function(xhr, status, error) {
             console.error('Erro ao carregar lojas:', error);

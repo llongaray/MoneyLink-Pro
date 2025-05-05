@@ -782,3 +782,40 @@ $(document).ready(function() {
     }
 
 }); // Fim do $(document).ready
+
+// 1) Ao sair do campo de CPF, tenta buscar o nome no back-end
+$('#cpf_cliente').on('blur', function() {
+    const $cpfInput = $(this);
+    const raw = $cpfInput.val() || '';
+    const digits = raw.replace(/\D/g, '');          // remove máscara
+    // só faz a busca se tiver 11 dígitos
+    if (digits.length === 11) {
+        // limpa o nome antes de buscar
+        $('#nome_cliente').val('');
+        $.ajax({
+            url: '/inss/api/get/cpfclientenome/',
+            type: 'GET',
+            dataType: 'json',
+            data: { cpf: raw },                      // envia com ou sem pontuação
+            success: function(resp) {
+                if (resp.nome) {
+                    // preenche o nome retornado
+                    $('#nome_cliente').val(resp.nome);
+                } else {
+                    // não encontrado (só cairá aqui se, por algum motivo, o servidor
+                    // devolver 200 mas sem o campo `nome`)
+                    $('#nome_cliente').val('');
+                    console.warn('Cliente não encontrado para CPF', raw);
+                }
+            },
+            error: function(xhr, status, err) {
+                // falha na chamada: limpa e loga
+                $('#nome_cliente').val('');
+                console.error('Erro ao buscar nome por CPF:', status, err);
+            }
+        });
+    } else {
+        // se CPF não estiver completo, não faz nada (ou opcionalmente limpa)
+        // $('#nome_cliente').val('');
+    }
+});

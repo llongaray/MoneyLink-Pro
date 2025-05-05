@@ -1,8 +1,8 @@
 # convert.py
 # Abra o prompt de comando na pasta do arquivo e execute: python convert.py
 
-input_file = 'backup_db_admin_func_inss.json'
-output_file = 'backup_db_admin_func_inss_utf8.json'
+input_file = 'backup_usuarios.json'
+output_file = 'backup_usuarios-utf8.json'
 
 with open(input_file, 'r', encoding='cp1252') as infile:
     content = infile.read()

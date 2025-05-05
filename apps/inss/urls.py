@@ -20,6 +20,7 @@ urlpatterns = [
     path('api/get/emloja/', api_get_emloja, name='api_get_emloja'),
     path('api/get/infogeral/', api_get_infogeral, name='api_get_infogeral'),
     path('api/get/info-loja-funcionario/', api_get_infolojaefuncionario, name='api_get_infolojaefuncionario'),
+    path('api/get/cpfclientenome/', api_get_cpfclientenome, name='api_get_cpfclientenome'),
     
     # APIs para a página de loja
     path('api/get/agendadosHoje/', api_get_agendadosHoje, name='api_get_agendadosHoje'),

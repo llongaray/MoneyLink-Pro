@@ -74,8 +74,18 @@ document.addEventListener('DOMContentLoaded', function() {
     // Função para adicionar um novo bloco de produto (formulário inline)
     function adicionarProduto() {
         console.log('[CLIENTE RUA] Adicionando novo produto, índice:', produtoIndex);
+        
+        // Verifica se já existe um bloco de produto sendo adicionado
+        if (produtosContainer.querySelector('.produto-bloco[data-adding]')) {
+            console.log('[CLIENTE RUA] Já existe um produto sendo adicionado');
+            return;
+        }
+
         const clone = produtoTemplate.content.cloneNode(true);
         const blocoProduto = clone.querySelector('.produto-bloco');
+        
+        // Marca o bloco como em processo de adição
+        blocoProduto.setAttribute('data-adding', 'true');
 
         // Atualiza IDs e Names com o índice correto
         blocoProduto.innerHTML = blocoProduto.innerHTML.replace(/__INDEX__/g, produtoIndex);
@@ -85,9 +95,7 @@ document.addEventListener('DOMContentLoaded', function() {
         btnRemove.addEventListener('click', function() {
             console.log('[CLIENTE RUA] Removendo produto');
             blocoProduto.remove();
-            // Opcional: reajustar índices se necessário após remover um item do meio
-            // (para simplificação, não faremos isso aqui inicialmente)
-            verificarVisibilidadeBotaoAdd(); // Verifica se o botão add ainda deve aparecer
+            verificarVisibilidadeBotaoAdd();
         });
 
         // Aplica máscara de dinheiro ao campo valor_tac do novo bloco
@@ -102,7 +110,12 @@ document.addEventListener('DOMContentLoaded', function() {
             preencherSelectProdutos($(produtoSelect));
         }
 
+        // Adiciona o bloco ao container
         produtosContainer.appendChild(blocoProduto);
+        
+        // Remove a marcação de "em adição" após a conclusão
+        blocoProduto.removeAttribute('data-adding');
+        
         produtoIndex++;
         verificarVisibilidadeBotaoAdd();
         console.log('[CLIENTE RUA] Produto adicionado, novo contador de produtos:', produtoIndex);
@@ -211,11 +224,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Expor funções necessárias para o escopo global
     window.handleTabulacaoVendedorChange = handleTabulacaoVendedorChange;
 
-    // Event listener para o botão "Adicionar Produto" (formulário inline)
-    if(btnAddProduto) {
-        btnAddProduto.addEventListener('click', adicionarProduto);
-    }
-
+    
     // Event listener para o botão "Adicionar Produto" no modal de edição
     if(btnAddProdutoEdicao) {
         btnAddProdutoEdicao.addEventListener('click', adicionarProdutoEdicao);
@@ -1365,4 +1374,80 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // chamada inicial
     carregarClientesNaoPresentes();
+});
+
+// --- LOOKUP DE NOME PELO CPF EM TEMPO REAL ---
+function lookupNomePorCPF(cpfVal, nomeInputSelector) {
+    // Validação básica do CPF
+    if (!cpfVal || typeof cpfVal !== 'string') return;
+    
+    // Remove caracteres não numéricos e valida tamanho
+    const digits = cpfVal.replace(/\D/g, '');
+    if (digits.length !== 11) return;
+
+    // Limpa o campo de nome antes da busca
+    $(nomeInputSelector).val('').prop('disabled', true);
+
+    $.ajax({
+        url: '/inss/api/get/cpfclientenome/',
+        type: 'GET',
+        dataType: 'json',
+        data: { cpf: cpfVal },
+        success(resp) {
+            if (resp.nome) {
+                $(nomeInputSelector).val(resp.nome).prop('disabled', false);
+            } else {
+                // Caso de sucesso mas sem nome encontrado
+                $(nomeInputSelector).val('').prop('disabled', false);
+                console.warn('Cliente não encontrado para CPF:', cpfVal);
+                showToast('Cliente não encontrado', 'warning');
+            }
+        },
+        error(xhr, status, err) {
+            // Tratamento de erros
+            $(nomeInputSelector).val('').prop('disabled', false);
+            console.error('Erro ao buscar nome por CPF:', status, err);
+            
+            const errorMsg = xhr.status === 404 
+                ? 'Cliente não encontrado' 
+                : 'Erro ao buscar informações';
+                
+            showToast(errorMsg, 'error');
+        }
+    });
+}
+
+// Função auxiliar para exibir notificações
+function showToast(message, type = 'info') {
+    Toastify({
+        text: message,
+        duration: 3000,
+        close: true,
+        gravity: "top",
+        position: "right",
+        backgroundColor: type === 'error' ? '#dc3545' : type === 'warning' ? '#ffc107' : '#0d6efd'
+    }).showToast();
+}
+
+$(document).ready(function() {
+    // Configura eventos para ambos os campos de CPF
+    const cpfFields = {
+        '#cpf_cliente_rua_inline': '#nome_cliente_rua_inline',
+        '#cpf_cliente_rua': '#nome_cliente_rua'
+    };
+
+    Object.entries(cpfFields).forEach(([cpfSelector, nomeSelector]) => {
+        $(cpfSelector)
+            .on('blur', function() {
+                lookupNomePorCPF($(this).val(), nomeSelector);
+            })
+            .on('keypress', function(e) {
+                // Permite apenas números e teclas de controle
+                if (e.which < 48 || e.which > 57) {
+                    if (![8, 9, 13, 37, 39, 46].includes(e.which)) {
+                        e.preventDefault();
+                    }
+                }
+            });
+    });
 });
