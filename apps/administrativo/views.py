@@ -554,87 +554,101 @@ def api_post_attmeta(request):
 @csrf_exempt
 def api_post_novameta(request):
     """
-    API endpoint para criar uma nova meta (RegisterMeta).
-    Recebe os dados via JSON no corpo da requisição POST.
+    Cria uma nova meta (RegisterMeta).
+    Recebe JSON no corpo com:
+      - titulo, valor, categoria, data_inicio, data_fim
+      - opcional: status, setor_id, equipe_ids
+    Aceita datas em ISO (ex: '2025-05-01T00:01') ou 'DD/MM/YYYY HH:MM'.
     """
     try:
         data = json.loads(request.body)
+        # 1) Validação básica
+        obrig = ['titulo', 'valor', 'categoria', 'data_inicio', 'data_fim']
+        for f in obrig:
+            if not data.get(f):
+                return JsonResponse({'error': f'Campo obrigatório ausente: {f}'}, status=400)
 
-        # Validação básica (campos obrigatórios) - Idealmente usar um Form
-        required_fields = ['titulo', 'valor', 'categoria', 'data_inicio', 'data_fim']
-        for field in required_fields:
-            if field not in data or data[field] is None or data[field] == '':
-                 return JsonResponse({'error': f'Campo obrigatório ausente ou vazio: {field}'}, status=400)
-
-        # Validação específica por categoria
-        categoria = data.get('categoria')
-        setor_id = data.get('setor_id')
-        equipe_ids = data.get('equipe_ids', []) # Lista de IDs
+        categoria = data['categoria']
+        setor_id  = data.get('setor_id')
+        equipes   = data.get('equipe_ids', [])
 
         if categoria == 'SETOR' and not setor_id:
-            return JsonResponse({'error': 'ID do setor é obrigatório para a categoria SETOR'}, status=400)
-        if categoria == 'OUTROS' and not equipe_ids: # Assumindo que OUTROS = EQUIPE
-            return JsonResponse({'error': 'Pelo menos um ID de equipe é obrigatório para a categoria OUTROS'}, status=400)
+            return JsonResponse({'error': 'ID do setor é obrigatório para SETOR'}, status=400)
+        if categoria == 'OUTROS' and not equipes:
+            return JsonResponse({'error': 'Pelo menos uma equipe para OUTROS'}, status=400)
 
-        # Criação da instância
-        nova_meta = RegisterMeta.objects.create(
-            titulo=data['titulo'],
-            valor=Decimal(data['valor']), # Converter para Decimal
-            categoria=categoria,
-            data_inicio=data['data_inicio'], # Assumindo formato ISO 8601 vindo do frontend
-            data_fim=data['data_fim'],       # Assumindo formato ISO 8601 vindo do frontend
-            status=data.get('status', False) # Default para False se não enviado
+        # 2) Parse de valor
+        try:
+            valor = Decimal(str(data['valor']))
+        except Exception:
+            return JsonResponse({'error': 'Formato de valor inválido.'}, status=400)
+
+        # 3) Parse de datas com fallback
+        def parse_dt(v):
+            # tenta ISO
+            try:
+                return datetime.fromisoformat(v)
+            except Exception:
+                pass
+            # tenta BR 'DD/MM/YYYY HH:MM'
+            try:
+                return datetime.strptime(v, "%d/%m/%Y %H:%M")
+            except Exception:
+                raise ValueError()
+
+        try:
+            inicio = parse_dt(data['data_inicio'])
+            fim    = parse_dt(data['data_fim'])
+        except ValueError:
+            return JsonResponse(
+                {'error': "Formato de data inválido. Use ISO ('YYYY-MM-DDTHH:MM') ou 'DD/MM/YYYY HH:MM'."},
+                status=400
+            )
+
+        # 4) Criação da meta
+        nova = RegisterMeta.objects.create(
+            titulo       = data['titulo'],
+            valor        = valor,
+            categoria    = categoria,
+            data_inicio  = inicio,
+            data_fim     = fim,
+            status       = data.get('status', False),
+            # data_criacao é auto_now_add
         )
 
-        # Associações
+        # 5) Associa SETOR ou equipes
         if categoria == 'SETOR':
             try:
-                setor = Setor.objects.get(pk=setor_id)
-                nova_meta.setor = setor
+                nova.setor = Setor.objects.get(pk=setor_id)
+                nova.save()
             except Setor.DoesNotExist:
-                nova_meta.delete() # Rollback da criação
-                return JsonResponse({'error': f'Setor com ID {setor_id} não encontrado.'}, status=404)
+                nova.delete()
+                return JsonResponse({'error': f'Setor {setor_id} não encontrado.'}, status=404)
 
-        # Salva antes de adicionar M2M
-        nova_meta.save()
+        if categoria == 'OUTROS':
+            qs = Equipe.objects.filter(pk__in=equipes)
+            if qs.count() != len(equipes):
+                nova.delete()
+                return JsonResponse({'error': 'Uma ou mais equipes não encontradas.'}, status=404)
+            nova.equipe.set(qs)
 
-        if categoria == 'OUTROS' and equipe_ids:
-            try:
-                equipes = Equipe.objects.filter(pk__in=equipe_ids)
-                if len(equipes) != len(equipe_ids):
-                     # Nem todas as equipes foram encontradas
-                     raise ValueError("Uma ou mais equipes não encontradas.")
-                nova_meta.equipe.set(equipes)
-            except (Equipe.DoesNotExist, ValueError) as ve:
-                 nova_meta.delete() # Rollback
-                 return JsonResponse({'error': f'Erro ao associar equipes: {ve}'}, status=400)
+        # 6) Response
+        m = model_to_dict(nova, exclude=['equipe'])
+        m['setor_nome']     = nova.setor.nome if nova.setor else None
+        m['equipes_nomes']  = list(nova.equipe.values_list('nome', flat=True))
+        m['categoria_disp'] = nova.get_categoria_display()
+        fmt = "%d/%m/%Y %H:%M"
+        m['data_inicio']    = nova.data_inicio.strftime(fmt)
+        m['data_fim']       = nova.data_fim.strftime(fmt)
+        m['data_criacao']   = nova.data_criacao.strftime(fmt)
 
-
-        # Retorna a meta criada (opcional, mas útil para o frontend)
-        # Exclui campos M2M e datas de model_to_dict para tratar manualmente
-        meta_dict = model_to_dict(nova_meta, exclude=['equipe', 'data_inicio', 'data_fim', 'data_criacao'])
-        meta_dict['setor_nome'] = nova_meta.setor.nome if nova_meta.setor else None
-        meta_dict['equipes_nomes'] = list(nova_meta.equipe.values_list('nome', flat=True))
-        meta_dict['categoria_display'] = nova_meta.get_categoria_display()
-        # Formata as datas corretamente a partir do objeto datetime
-        meta_dict['data_inicio'] = nova_meta.data_inicio.isoformat() if isinstance(nova_meta.data_inicio, (datetime.date, datetime.datetime)) else None
-        meta_dict['data_fim'] = nova_meta.data_fim.isoformat() if isinstance(nova_meta.data_fim, (datetime.date, datetime.datetime)) else None
-        meta_dict['data_criacao'] = nova_meta.data_criacao.isoformat() if isinstance(nova_meta.data_criacao, (datetime.date, datetime.datetime)) else None
-
-        return JsonResponse({'message': 'Meta criada com sucesso!', 'meta': meta_dict}, status=201)
+        return JsonResponse({'message': 'Meta criada! 🎯', 'meta': m}, status=201)
 
     except json.JSONDecodeError:
-        return JsonResponse({'error': 'Formato JSON inválido no corpo da requisição.'}, status=400)
-    except (TypeError, ValueError) as ve:
-        # Ex: Erro ao converter valor para Decimal ou data inválida
-        print(f"Erro de tipo/valor em api_post_novameta: {ve}")
-        return JsonResponse({'error': f'Erro nos dados enviados: {ve}'}, status=400)
+        return JsonResponse({'error': 'JSON inválido.'}, status=400)
     except Exception as e:
-        print(f"Erro geral em api_post_novameta: {e}")
-        # Em produção, logar o erro detalhado
-        import traceback
-        traceback.print_exc()
-        return JsonResponse({'error': 'Erro interno ao criar a meta.', 'details': str(e)}, status=500)
+        print(f"❌ Erro em api_post_novameta: {e}")
+        return JsonResponse({'error': 'Erro interno no servidor.', 'details': str(e)}, status=500)
 
 
 # -------------------------------------------
@@ -885,77 +899,102 @@ from datetime import datetime
 def api_post_csvfuncionarios(request):
     """
     Recebe JSON (UTF-8) com vários funcionários e cria User + Funcionario para cada um.
-    Campos esperados por linha:
-      apelido, nome_completo, cpf, data_nascimento (YYYY-MM-DD ou DD/MM/YYYY),
-      empresa_id, departamento_id, setor_id, cargo_id,
-      horario_id (opcional), equipe_id (opcional), loja_id (opcional)
+    Os campos de cada objeto podem vir como:
+      Apelido, Nome_Completo, CPF, Data_Nascimento,
+      Empresa_ID, Departamento_ID, Setor_ID, Cargo_ID,
+      Horario_ID (opcional), Equipe_ID (opcional), Loja_ID (opcional)
     """
     print("\n----- Iniciando api_post_csvfuncionarios -----")
     try:
-        body = request.body.decode('utf-8')     # explícito UTF-8
-        rows = json.loads(body)
+        rows = json.loads(request.body.decode('utf-8'))
     except Exception as e:
         print("Erro ao decodificar JSON:", e)
         return JsonResponse({'success': False, 'error': 'JSON inválido'}, status=400)
 
     total = len(rows)
     print(f"Total de linhas recebidas: {total}")
-    created, errors = 0, []
+    created = 0
+    errors = []
 
     for i, row in enumerate(rows):
         print(f"\nProcessando linha {i}: {row}")
         try:
-            apelido       = row.get('apelido', '').strip()
-            nome_completo = row.get('nome_completo', '').strip()
-            cpf           = ''.join(filter(str.isdigit, row.get('cpf', '')))
-            data_str      = row.get('data_nascimento', '').strip()
+            # 1) Normalize keys to lowercase
+            data = {k.lower(): v for k, v in row.items()}
 
-            # parse de data
+            # 2) Required fields
+            required = ['apelido', 'nome_completo', 'cpf', 'data_nascimento',
+                        'empresa_id', 'departamento_id', 'setor_id', 'cargo_id']
+            missing = [f for f in required if not data.get(f)]
+            if missing:
+                raise ValueError(f"Campos obrigatórios faltando: {', '.join(missing)}")
+
+            # 3) Clean & validate CPF
+            cpf = ''.join(filter(str.isdigit, data['cpf']))
+            if len(cpf) != 11:
+                raise ValueError("CPF inválido")
+
+            # 4) Parse nascimento date
             nascimento = None
-            for fmt in ('%Y-%m-%d','%d/%m/%Y'):
+            for fmt in ('%Y-%m-%d', '%d/%m/%Y'):
                 try:
-                    nascimento = datetime.strptime(data_str, fmt).date()
+                    nascimento = datetime.strptime(data['data_nascimento'], fmt).date()
                     break
-                except:
-                    pass
+                except ValueError:
+                    continue
             if not nascimento:
                 raise ValueError("data_nascimento inválida")
 
-            # credenciais
-            username   = apelido.lower().replace(' ','_')
-            password   = f"Money@{timezone.now().year}"
-            fn, ln     = nome_completo.split(' ',1) if ' ' in nome_completo else (nome_completo,'')
+            # 5) Prepare User fields
+            apelido       = data['apelido'].strip()
+            nome_completo = data['nome_completo'].strip()
+            username      = apelido.lower().replace(' ', '_')
+            password      = f"Money@{timezone.now().year}"
+            fn, *rest     = nome_completo.split(' ', 1)
+            ln            = rest[0] if rest else ''
 
+            # 6) Fetch required FK instances
+            empresa     = get_object_or_404(Empresa,      pk=data['empresa_id'])
+            departamento= get_object_or_404(Departamento, pk=data['departamento_id'])
+            setor       = get_object_or_404(Setor,        pk=data['setor_id'])
+            cargo       = get_object_or_404(Cargo,        pk=data['cargo_id'])
+
+            # 7) Fetch optional FK instances
+            horario = None
+            if data.get('horario_id'):
+                horario = HorarioTrabalho.objects.filter(pk=data['horario_id']).first()
+            equipe = None
+            if data.get('equipe_id'):
+                equipe = Equipe.objects.filter(pk=data['equipe_id']).first()
+            loja = None
+            if data.get('loja_id'):
+                loja = Loja.objects.filter(pk=data['loja_id']).first()
+
+            # 8) Create User + Funcionario atomically
             with transaction.atomic():
                 user = User.objects.create_user(
-                    username=username, password=password,
-                    first_name=fn, last_name=ln
+                    username=username,
+                    password=password,
+                    first_name=fn,
+                    last_name=ln
                 )
-                print(f"  User criado ID={user.id}")
-
-                empresa      = get_object_or_404(Empresa, pk=row['empresa_id'])
-                departamento = get_object_or_404(Departamento, pk=row['departamento_id'])
-                setor        = get_object_or_404(Setor, pk=row['setor_id'])
-                cargo        = get_object_or_404(Cargo, pk=row['cargo_id'])
-                horario      = HorarioTrabalho.objects.filter(pk=row.get('horario_id')).first()
-                equipe       = Equipe.objects.filter(pk=row.get('equipe_id')).first()
-                loja         = Loja.objects.filter(pk=row.get('loja_id')).first()
+                print(f"  → User criado: ID={user.id}")
 
                 Funcionario.objects.create(
-                    usuario         = user,
-                    apelido         = apelido,
-                    nome_completo   = nome_completo,
-                    cpf             = cpf,
-                    data_nascimento = nascimento,
-                    empresa         = empresa,
-                    departamento    = departamento,
-                    setor           = setor,
-                    cargo           = cargo,
-                    horario         = horario,
-                    equipe          = equipe,
-                    loja            = loja,
+                    usuario=user,
+                    apelido=apelido,
+                    nome_completo=nome_completo,
+                    cpf=cpf,
+                    data_nascimento=nascimento,
+                    empresa=empresa,
+                    departamento=departamento,
+                    setor=setor,
+                    cargo=cargo,
+                    horario=horario,
+                    equipe=equipe,
+                    loja=loja,
                 )
-                print("  Funcionario criado")
+                print("  → Funcionario criado")
                 created += 1
 
         except Exception as e:

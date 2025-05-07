@@ -167,30 +167,43 @@ def parse_int(value):
         return 0
 
 def parse_valor_br(value):
-    """Converte um valor monetário em formato brasileiro para float.
+    """
+    Converte um valor monetário em formato brasileiro para Decimal.
     
-    Exemplo: "1.234,56" -> 1234.56
+    Exemplos:
+      "R$ 1.234,56" -> Decimal('1234.56')
+      "4780,24"     -> Decimal('4780.24')
     """
     if value is None:
         return Decimal('0.00')
-    
-    if isinstance(value, (int, float, Decimal)):
+
+    # Se já for numérico, converte direto
+    if isinstance(value, Decimal):
+        return value
+    if isinstance(value, (int, float)):
         return Decimal(str(value))
-    
-    # Remove espaços, pontos de milhar e substitui vírgula por ponto
-    valor_str = str(value).strip()
-    
-    # Se estiver vazio, retorna zero
-    if not valor_str or valor_str.lower() == 'nan':
+
+    s = str(value).strip()
+    if not s or s.lower() in ('nan', 'none'):
         return Decimal('0.00')
-    
+
+    # Remove tudo que não é dígito, vírgula, ponto ou sinal de menos
+    s = re.sub(r'[^\d,.-]', '', s)
+
+    # Se houver vírgula, considera última vírgula como separador decimal
+    if ',' in s:
+        inteiro, frac = s.rsplit(',', 1)
+        inteiro = inteiro.replace('.', '')  # remove pontos de milhar
+        s = f"{inteiro}.{frac}"
+    else:
+        # sem vírgula, apenas remove pontos de milhar
+        s = s.replace('.', '')
+
+    # Garante formato "-1234.56" ou "1234.56"
     try:
-        # Remove R$, pontos de milhar e substitui vírgula por ponto
-        valor_str = valor_str.replace('R$', '').replace('.', '').replace(',', '.').strip()
-        # Converte para Decimal para maior precisão
-        return Decimal(valor_str) if valor_str else Decimal('0.00')
-    except Exception as e:
-        print(f"Erro ao converter valor '{value}' para decimal: {e}")
+        return Decimal(s)
+    except InvalidOperation:
+        print(f"⚠️ Erro ao converter valor '{value}' para Decimal.")
         return Decimal('0.00')
 
 def parse_date(value):
@@ -651,191 +664,210 @@ def parse_json_post_file(request):
     else:
         return None, None
 
-import time as _time
+import time
+
 
 @csrf_exempt
 @require_POST
 def api_post_importar_csv(request):
     """
-    Importa CSV/XLS para criar/atualizar Clientes e criar Débitos.
-    Garante que:
-      - só clientes com PK vão para bulk_update()
-      - não duplica criação de clientes para o mesmo CPF
+    Importa CSV/XLS via upload de arquivo (multipart/form-data).
+    Produz:
+      - clientes novos (bulk_create)
+      - clientes atualizados (bulk_update)
+      - débitos criados (bulk_create)
     """
     print("\n----- Iniciando importação de dados CSV via API -----")
-    start_time = _time.time()
+    print(f"Request method: {request.method}")
+    print(f"Content type: {request.content_type}")
 
-    # 1) arquivo + campanha_id
-    csv_file, campanha_id = parse_json_post_file(request)
+    # 1) Extrai o arquivo e o ID da campanha do FormData
+    csv_file = request.FILES.get('csv_file')
+    campanha_id = request.POST.get('campanha_id')
+    print(f"Arquivo recebido: {csv_file.name if csv_file else 'Nenhum'}")
+    print(f"ID da campanha: {campanha_id}")
+
     if not csv_file or not campanha_id:
+        print("Erro: csv_file ou campanha_id não fornecidos")
         return JsonResponse(
-            {'status': 'erro',
-             'mensagem': 'csv_file e campanha_id são obrigatórios.'},
+            {'status': 'erro', 'mensagem': 'csv_file e campanha_id são obrigatórios.'},
             status=400
         )
 
-    # 2) carrega DataFrame
+    # 2) Lê o DataFrame (decimal=',' e milhares='.')
     name = csv_file.name.lower()
+    print(f"Processando arquivo: {name}")
+    
     try:
         if name.endswith('.csv'):
-            df = pd.read_csv(csv_file, encoding='utf-8-sig', sep=';')
+            print("Processando arquivo CSV")
+            df = pd.read_csv(
+                csv_file,
+                encoding='utf-8-sig',
+                sep=';',
+                decimal=',',
+                thousands='.'
+            )
         elif name.endswith(('.xls', '.xlsx')):
-            df = pd.read_excel(csv_file)
+            print("Processando arquivo Excel")
+            df = pd.read_excel(csv_file, dtype=str)
         else:
             raise ValueError("Formato inválido: use .csv, .xls ou .xlsx")
+        
+        print(f"DataFrame carregado com {len(df)} linhas")
+        print("Colunas originais:", df.columns.tolist())
+        
     except Exception as e:
+        print(f"Erro ao processar arquivo: {str(e)}")
         return JsonResponse({'status': 'erro', 'mensagem': str(e)}, status=400)
 
-    # 3) busca campanha
+    df.columns = df.columns.str.strip()
+    rows = df.to_dict(orient='records')
+    total_linhas = len(rows)
+    print(f"Total de linhas para processar: {total_linhas}")
+
+    # 3) Carrega a campanha
     try:
-        campanha = Campanha.objects.get(id=int(campanha_id))
-    except Campanha.DoesNotExist:
+        print(f"Buscando campanha com ID: {campanha_id}")
+        campanha = Campanha.objects.get(pk=int(campanha_id))
+        print(f"Campanha encontrada: {campanha.nome}")
+    except (Campanha.DoesNotExist, ValueError) as e:
+        print(f"Erro ao buscar campanha: {str(e)}")
         return JsonResponse(
-            {'status': 'erro',
-             'mensagem': f"Campanha {campanha_id} não encontrada."},
+            {'status': 'erro', 'mensagem': f"Campanha {campanha_id} não encontrada."},
             status=404
         )
 
-    # 4) saneamento
-    df.columns = df.columns.str.strip()
-    total_linhas = len(df)
-    print(f"Total de linhas: {total_linhas}")
-
-    # 5) coleta CPFs únicos do CSV
-    cpfs_csv = [
-        cpf for cpf in (
-            normalize_cpf(str(row.get('CPF', ''))) for _, row in df.iterrows()
-        ) if cpf
-    ]
-    cpfs_unicos = set(cpfs_csv)
-
-    # 6) busca os clientes que já existem no DB
-    clientes_existentes_db = {
-        c.cpf: c
-        for c in Cliente.objects.filter(cpf__in=cpfs_unicos)
+    # 4) Extrai CPFs únicos
+    cpfs_unicos = {
+        normalize_cpf(str(r.get('CPF', '')))
+        for r in rows
+        if normalize_cpf(str(r.get('CPF', '')))
     }
-    print(f"Clientes existentes no DB: {len(clientes_existentes_db)}")
+    print(f"CPFs únicos encontrados: {len(cpfs_unicos)}")
 
-    # preparar listas
-    criar_clientes = []          # instâncias sem PK
-    atualizar_clientes = []      # instâncias com PK (só do DB)
-    novos_por_cpf = {}           # cpf -> instância cria (sem PK) para acumular updates
-    debitos_info = []
+    # 5) Busca clientes existentes
+    print("Buscando clientes existentes no banco de dados...")
+    clientes_existentes = {
+        c.cpf: c for c in Cliente.objects.filter(cpf__in=cpfs_unicos)
+    }
+    print(f"Clientes existentes encontrados: {len(clientes_existentes)}")
+    
+    criar, atualizar, novos_por_cpf, debitos_info = [], [], {}, []
+    print("Iniciando processamento de linhas...")
 
-    # 7) itera cada linha
-    for idx, row in df.iterrows():
-        linha = idx + 1
+    # 6) Processa cada linha
+    for idx, row in enumerate(rows, start=1):
         try:
+            print(f"\nProcessando linha {idx}")
             cpf = normalize_cpf(str(row.get('CPF', '')))
+            print(f"CPF processado: {cpf}")
+            
             if not cpf:
-                raise ValueError(f"CPF inválido na linha {linha}")
+                raise ValueError(f"CPF inválido na linha {idx}")
 
-            # mapeia ou cria o objeto Cliente apropriado
-            if cpf in clientes_existentes_db:
-                cliente = clientes_existentes_db[cpf]
+            # Cliente
+            if cpf in clientes_existentes:
+                print(f"Cliente existente encontrado para CPF: {cpf}")
+                cli = clientes_existentes[cpf]
             elif cpf in novos_por_cpf:
-                cliente = novos_por_cpf[cpf]
+                print(f"Cliente novo já processado para CPF: {cpf}")
+                cli = novos_por_cpf[cpf]
             else:
-                cliente = Cliente()  # sem PK ainda
-                cliente.cpf = cpf
-                criar_clientes.append(cliente)
-                novos_por_cpf[cpf] = cliente
+                print(f"Novo cliente detectado para CPF: {cpf}")
+                cli = Cliente(cpf=cpf)
+                criar.append(cli)
+                novos_por_cpf[cpf] = cli
 
-            # atualiza todos os campos (novo ou existente)
-            cliente.nome = clean_text_field(get_safe_value(row, 'Nome', ''), 100)
-            cliente.uf = clean_text_field(get_safe_value(row, 'UF', ''), 2)
-            cliente.rjur = clean_text_field(get_safe_value(row, 'RJur', ''), 50)
-            cliente.situacao_funcional = clean_text_field(
-                get_safe_value(row, 'Situacao_Funcional', ''), 50
-            )
-            cliente.renda_bruta = parse_valor_br(get_safe_value(row, 'Renda_Bruta', '0'))
-            cliente.bruta_5 = parse_valor_br(get_safe_value(row, 'Bruta_5', '0'))
-            cliente.util_5 = parse_valor_br(get_safe_value(row, 'Utilizado_5', '0'))
-            cliente.saldo_5 = parse_valor_br(get_safe_value(row, 'Saldo_5', '0'))
-            cliente.brutaBeneficio_5 = parse_valor_br(get_safe_value(row, 'Bruta_Beneficio_5', '0'))
-            cliente.utilBeneficio_5 = parse_valor_br(get_safe_value(row, 'Utilizado_Beneficio_5', '0'))
-            cliente.saldoBeneficio_5 = parse_valor_br(get_safe_value(row, 'Saldo_Beneficio_5', '0'))
-            cliente.bruta_35 = parse_valor_br(get_safe_value(row, 'Bruta_35', '0'))
-            cliente.util_35 = parse_valor_br(get_safe_value(row, 'Utilizado_35', '0'))
-            cliente.saldo_35 = parse_valor_br(get_safe_value(row, 'Saldo_35', '0'))
-            cliente.total_util = parse_valor_br(get_safe_value(row, 'Total_Utilizado', '0'))
-            cliente.total_saldo = parse_valor_br(get_safe_value(row, 'Total_Saldo', '0'))
+            # Campos numéricos do Cliente
+            print("Atualizando campos do cliente...")
+            cli.nome = clean_text_field(get_safe_value(row, 'Nome', ''), 100)
+            cli.uf = clean_text_field(get_safe_value(row, 'UF', ''), 2)
+            cli.rjur = clean_text_field(get_safe_value(row, 'RJur', ''), 50)
+            cli.situacao_funcional = clean_text_field(get_safe_value(row, 'Situacao_Funcional', ''), 50)
+            cli.renda_bruta = parse_valor_br(get_safe_value(row, 'Renda_Bruta', '0'))
+            cli.bruta_5 = parse_valor_br(get_safe_value(row, 'Bruta_5', '0'))
+            cli.util_5 = parse_valor_br(get_safe_value(row, 'Utilizado_5', '0'))
+            cli.saldo_5 = parse_valor_br(get_safe_value(row, 'Saldo_5', '0'))
+            cli.brutaBeneficio_5 = parse_valor_br(get_safe_value(row, 'Bruta_Beneficio_5', '0'))
+            cli.utilBeneficio_5 = parse_valor_br(get_safe_value(row, 'Utilizado_Beneficio_5', '0'))
+            cli.saldoBeneficio_5 = parse_valor_br(get_safe_value(row, 'Saldo_Beneficio_5', '0'))
+            cli.bruta_35 = parse_valor_br(get_safe_value(row, 'Bruta_35', '0'))
+            cli.util_35 = parse_valor_br(get_safe_value(row, 'Utilizado_35', '0'))
+            cli.saldo_35 = parse_valor_br(get_safe_value(row, 'Saldo_35', '0'))
+            cli.total_util = parse_valor_br(get_safe_value(row, 'Total_Utilizado', '0'))
+            cli.total_saldo = parse_valor_br(get_safe_value(row, 'Total_Saldo', '0'))
 
-            # se for DB, marca para bulk_update
-            if hasattr(cliente, 'pk') and cliente.pk:
-                atualizar_clientes.append(cliente)
-            # se for novo, está em criar_clientes e em novos_por_cpf, sem PK
+            if getattr(cli, 'pk', None):
+                print("Cliente marcado para atualização")
+                atualizar.append(cli)
 
-            # prepara informação de débito
+            # Débito
+            print("Criando informações de débito...")
             debitos_info.append({
                 'cpf': cpf,
                 'banco': clean_text_field(get_safe_value(row, 'Banco', ''), 100),
                 'matricula': clean_text_field(get_safe_value(row, 'Matricula', ''), 50),
                 'orgao': clean_text_field(get_safe_value(row, 'Orgao', ''), 50),
-                'parcela': parse_int(get_safe_value(row, 'Parcela', '0')),
+                'parcela': parse_valor_br(get_safe_value(row, 'Parcela', '0')),
                 'prazo_restante': parse_int(get_safe_value(row, 'Prazo_Restante', '0')),
                 'tipo_contrato': clean_text_field(get_safe_value(row, 'Tipo_de_Contrato', ''), 50),
                 'num_contrato': clean_text_field(get_safe_value(row, 'Numero_do_Contrato', ''), 50),
             })
-
+            
         except Exception as e:
-            print(f"[Linha {linha}] erro: {e}")
+            print(f"[Linha {idx}] erro: {e}")
             continue
 
-    # 8) salva tudo em transação
+    # 7) Salva tudo em transação
+    print("\nIniciando transação no banco de dados...")
     with transaction.atomic():
-        # 8.1 cria os novos clientes
-        if criar_clientes:
-            Cliente.objects.bulk_create(criar_clientes, batch_size=100)
-
-        # 8.2 atualiza só os que já tinham PK
-        if atualizar_clientes:
+        if criar:
+            print(f"Criando {len(criar)} novos clientes...")
+            Cliente.objects.bulk_create(criar, batch_size=100)
+        
+        if atualizar:
+            print(f"Atualizando {len(atualizar)} clientes existentes...")
             Cliente.objects.bulk_update(
-                atualizar_clientes,
+                atualizar,
                 fields=[
-                    'nome', 'uf', 'rjur', 'situacao_funcional',
-                    'renda_bruta', 'bruta_5', 'util_5', 'saldo_5',
-                    'brutaBeneficio_5', 'utilBeneficio_5', 'saldoBeneficio_5',
-                    'bruta_35', 'util_35', 'saldo_35',
-                    'total_util', 'total_saldo'
+                    'nome','uf','rjur','situacao_funcional',
+                    'renda_bruta','bruta_5','util_5','saldo_5',
+                    'brutaBeneficio_5','utilBeneficio_5','saldoBeneficio_5',
+                    'bruta_35','util_35','saldo_35',
+                    'total_util','total_saldo'
                 ],
                 batch_size=100
             )
 
-        # 8.3 recarrega TODOS os clientes (existentes + recém-criados) para obter PKs
         todos = Cliente.objects.filter(cpf__in=cpfs_unicos)
-        mapa_clientes = {c.cpf: c for c in todos}
-
-        # 8.4 cria os débitos
-        debs = []
+        mapa  = {c.cpf: c for c in todos}
+        debs  = []
         for info in debitos_info:
-            cli = mapa_clientes.get(info['cpf'])
-            if not cli:
-                continue
-            debs.append(Debito(
-                cliente=cli,
-                campanha=campanha,
-                banco=info['banco'],
-                matricula=info['matricula'],
-                orgao=info['orgao'],
-                parcela=info['parcela'],
-                prazo_restante=info['prazo_restante'],
-                tipo_contrato=info['tipo_contrato'],
-                num_contrato=info['num_contrato'],
-            ))
+            cli = mapa.get(info['cpf'])
+            if cli:
+                debs.append(Debito(
+                    cliente=cli,
+                    campanha=campanha,
+                    banco=info['banco'],
+                    matricula=info['matricula'],
+                    orgao=info['orgao'],
+                    parcela=info['parcela'],
+                    prazo_restante=info['prazo_restante'],
+                    tipo_contrato=info['tipo_contrato'],
+                    num_contrato=info['num_contrato'],
+                ))
         if debs:
             Debito.objects.bulk_create(debs, batch_size=100)
 
-    elapsed = _time.time() - start_time
-    print(f"----- Importação concluída em {elapsed:.2f}s -----")
+    print(f"----- Importação concluída -----")
 
     return JsonResponse({
         'status': 'sucesso',
         'linhas_processadas': total_linhas,
-        'clientes_novos': len(criar_clientes),
-        'clientes_atualizados': len(atualizar_clientes),
-        'debitos_criados': len(debs),
-        'tempo_segundos': f"{elapsed:.2f}"
+        'clientes_novos':      len(criar),
+        'clientes_atualizados':len(atualizar),
+        'debitos_criados':     len(debs),
     })
 
 

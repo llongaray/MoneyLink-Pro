@@ -752,112 +752,141 @@ def _local(dt):
 
 @login_required
 @require_GET
-@controle_acess('SCT23')
 @ensure_csrf_cookie
+@controle_acess('SCT23')
 def api_get_agendadosHoje(request):
-    user = request.user
-    hoje = _local(timezone.now()).date()
+    print(f"[DEBUG] Iniciando api_get_agendadosHoje para usuário: {request.user}")
+    
+    user  = request.user
+    hoje  = _local(timezone.now()).date()
+    print(f"[DEBUG] Data de hoje: {hoje}")
 
-    # 1️⃣ Busca todos os agendamentos de hoje, SEM presenca associada
+    # 1️⃣ Base: agendamentos de hoje sem presença
     base_qs = Agendamento.objects.filter(
         dia_agendado__date=hoje,
         presenca__isnull=True
     ).select_related('cliente_agendamento', 'loja', 'atendente_agendou')
+    print(f"[DEBUG] Total de agendamentos base: {base_qs.count()}")
 
-    # 2️⃣ Recupera o perfil do funcionário logado
-    func = Funcionario.objects.filter(
-        usuario=user, status=True
-    ).select_related('cargo', 'loja').first()
-    if not func or not func.loja:
-        return JsonResponse({'agendamentos': [], 'message': 'Sem permissão'}, status=200)
-
-    hier = func.cargo.hierarquia if func.cargo else Cargo.HierarquiaChoices.PADRAO
-
-    # 3️⃣ Aplica filtro de acesso por hierarquia
+    # 2️⃣ Se for superuser, libera tudo
     if user.is_superuser:
         qs = base_qs
-    elif hier >= Cargo.HierarquiaChoices.SUPERVISOR_GERAL:
-        qs = base_qs
-    elif hier == Cargo.HierarquiaChoices.GERENTE:
-        qs = base_qs.exclude(loja__is_franquia=True)
+        print("[DEBUG] Acesso total - superuser")
     else:
-        qs = base_qs.filter(loja=func.loja)
+        # 3️⃣ Perfil do funcionário
+        func = Funcionario.objects.filter(
+            usuario=user, status=True
+        ).select_related('cargo', 'loja').first()
+        if not func or not func.loja:
+            print("[DEBUG] Funcionário não encontrado ou sem loja")
+            return JsonResponse({'agendamentos': [], 'message': 'Sem permissão'}, status=200)
 
-    # 4️⃣ Filtros opcionais de querystring
+        hier = func.cargo.hierarquia if func.cargo else Cargo.HierarquiaChoices.PADRAO
+        print(f"[DEBUG] Hierarquia do usuário: {hier}")
+
+        # 4️⃣ Filtro de acesso por hierarquia
+        if hier == Cargo.HierarquiaChoices.SUPERVISOR_GERAL:
+            qs = base_qs
+            print("[DEBUG] Acesso total - supervisor(a) geral")
+        elif hier >= Cargo.HierarquiaChoices.GERENTE:
+            qs = base_qs.exclude(loja__is_franquia=True)
+            print("[DEBUG] Filtro gerente - excluindo franquias")
+        else:
+            qs = base_qs.filter(loja=func.loja)
+            print(f"[DEBUG] Filtro loja específica: {func.loja}")
+
+    # 5️⃣ Filtros opcionais por querystring
     nome = request.GET.get('nomeCliente','').strip()
     cpf  = ''.join(c for c in request.GET.get('cpfCliente','') if c.isdigit())
     aten = request.GET.get('atendente','').strip()
+    
+    print(f"[DEBUG] Filtros recebidos - Nome: {nome}, CPF: {cpf}, Atendente: {aten}")
+    
     if nome:
         qs = qs.filter(cliente_agendamento__nome_completo__icontains=nome)
+        print(f"[DEBUG] Aplicando filtro por nome: {nome}")
     if cpf:
         qs = qs.filter(cliente_agendamento__cpf__icontains=cpf)
+        print(f"[DEBUG] Aplicando filtro por CPF: {cpf}")
     if aten:
         qs = qs.filter(
             Q(atendente_agendou__first_name__icontains=aten) |
             Q(atendente_agendou__last_name__icontains=aten)   |
             Q(atendente_agendou__username__icontains=aten)
         )
+        print(f"[DEBUG] Aplicando filtro por atendente: {aten}")
 
-    # 5️⃣ Monta resultado
+    # 6️⃣ Monta resultado
     resultado = []
     for a in qs:
         dt = _local(a.dia_agendado)
         data_hora = dt.strftime('%d/%m/%Y %H:%M') if dt else ''
         usr = a.atendente_agendou
         nome_at = (usr.get_full_name() or usr.username) if usr else ''
-        status = 'Aguardando'  # nunca terá presenca, pois excluímos acima
         resultado.append({
             'id_agendamento': a.id,
-            'nome': a.cliente_agendamento.nome_completo,
-            'cpf': a.cliente_agendamento.cpf,
-            'numero': a.cliente_agendamento.numero,
-            'dia_agendado': data_hora,
-            'atendente': nome_at,
-            'status': status,
-            'loja': a.loja.nome if a.loja else 'Sem loja'
+            'nome':           a.cliente_agendamento.nome_completo,
+            'cpf':            a.cliente_agendamento.cpf,
+            'numero':         a.cliente_agendamento.numero,
+            'dia_agendado':   data_hora,
+            'atendente':      nome_at,
+            'status':         'Aguardando',
+            'loja':           a.loja.nome if a.loja else 'Sem loja'
         })
 
+    print(f"[DEBUG] Total de agendamentos retornados: {len(resultado)}")
     return JsonResponse({'agendamentos': resultado, 'total': len(resultado)}, status=200)
-
 
 
 
 @login_required
 @require_GET
-@controle_acess('SCT23')
 @ensure_csrf_cookie
+@controle_acess('SCT23')
 def api_get_agendPendentes(request):
     user = request.user
-
-    # só agendamentos não confirmados e agendados para hoje ou futuro
     hoje = _local(timezone.now()).date()
-    base_qs = Agendamento.objects.exclude(tabulacao_agendamento='CONFIRMADO') \
-        .filter(dia_agendado__date__gte=hoje) \
+
+    # 1️⃣ Base: apenas pendentes (não 'CONFIRMADO') a partir de hoje
+    base_qs = (
+        Agendamento.objects
+        .exclude(tabulacao_agendamento='CONFIRMADO')
+        .filter(dia_agendado__date__gte=hoje)
         .select_related('cliente_agendamento', 'loja', 'atendente_agendou')
+    )
 
-    # perfil do funcionário logado
-    func = Funcionario.objects.filter(usuario=user, status=True) \
-        .select_related('cargo', 'loja').first()
-    if not func or not func.loja:
-        return JsonResponse({'agendamentos': [], 'message': 'Sem permissão'}, status=200)
-
-    hier = func.cargo.hierarquia if func.cargo else Cargo.HierarquiaChoices.PADRAO
-
-    # controle de acesso por hierarquia
+    # 2️⃣ Acesso irrestrito para superuser
     if user.is_superuser:
         qs = base_qs
-    elif hier >= Cargo.HierarquiaChoices.SUPERVISOR_GERAL:
-        qs = base_qs
-    elif hier == Cargo.HierarquiaChoices.GERENTE:
-        qs = base_qs.exclude(loja__is_franquia=True)
     else:
-        qs = base_qs.filter(loja=func.loja)
+        # 3️⃣ Perfil do funcionário
+        func = (
+            Funcionario.objects
+            .filter(usuario=user, status=True)
+            .select_related('cargo', 'loja')
+            .first()
+        )
+        if not func or not func.loja:
+            return JsonResponse({'agendamentos': [], 'message': 'Sem permissão'}, status=200)
 
-    # filtros opcionais
-    nome = request.GET.get('nomeCliente','').strip()
-    cpf  = ''.join(c for c in request.GET.get('cpfCliente','') if c.isdigit())
-    aten = request.GET.get('atendente','').strip()
-    stat = request.GET.get('status','').strip()
+        hier = func.cargo.hierarquia if func.cargo else Cargo.HierarquiaChoices.PADRAO
+
+        # 4️⃣ Supervisor(a) Geral sem filtro
+        if hier == Cargo.HierarquiaChoices.SUPERVISOR_GERAL:
+            qs = base_qs
+        # 5️⃣ Gerentes e acima (exceto superuser) veem todas as não-franquias
+        elif hier >= Cargo.HierarquiaChoices.GERENTE:
+            qs = base_qs.exclude(loja__is_franquia=True)
+        # 6️⃣ Demais veem apenas a própria loja
+        else:
+            qs = base_qs.filter(loja=func.loja)
+
+    # 7️⃣ Filtros opcionais via querystring
+    nome = request.GET.get('nomeCliente', '').strip()
+    cpf  = ''.join(c for c in request.GET.get('cpfCliente', '') if c.isdigit())
+    aten = request.GET.get('atendente', '').strip()
+    stat = request.GET.get('status', '').strip()
+
     if nome:
         qs = qs.filter(cliente_agendamento__nome_completo__icontains=nome)
     if cpf:
@@ -871,6 +900,7 @@ def api_get_agendPendentes(request):
     if stat:
         qs = qs.filter(tabulacao_agendamento__icontains=stat)
 
+    # 8️⃣ Monta array de resultado
     resultado = []
     for a in qs:
         dt = _local(a.dia_agendado)
@@ -878,90 +908,107 @@ def api_get_agendPendentes(request):
         usr = a.atendente_agendou
         nome_at = (usr.get_full_name() or usr.username) if usr else ''
         resultado.append({
-            'agendamento_id': a.id,
-            'cliente_agendamento_nome': a.cliente_agendamento.nome_completo,
-            'cliente_agendamento_cpf': a.cliente_agendamento.cpf,
+            'agendamento_id':             a.id,
+            'cliente_agendamento_nome':   a.cliente_agendamento.nome_completo,
+            'cliente_agendamento_cpf':    a.cliente_agendamento.cpf,
             'cliente_agendamento_numero': a.cliente_agendamento.numero,
-            'agendamento_dia': dia,
+            'agendamento_dia':            dia,
             'agendamento_atendente_nome': nome_at,
-            'agendamento_tabulacao': a.tabulacao_agendamento or '',
-            'agendamento_loja_id': a.loja.id if a.loja else None,
-            'agendamento_loja_nome': a.loja.nome if a.loja else 'Sem loja',
-            'tem_presenca': hasattr(a, 'presenca'),
+            'agendamento_tabulacao':      a.tabulacao_agendamento or '',
+            'agendamento_loja_id':        a.loja.id if a.loja else None,
+            'agendamento_loja_nome':      a.loja.nome if a.loja else 'Sem loja',
+            'tem_presenca':               hasattr(a, 'presenca'),
         })
 
     return JsonResponse({'agendamentos': resultado, 'total': len(resultado)}, status=200)
 
 @login_required
 @require_GET
-@controle_acess('SCT23')
 @ensure_csrf_cookie
+@controle_acess('SCT23')
 def api_get_clientesAtrasadoLoja(request):
     """
     Lista clientes com dia_agendado < hoje, tabulacao != 'CONFIRMADO'
     e sem PresencaLoja registrada.
-    Aplica permissão por cargo/loja igual aos outros endpoints.
+    Superuser e Supervisor(a) Geral veem todos sem filtro de loja.
     """
-    print(f"Iniciando api_get_clientesAtrasadoLoja. User: {request.user}")
+    print(f"[DEBUG] Iniciando api_get_clientesAtrasadoLoja. User: {request.user}")
     user = request.user
     hoje = _local(timezone.now()).date()
-    print(f"Data de hoje: {hoje}")
+    print(f"[DEBUG] Data de hoje: {hoje}")
 
-    # base: agendamentos passados que não foram confirmados
+    # base: agendamentos passados não confirmados e sem presença
     base_qs = (
         Agendamento.objects
         .filter(dia_agendado__date__lt=hoje)
         .exclude(tabulacao_agendamento='CONFIRMADO')
+        .filter(presenca__isnull=True)
         .select_related('cliente_agendamento', 'loja', 'atendente_agendou')
-        .exclude(presenca__isnull=False)
     )
-    print(f"Total de agendamentos base: {base_qs.count()}")
+    print(f"[DEBUG] Total de agendamentos base: {base_qs.count()}")
 
-    # recupera funcionário logado
-    func = Funcionario.objects.filter(usuario=user, status=True)\
-        .select_related('cargo', 'loja').first()
-    if not func or not func.loja:
-        print("Usuário sem permissão - funcionário ou loja não encontrado")
-        return JsonResponse({'agendamentos': [], 'message': 'Sem permissão'}, status=200)
-
-    hier = func.cargo.hierarquia if func.cargo else Cargo.HierarquiaChoices.PADRAO
-    print(f"Hierarquia do usuário: {hier}")
-
-    # visibilidade por hierarquia
+    # 1️⃣ Se for superuser, acesso total
     if user.is_superuser:
         qs = base_qs
-        print("Superuser - acessando todos os agendamentos")
-    elif hier >= Cargo.HierarquiaChoices.SUPERVISOR_GERAL:
-        qs = base_qs
-        print("Supervisor Geral - acessando todos os agendamentos")
-    elif hier == Cargo.HierarquiaChoices.GERENTE:
-        qs = base_qs.exclude(loja__is_franquia=True)
-        print("Gerente - excluindo franquias")
+        print("[DEBUG] Superuser – acesso total")
     else:
-        qs = base_qs.filter(loja=func.loja)
-        print(f"Funcionário comum - filtrando pela loja: {func.loja.nome}")
+        # 2️⃣ Busca perfil do funcionário
+        func = (
+            Funcionario.objects
+            .filter(usuario=user, status=True)
+            .select_related('cargo', 'loja')
+            .first()
+        )
+        if not func:
+            print("[DEBUG] Sem perfil de funcionário")
+            return JsonResponse({'agendamentos': [], 'message': 'Sem permissão'}, status=200)
 
-    # filtros opcionais (mesmos campos do formulário)
-    nome = request.GET.get('nomeCliente','').strip()
-    cpf  = ''.join(c for c in request.GET.get('cpfCliente','') if c.isdigit())
-    aten = request.GET.get('atendente','').strip()
-    stat = request.GET.get('status','').strip()
-    print(f"Filtros aplicados - Nome: {nome}, CPF: {cpf}, Atendente: {aten}, Status: {stat}")
+        hier = func.cargo.hierarquia if func.cargo else Cargo.HierarquiaChoices.PADRAO
+        print(f"[DEBUG] Hierarquia do usuário: {hier}")
+
+        # 3️⃣ Supervisor(a) Geral sem filtro de loja
+        if hier == Cargo.HierarquiaChoices.SUPERVISOR_GERAL:
+            qs = base_qs
+            print("[DEBUG] Supervisor(a) Geral – acesso total")
+        # 4️⃣ Gerentes veem todas as lojas, exceto franquias
+        elif hier >= Cargo.HierarquiaChoices.GERENTE:
+            qs = base_qs.exclude(loja__is_franquia=True)
+            print("[DEBUG] Gerente – excluindo franquias")
+        # 5️⃣ Demais: apenas a própria loja
+        else:
+            if not func.loja:
+                print("[DEBUG] Funcionário sem loja associada")
+                return JsonResponse({'agendamentos': [], 'message': 'Sem permissão'}, status=200)
+            qs = base_qs.filter(loja=func.loja)
+            print(f"[DEBUG] Filtrando pela loja: {func.loja.nome}")
+
+    # 6️⃣ Filtros opcionais
+    nome = request.GET.get('nomeCliente', '').strip()
+    cpf  = ''.join(c for c in request.GET.get('cpfCliente', '') if c.isdigit())
+    aten = request.GET.get('atendente', '').strip()
+    stat = request.GET.get('status', '').strip()
+    print(f"[DEBUG] Filtros recebidos – Nome: {nome}, CPF: {cpf}, Atendente: {aten}, Status: {stat}")
 
     if nome:
         qs = qs.filter(cliente_agendamento__nome_completo__icontains=nome)
+        print(f"[DEBUG] Aplicando filtro por nome: {nome}")
     if cpf:
         qs = qs.filter(cliente_agendamento__cpf__icontains=cpf)
+        print(f"[DEBUG] Aplicando filtro por CPF: {cpf}")
     if aten:
         qs = qs.filter(
             Q(atendente_agendou__first_name__icontains=aten) |
             Q(atendente_agendou__last_name__icontains=aten)   |
             Q(atendente_agendou__username__icontains=aten)
         )
+        print(f"[DEBUG] Aplicando filtro por atendente: {aten}")
     if stat:
         qs = qs.filter(tabulacao_agendamento__icontains=stat)
-    print(f"Total de agendamentos após filtros: {qs.count()}")
+        print(f"[DEBUG] Aplicando filtro por status: {stat}")
 
+    print(f"[DEBUG] Total após filtros: {qs.count()}")
+
+    # 7️⃣ Monta resultado
     resultado = []
     for a in qs.order_by('dia_agendado'):
         dt = _local(a.dia_agendado)
@@ -970,16 +1017,16 @@ def api_get_clientesAtrasadoLoja(request):
         nome_at = (usr.get_full_name() or usr.username) if usr else ''
         resultado.append({
             'id_agendamento': a.id,
-            'nome': a.cliente_agendamento.nome_completo,
-            'cpf': a.cliente_agendamento.cpf,
-            'numero': a.cliente_agendamento.numero,
-            'dia_agendado': data_hora,
-            'atendente': nome_at,
-            'status': a.tabulacao_agendamento,
-            'loja': a.loja.nome if a.loja else 'Sem loja'
+            'nome':            a.cliente_agendamento.nome_completo,
+            'cpf':             a.cliente_agendamento.cpf,
+            'numero':          a.cliente_agendamento.numero,
+            'dia_agendado':    data_hora,
+            'atendente':       nome_at,
+            'status':          a.tabulacao_agendamento,
+            'loja':            a.loja.nome if a.loja else 'Sem loja'
         })
 
-    print(f"Total de resultados encontrados: {len(resultado)}")
+    print(f"[DEBUG] Total de resultados encontrados: {len(resultado)}")
     return JsonResponse({'agendamentos': resultado, 'total': len(resultado)}, status=200)
 
 @login_required

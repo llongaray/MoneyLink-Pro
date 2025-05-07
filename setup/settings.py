@@ -24,7 +24,7 @@ CSRF_TRUSTED_ORIGINS = [
     'http://192.168.18.246',
     'http://192.168.18.246:8000',
     'http://borealpoa.dyndns.org:8000',
-    'https://sistema.moneypromotora.com.br'
+    'https://sistema.moneypromotora.com.br',
     'http://168.231.97.235:7000',
     'http://168.231.97.235',
 ]

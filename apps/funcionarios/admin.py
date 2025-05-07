@@ -3,7 +3,7 @@ from .models import *
 
 @admin.register(Empresa)
 class EmpresaAdmin(admin.ModelAdmin):
-    list_display = ('nome', 'cnpj', 'endereco', 'status')
+    list_display = ('id', 'nome', 'cnpj', 'endereco', 'status')
     search_fields = ('nome', 'cnpj')
     list_filter = ('status',)
     list_editable = ('status',)
@@ -11,7 +11,7 @@ class EmpresaAdmin(admin.ModelAdmin):
 
 @admin.register(Loja)
 class LojaAdmin(admin.ModelAdmin):
-    list_display = ('nome', 'empresa', 'franquia', 'filial', 'status')
+    list_display = ('id', 'nome', 'empresa', 'franquia', 'filial', 'status')
     list_filter = ('empresa', 'franquia', 'filial', 'status')
     search_fields = ('nome', 'empresa__nome')
     list_editable = ('status', 'franquia', 'filial')
@@ -20,7 +20,7 @@ class LojaAdmin(admin.ModelAdmin):
 
 @admin.register(Departamento)
 class DepartamentoAdmin(admin.ModelAdmin):
-    list_display = ('nome', 'empresa', 'status')
+    list_display = ('id', 'nome', 'empresa', 'status')
     list_filter = ('empresa', 'status')
     search_fields = ('nome', 'empresa__nome')
     list_editable = ('status',)
@@ -29,7 +29,7 @@ class DepartamentoAdmin(admin.ModelAdmin):
 
 @admin.register(Setor)
 class SetorAdmin(admin.ModelAdmin):
-    list_display = ('nome', 'departamento_nome', 'empresa_nome', 'status')
+    list_display = ('id', 'nome', 'departamento_nome', 'empresa_nome', 'status')
     list_filter = ('departamento__empresa', 'departamento', 'status')
     search_fields = ('nome', 'departamento__nome', 'departamento__empresa__nome')
     list_editable = ('status',)
@@ -45,13 +45,11 @@ class SetorAdmin(admin.ModelAdmin):
         return obj.departamento.empresa.nome if obj.departamento and obj.departamento.empresa else '-'
 
     def get_queryset(self, request):
-        # Otimiza a consulta buscando os relacionamentos necessários
         return super().get_queryset(request).select_related('departamento', 'departamento__empresa')
-
 
 @admin.register(Equipe)
 class EquipeAdmin(admin.ModelAdmin):
-    list_display = ('nome', 'status', 'listar_participantes')
+    list_display = ('id', 'nome', 'status', 'listar_participantes')
     list_filter = ('status',)
     search_fields = ('nome',)
     list_editable = ('status',)
@@ -60,7 +58,6 @@ class EquipeAdmin(admin.ModelAdmin):
 
     @admin.display(description='Participantes')
     def listar_participantes(self, obj):
-        # Limita a quantidade de participantes exibidos para performance
         participantes = obj.participantes.all()[:10]
         nomes = ", ".join([p.get_full_name() or p.username for p in participantes])
         if obj.participantes.count() > 10:
@@ -68,27 +65,24 @@ class EquipeAdmin(admin.ModelAdmin):
         return nomes
 
     def get_queryset(self, request):
-        # Otimiza a consulta buscando os participantes
         return super().get_queryset(request).prefetch_related('participantes')
 
 @admin.register(Cargo)
 class CargoAdmin(admin.ModelAdmin):
-    list_display = ('nome', 'empresa', 'get_hierarquia_display', 'status')
+    list_display = ('id', 'nome', 'empresa', 'get_hierarquia_display', 'status')
     list_filter = ('empresa', 'hierarquia', 'status')
     search_fields = ('nome', 'empresa__nome')
     list_editable = ('status',)
     autocomplete_fields = ('empresa',)
     ordering = ('empresa__nome', 'hierarquia', 'nome')
 
-    # get_hierarquia_display já existe no model, não precisa redefinir aqui
-    # Apenas garantindo que ele seja usado corretamente
     @admin.display(description='Nível Hierárquico', ordering='hierarquia')
     def get_hierarquia_display(self, obj):
         return obj.get_hierarquia_display()
 
 @admin.register(HorarioTrabalho)
 class HorarioTrabalhoAdmin(admin.ModelAdmin):
-    list_display = ('nome', 'entrada', 'saida_almoco', 'volta_almoco', 'saida', 'status')
+    list_display = ('id', 'nome', 'entrada', 'saida_almoco', 'volta_almoco', 'saida', 'status')
     search_fields = ('nome',)
     list_filter = ('status',)
     list_editable = ('status',)
@@ -96,7 +90,7 @@ class HorarioTrabalhoAdmin(admin.ModelAdmin):
 
 @admin.register(ArquivoFuncionario)
 class ArquivoFuncionarioAdmin(admin.ModelAdmin):
-    list_display = ('titulo', 'funcionario_nome', 'get_arquivo_tamanho', 'data_upload', 'status')
+    list_display = ('id', 'titulo', 'funcionario_nome', 'get_arquivo_tamanho', 'data_upload', 'status')
     list_filter = (
         'status',
         'data_upload',
@@ -123,11 +117,11 @@ class ArquivoFuncionarioAdmin(admin.ModelAdmin):
         }),
         ('Metadados', {
             'fields': ('data_upload', 'get_arquivo_tamanho'),
-            'classes': ('collapse',) # Mantém colapsado por padrão
+            'classes': ('collapse',)
         }),
     )
 
-    @admin.display(description='Tamanho', ordering='arquivo') # Ordenar por tamanho pode ser pesado
+    @admin.display(description='Tamanho', ordering='arquivo')
     def get_arquivo_tamanho(self, obj):
         return obj.get_tamanho_arquivo()
 
@@ -146,14 +140,12 @@ class ArquivoFuncionarioAdmin(admin.ModelAdmin):
         self.message_user(request, f'{updated} arquivo(s) foram marcados como inativos.')
 
     def get_queryset(self, request):
-        # Otimiza a consulta buscando o funcionário relacionado
         return super().get_queryset(request).select_related('funcionario')
 
-# Novo Admin para Comissionamento
 @admin.register(Comissionamento)
 class RegraComissionamentoAdmin(admin.ModelAdmin):
     list_display = (
-        'titulo', 'escopo_base', 'percentual', 'valor_fixo',
+        'id', 'titulo', 'escopo_base', 'percentual', 'valor_fixo',
         'status', 'data_inicio', 'data_fim', 'data_criacao'
     )
     list_filter = (

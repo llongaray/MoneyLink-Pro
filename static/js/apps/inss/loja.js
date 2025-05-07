@@ -1,24 +1,26 @@
 document.addEventListener('DOMContentLoaded', function() {
+    // Mapeamento label → key conforme TextChoices do model
+    const tabMap = {
+        'NEGÓCIO FECHADO': 'NEGOCIO_FECHADO',
+        'INELEGÍVEL': 'INELEGIVEL',
+        'NÃO ACEITOU': 'NAO_ACEITOU', 
+        'NÃO QUIS OUVIR': 'NAO_QUIS_OUVIR',
+        'PENDENTE': 'PENDENTE'
+    };
+
     // --- INICIALIZAÇÃO DE MODAIS ---
-    // Verificar se estamos usando Bootstrap 5
     if (typeof bootstrap !== 'undefined') {
-        // Inicializar modais do Bootstrap
         const modais = document.querySelectorAll('.modal-sec');
         modais.forEach(modalEl => {
-            // Impedir fechamento ao clicar fora (opcional)
             const modalOptions = {
                 backdrop: 'static',
                 keyboard: false
             };
             new bootstrap.Modal(modalEl, modalOptions);
         });
-        
         console.log('Modais inicializados com Bootstrap');
     } else {
-        // Inicialização manual para sistemas sem Bootstrap
         console.log('Bootstrap não detectado, usando inicialização manual para modais');
-        
-        // Adicionar eventos de fechamento ao clicar fora (opcional)
         document.querySelectorAll('.modal-sec').forEach(modal => {
             modal.addEventListener('click', function(e) {
                 if (e.target === this) {
@@ -28,25 +30,22 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // --- MÁSCARAS (Exemplo - Adapte conforme necessário) ---
+    // --- MÁSCARAS ---
     $('#cpf_cliente_rua_inline').mask('000.000.000-00');
     $('#numero_cliente_rua_inline').mask('(00) 0 0000-0000');
-    // A máscara para .money será aplicada dinamicamente abaixo
 
     // --- FUNÇÃO AUXILIAR PARA FORMATAR NÚMERO DE TELEFONE ---
     function formatarNumeroTelefone(numero) {
-        if (!numero) return ''; // Retorna vazio se nulo ou vazio
-        const numeroLimpo = numero.toString().replace(/\D/g, ''); // Remove não dígitos
+        if (!numero) return '';
+        const numeroLimpo = numero.toString().replace(/\D/g, '');
         const tamanho = numeroLimpo.length;
 
         if (tamanho === 11) {
-            // Formato (00) 0 0000-0000
             return `(${numeroLimpo.substring(0, 2)}) ${numeroLimpo.substring(2, 3)} ${numeroLimpo.substring(3, 7)}-${numeroLimpo.substring(7)}`;
         } else if (tamanho === 10) {
-            // Formato (00) 0000-0000
             return `(${numeroLimpo.substring(0, 2)}) ${numeroLimpo.substring(2, 6)}-${numeroLimpo.substring(6)}`;
         } else {
-            return numero; // Retorna o número original se não tiver 10 ou 11 dígitos
+            return numero;
         }
     }
 
@@ -56,7 +55,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const btnAddProduto = document.getElementById('btnAddProdutoInline');
     const produtosContainer = document.getElementById('produtosContainerInline');
     const produtoTemplate = document.getElementById('produtoTemplateInline');
-    let produtoIndex = 0; // Contador para indexar os produtos
+    let produtoIndex = 0;
 
     // --- LÓGICA PARA ADICIONAR/REMOVER PRODUTOS - MODAL EDIÇÃO ---
     const tabulacaoEdicaoSelect = document.getElementById('tabulacaoVendedorEdicao');
@@ -64,18 +63,15 @@ document.addEventListener('DOMContentLoaded', function() {
     const btnAddProdutoEdicao = document.getElementById('btnAddProdutoEdicao');
     const produtosContainerEdicao = document.getElementById('produtosContainerEdicao');
     const produtoTemplateEdicao = document.getElementById('produtoTemplateEdicao');
-    let produtoEdicaoIndex = 0; // Contador para indexar os produtos no modal de edição
+    let produtoEdicaoIndex = 0;
 
-    // Função para aplicar máscara de dinheiro a um elemento específico
     function aplicarMascaraDinheiro(elemento) {
         $(elemento).mask('#.##0,00', { reverse: true });
     }
 
-    // Função para adicionar um novo bloco de produto (formulário inline)
     function adicionarProduto() {
         console.log('[CLIENTE RUA] Adicionando novo produto, índice:', produtoIndex);
         
-        // Verifica se já existe um bloco de produto sendo adicionado
         if (produtosContainer.querySelector('.produto-bloco[data-adding]')) {
             console.log('[CLIENTE RUA] Já existe um produto sendo adicionado');
             return;
@@ -83,14 +79,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const clone = produtoTemplate.content.cloneNode(true);
         const blocoProduto = clone.querySelector('.produto-bloco');
-        
-        // Marca o bloco como em processo de adição
         blocoProduto.setAttribute('data-adding', 'true');
-
-        // Atualiza IDs e Names com o índice correto
         blocoProduto.innerHTML = blocoProduto.innerHTML.replace(/__INDEX__/g, produtoIndex);
 
-        // Adiciona evento de remoção ao botão do novo bloco
         const btnRemove = blocoProduto.querySelector('.btn-remove-produto');
         btnRemove.addEventListener('click', function() {
             console.log('[CLIENTE RUA] Removendo produto');
@@ -98,52 +89,39 @@ document.addEventListener('DOMContentLoaded', function() {
             verificarVisibilidadeBotaoAdd();
         });
 
-        // Aplica máscara de dinheiro ao campo valor_tac do novo bloco
         const valorTacInput = blocoProduto.querySelector('.money');
         if (valorTacInput) {
             aplicarMascaraDinheiro(valorTacInput);
         }
         
-        // Preenche o select de produtos
         const produtoSelect = blocoProduto.querySelector(`[name='produtos[${produtoIndex}][produto_id]']`);
         if (produtoSelect) {
             preencherSelectProdutos($(produtoSelect));
         }
 
-        // Adiciona o bloco ao container
         produtosContainer.appendChild(blocoProduto);
-        
-        // Remove a marcação de "em adição" após a conclusão
         blocoProduto.removeAttribute('data-adding');
-        
         produtoIndex++;
         verificarVisibilidadeBotaoAdd();
         console.log('[CLIENTE RUA] Produto adicionado, novo contador de produtos:', produtoIndex);
     }
 
-    // Função para adicionar um novo bloco de produto no modal de edição
     function adicionarProdutoEdicao() {
         const clone = produtoTemplateEdicao.content.cloneNode(true);
         const blocoProduto = clone.querySelector('.produto-bloco');
-
-        // Atualiza IDs e Names com o índice correto
         blocoProduto.innerHTML = blocoProduto.innerHTML.replace(/__INDEX__/g, produtoEdicaoIndex);
 
-        // Adiciona evento de remoção ao botão do novo bloco
         const btnRemove = blocoProduto.querySelector('.btn-remove-produto');
         btnRemove.addEventListener('click', function() {
             blocoProduto.remove();
-            // Opcional: reajustar índices se necessário após remover um item do meio
-            verificarVisibilidadeBotaoAddEdicao(); // Verifica se o botão add ainda deve aparecer
+            verificarVisibilidadeBotaoAddEdicao();
         });
 
-        // Aplica máscara de dinheiro ao campo valor_tac do novo bloco
         const valorTacInput = blocoProduto.querySelector('.money');
         if (valorTacInput) {
             aplicarMascaraDinheiro(valorTacInput);
         }
         
-        // Preenche o select de produtos
         const produtoSelect = blocoProduto.querySelector(`[name='produtos[${produtoEdicaoIndex}][produto_id]']`);
         if (produtoSelect) {
             preencherSelectProdutos($(produtoSelect));
@@ -154,21 +132,17 @@ document.addEventListener('DOMContentLoaded', function() {
         verificarVisibilidadeBotaoAddEdicao();
     }
 
-    // Função para remover todos os produtos (formulário inline)
     function removerTodosProdutos() {
         produtosContainer.innerHTML = '';
-        produtoIndex = 0; // Reseta o índice
-        addProdutoBtnContainer.style.display = 'none'; // Esconde o botão de adicionar
+        produtoIndex = 0;
+        addProdutoBtnContainer.style.display = 'none';
     }
 
-    // Função para remover todos os produtos no modal de edição
     function removerTodosProdutosEdicao() {
         produtosContainerEdicao.innerHTML = '';
-        produtoEdicaoIndex = 0; // Reseta o índice
-        // Não escondemos o botão aqui, pois isso é tratado no handler de tabulação
+        produtoEdicaoIndex = 0;
     }
 
-    // Função para verificar e ajustar a visibilidade do botão "Adicionar Produto" (formulário inline)
     function verificarVisibilidadeBotaoAdd() {
          if (tabulacaoSelect && tabulacaoSelect.value === 'NEGOCIO FECHADO') {
              addProdutoBtnContainer.style.display = 'block';
@@ -177,7 +151,6 @@ document.addEventListener('DOMContentLoaded', function() {
          }
     }
 
-    // Função para verificar e ajustar a visibilidade do botão "Adicionar Produto" (modal edição)
     function verificarVisibilidadeBotaoAddEdicao() {
          if (tabulacaoEdicaoSelect && tabulacaoEdicaoSelect.value === 'NEGOCIO FECHADO') {
              addProdutoBtnContainerEdicao.style.display = 'block';
@@ -186,51 +159,39 @@ document.addEventListener('DOMContentLoaded', function() {
          }
     }
 
-    // Event listener para a seleção da tabulação (formulário inline)
     window.handleTabulacaoVendedorInline = function() {
         if (tabulacaoSelect && tabulacaoSelect.value === 'NEGOCIO FECHADO') {
             addProdutoBtnContainer.style.display = 'block';
-            // Adiciona o primeiro produto automaticamente se não houver nenhum
             if (produtosContainer.children.length === 0) {
                 adicionarProduto();
             }
         } else {
-            removerTodosProdutos(); // Remove produtos se não for "NEGOCIO FECHADO"
+            remouterTodosProdutos();
         }
     }
 
-    /**
-     * Handler para a alteração de tabulação do vendedor no modal de edição
-     */
     function handleTabulacaoVendedorChange() {
         const tabulacaoValue = $(this).val();
         
         if (tabulacaoValue === 'NEGOCIO FECHADO') {
             $('#fechouNegocioContainerEdicao').slideDown();
-            // Mostrar o botão para adicionar produtos
             addProdutoBtnContainerEdicao.style.display = 'block';
             
-            // Adiciona o primeiro produto automaticamente se não houver nenhum
             if (produtosContainerEdicao && produtosContainerEdicao.children.length === 0) {
                 adicionarProdutoEdicao();
             }
         } else {
             $('#fechouNegocioContainerEdicao').slideUp();
-            // Remover todos os produtos se não for "NEGOCIO FECHADO"
             removerTodosProdutosEdicao();
         }
     }
 
-    // Expor funções necessárias para o escopo global
     window.handleTabulacaoVendedorChange = handleTabulacaoVendedorChange;
 
-    
-    // Event listener para o botão "Adicionar Produto" no modal de edição
     if(btnAddProdutoEdicao) {
         btnAddProdutoEdicao.addEventListener('click', adicionarProdutoEdicao);
     }
 
-    // --- VALIDAÇÃO CONDICIONAL (Simplificado - pode precisar de mais lógica) ---
     const formClienteRua = document.getElementById('formClienteRuaInline');
     if(formClienteRua) {
         formClienteRua.addEventListener('submit', function(event) {
@@ -238,6 +199,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const produtos = produtosContainer.querySelectorAll('.produto-bloco');
                 if (produtos.length === 0) {
                      alert('Se a tabulação for "NEGOCIO FECHADO", ao menos um produto deve ser adicionado.');
+                     event.preventDefault();
                      event.preventDefault(); // Impede o envio
                      return;
                 }
@@ -879,7 +841,10 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('[ADDVENDA] ID da loja de comparecimento:', lojaId);
         
         // Verificar se a tabulação foi selecionada
-        const tabulacaoVendedor = $('#tabulacaoVendedorEdicao').val();
+        let tabulacaoVendedor = $('#tabulacaoVendedorEdicao').val();
+        if (tabulacaoVendedor === 'NÃO ACEITOU') {
+            tabulacaoVendedor = 'NAO_ACEITOU';
+        }
         if (!tabulacaoVendedor) {
             console.log('[ADDVENDA] Erro: Tabulação não selecionada');
             alertaErro('Por favor, selecione uma tabulação.');
@@ -1044,7 +1009,7 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('[CLIENTE RUA] FormData criado a partir do formulário');
         
         // Verifica se há produtos a serem adicionados
-        const tabulacaoVendedor = $('#tabulacao_vendedor_rua_inline').val();
+        let tabulacaoVendedor = $('#tabulacao_vendedor_rua_inline').val();
         console.log('[CLIENTE RUA] Tabulação do vendedor:', tabulacaoVendedor);
         
         if (tabulacaoVendedor === 'NEGOCIO FECHADO') {
@@ -1202,6 +1167,10 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Validar produtos se a tabulação for NEGOCIO FECHADO
         const tabulacao = $('#tabulacao_vendedor_rua_inline').val();
+        if (tabulacaoVendedor === 'NÃO ACEITOU') {
+            tabulacaoVendedor = 'NAO_ACEITOU'; // Corrige o valor para uma opção válida
+        }
+        formData.append('tabulacao_vendedor', tabulacaoVendedor);
         if (tabulacao === 'NEGOCIO FECHADO') {
             const produtosContainer = $('#produtosContainerInline');
             const produtoBlocos = produtosContainer.find('.produto-bloco');
