@@ -144,7 +144,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function verificarVisibilidadeBotaoAdd() {
-         if (tabulacaoSelect && tabulacaoSelect.value === 'NEGOCIO FECHADO') {
+         if (tabulacaoSelect && tabulacaoSelect.value === 'NEGÓCIO FECHADO') {
              addProdutoBtnContainer.style.display = 'block';
          } else {
              addProdutoBtnContainer.style.display = 'none';
@@ -152,7 +152,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function verificarVisibilidadeBotaoAddEdicao() {
-         if (tabulacaoEdicaoSelect && tabulacaoEdicaoSelect.value === 'NEGOCIO FECHADO') {
+         if (tabulacaoEdicaoSelect && tabulacaoEdicaoSelect.value === 'NEGÓCIO FECHADO') {
              addProdutoBtnContainerEdicao.style.display = 'block';
          } else {
              addProdutoBtnContainerEdicao.style.display = 'none';
@@ -160,7 +160,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     window.handleTabulacaoVendedorInline = function() {
-        if (tabulacaoSelect && tabulacaoSelect.value === 'NEGOCIO FECHADO') {
+        if (tabulacaoSelect && tabulacaoSelect.value === 'NEGÓCIO FECHADO') {
             addProdutoBtnContainer.style.display = 'block';
             if (produtosContainer.children.length === 0) {
                 adicionarProduto();
@@ -173,7 +173,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function handleTabulacaoVendedorChange() {
         const tabulacaoValue = $(this).val();
         
-        if (tabulacaoValue === 'NEGOCIO FECHADO') {
+        if (tabulacaoValue === 'NEGÓCIO FECHADO') {
             $('#fechouNegocioContainerEdicao').slideDown();
             addProdutoBtnContainerEdicao.style.display = 'block';
             
@@ -195,10 +195,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const formClienteRua = document.getElementById('formClienteRuaInline');
     if(formClienteRua) {
         formClienteRua.addEventListener('submit', function(event) {
-            if (tabulacaoSelect.value === 'NEGOCIO FECHADO') {
+            if (tabulacaoSelect.value === 'NEGÓCIO FECHADO') {
                 const produtos = produtosContainer.querySelectorAll('.produto-bloco');
                 if (produtos.length === 0) {
-                     alert('Se a tabulação for "NEGOCIO FECHADO", ao menos um produto deve ser adicionado.');
+                     alert('Se a tabulação for "NEGÓCIO FECHADO", ao menos um produto deve ser adicionado.');
                      event.preventDefault();
                      event.preventDefault(); // Impede o envio
                      return;
@@ -586,8 +586,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (response.presenca.tabulacao_venda) {
                         $('#tabulacaoVendedorEdicao').val(response.presenca.tabulacao_venda);
                         
-                        // Se for NEGOCIO FECHADO, mostrar o container e carregar produtos
-                        if (response.presenca.tabulacao_venda === 'NEGOCIO FECHADO') {
+                        // Se for NEGÓCIO FECHADO, mostrar o container e carregar produtos
+                        if (response.presenca.tabulacao_venda === 'NEGÓCIO FECHADO') {
                             $('#fechouNegocioContainerEdicao').show();
                             
                             // Se tiver produtos na resposta, carregá-los
@@ -864,15 +864,15 @@ document.addEventListener('DOMContentLoaded', function() {
             formData.append('loja_id', lojaId);
         }
         
-        // Se a tabulação for NEGOCIO FECHADO, verificar produtos
-        if (tabulacaoVendedor === 'NEGOCIO FECHADO') {
-            console.log('[ADDVENDA] Tabulação é NEGOCIO FECHADO, verificando produtos...');
+        // Se a tabulação for NEGÓCIO FECHADO, verificar produtos
+        if (tabulacaoVendedor === 'NEGÓCIO FECHADO') {
+            console.log('[ADDVENDA] Tabulação é NEGÓCIO FECHADO, verificando produtos...');
             
             // Verificar se existe pelo menos um produto
             const produtos = $('#produtosContainerEdicao .produto-bloco');
             if (produtos.length === 0) {
-                console.log('[ADDVENDA] Erro: Nenhum produto encontrado para NEGOCIO FECHADO');
-                alertaErro('Para tabulação "NEGOCIO FECHADO", é necessário adicionar pelo menos um produto.');
+                console.log('[ADDVENDA] Erro: Nenhum produto encontrado para NEGÓCIO FECHADO');
+                alertaErro('Para tabulação "NEGÓCIO FECHADO", é necessário adicionar pelo menos um produto.');
                 $submitButton.prop('disabled', false).html(originalButtonText);
                 return;
             }
@@ -1012,16 +1012,16 @@ document.addEventListener('DOMContentLoaded', function() {
         let tabulacaoVendedor = $('#tabulacao_vendedor_rua_inline').val();
         console.log('[CLIENTE RUA] Tabulação do vendedor:', tabulacaoVendedor);
         
-        if (tabulacaoVendedor === 'NEGOCIO FECHADO') {
-            console.log('[CLIENTE RUA] Tabulação é NEGOCIO FECHADO, verificando produtos...');
+        if (tabulacaoVendedor === 'NEGÓCIO FECHADO') {
+            console.log('[CLIENTE RUA] Tabulação é NEGÓCIO FECHADO, verificando produtos...');
             // Obtém todos os produtos do container
             const produtosContainer = $('#produtosContainerInline');
             const produtoBlocos = produtosContainer.find('.produto-bloco');
             console.log('[CLIENTE RUA] Número de produtos encontrados:', produtoBlocos.length);
             
             if (produtoBlocos.length === 0) {
-                console.log('[CLIENTE RUA] Erro: Nenhum produto encontrado para NEGOCIO FECHADO');
-                alertaErro('Para tabulação NEGOCIO FECHADO é necessário adicionar pelo menos um produto.');
+                console.log('[CLIENTE RUA] Erro: Nenhum produto encontrado para NEGÓCIO FECHADO');
+                alertaErro('Para tabulação NEGÓCIO FECHADO é necessário adicionar pelo menos um produto.');
                 btnSubmit.html(textoOriginal);
                 btnSubmit.prop('disabled', false);
                 return false;
@@ -1137,75 +1137,73 @@ document.addEventListener('DOMContentLoaded', function() {
      * Valida o formulário de cliente rua antes do envio
      */
     function validarFormularioClienteRua() {
-        // Campos obrigatórios
+        // 1️⃣ Campos obrigatórios do cabeçalho
         const camposObrigatorios = [
-            { id: 'nome_cliente_rua_inline', mensagem: 'O nome do cliente é obrigatório.' },
-            { id: 'cpf_cliente_rua_inline', mensagem: 'O CPF do cliente é obrigatório.' },
-            { id: 'numero_cliente_rua_inline', mensagem: 'O número de contato é obrigatório.' },
-            { id: 'data_comparecimento_rua_inline', mensagem: 'A data de comparecimento é obrigatória.' },
-            { id: 'loja_rua_inline', mensagem: 'A loja é obrigatória.' },
-            { id: 'vendedor_rua_inline', mensagem: 'O vendedor é obrigatório.' },
-            { id: 'tabulacao_vendedor_rua_inline', mensagem: 'A tabulação do vendedor é obrigatória.' }
+          { id: 'nome_cliente_rua_inline', mensagem: 'O nome do cliente é obrigatório.' },
+          { id: 'cpf_cliente_rua_inline', mensagem: 'O CPF do cliente é obrigatório.' },
+          { id: 'numero_cliente_rua_inline', mensagem: 'O número de contato é obrigatório.' },
+          { id: 'data_comparecimento_rua_inline', mensagem: 'A data de comparecimento é obrigatória.' },
+          { id: 'loja_rua_inline', mensagem: 'A loja é obrigatória.' },
+          { id: 'vendedor_rua_inline', mensagem: 'O vendedor é obrigatório.' },
+          { id: 'tabulacao_vendedor_rua_inline', mensagem: 'A tabulação do vendedor é obrigatória.' }
         ];
-        
         for (const campo of camposObrigatorios) {
-            const valor = $(`#${campo.id}`).val();
-            if (!valor || valor.trim() === '') {
-                alertaErro(campo.mensagem);
-                $(`#${campo.id}`).focus();
-                return false;
-            }
+          const valor = $(`#${campo.id}`).val();
+          if (!valor || valor.trim() === '') {
+            alertaErro(campo.mensagem);
+            $(`#${campo.id}`).focus();
+            return false;
+          }
         }
-        
-        // Validar CPF
+      
+        // 2️⃣ Validar CPF (11 dígitos)
         const cpf = $('#cpf_cliente_rua_inline').val().replace(/\D/g, '');
         if (cpf.length !== 11) {
-            alertaErro('CPF inválido. Deve conter 11 dígitos.');
-            $('#cpf_cliente_rua_inline').focus();
-            return false;
+          alertaErro('CPF inválido. Deve conter 11 dígitos.');
+          $('#cpf_cliente_rua_inline').focus();
+          return false;
         }
-        
-        // Validar produtos se a tabulação for NEGOCIO FECHADO
-        const tabulacao = $('#tabulacao_vendedor_rua_inline').val();
+      
+        // 3️⃣ Normalizar tabulação
+        let tabulacaoVendedor = $('#tabulacao_vendedor_rua_inline').val();
         if (tabulacaoVendedor === 'NÃO ACEITOU') {
-            tabulacaoVendedor = 'NAO_ACEITOU'; // Corrige o valor para uma opção válida
+          tabulacaoVendedor = 'NAO_ACEITOU';
         }
-        formData.append('tabulacao_vendedor', tabulacaoVendedor);
-        if (tabulacao === 'NEGOCIO FECHADO') {
-            const produtosContainer = $('#produtosContainerInline');
-            const produtoBlocos = produtosContainer.find('.produto-bloco');
-            
-            if (produtoBlocos.length === 0) {
-                alertaErro('Para tabulação NEGOCIO FECHADO é necessário adicionar pelo menos um produto.');
-                return false;
+      
+        // 4️⃣ Se for NEGÓCIO FECHADO, validar cada bloco de produto
+        if (tabulacaoVendedor === 'NEGÓCIO FECHADO') {
+          const blocos = $('#produtosContainerInline .produto-bloco');
+          if (blocos.length === 0) {
+            alertaErro('Para tabulação "NEGÓCIO FECHADO" é necessário adicionar pelo menos um produto.');
+            return false;
+          }
+          let todosValidos = true;
+          blocos.each(function(i) {
+            const $bloco = $(this);
+            // procura o select que termine em [produto_id]
+            const produtoId = $bloco.find('select[name$="[produto_id]"]').val();
+            if (!produtoId) {
+              alertaErro(`Selecione um produto no item ${i + 1}.`);
+              $bloco.find('select[name$="[produto_id]"]').focus();
+              todosValidos = false;
+              return false; // sai do each
             }
-            
-            // Verificar se cada produto tem um produto_id selecionado
-            let produtosValidos = true;
-            produtoBlocos.each(function(index) {
-                const produtoId = $(this).find('select[name^="produtos"][name$="[produto_id]"]').val();
-                if (!produtoId) {
-                    alertaErro(`Por favor, selecione um produto para o Produto ${index + 1}.`);
-                    produtosValidos = false;
-                    return false; // Sai do loop each
-                }
-                
-                const banco = $(this).find('input[name^="produtos"][name$="[banco]"]').val();
-                if (!banco) {
-                    alertaErro(`Por favor, informe o banco para o Produto ${index + 1}.`);
-                    produtosValidos = false;
-                    return false; // Sai do loop each
-                }
-            });
-            
-            if (!produtosValidos) {
-                return false;
+            const banco = $bloco.find('input[name$="[banco]"]').val();
+            if (!banco) {
+              alertaErro(`Informe o banco no item ${i + 1}.`);
+              $bloco.find('input[name$="[banco]"]').focus();
+              todosValidos = false;
+              return false;
             }
+          });
+          if (!todosValidos) return false;
         }
-        
-        
+      
+        // 5️⃣ Se chegou até aqui, tudo ok
         return true;
-    }
+      }
+      
+    
 
     /**
      * Exibe um alerta de erro
@@ -1228,11 +1226,11 @@ document.addEventListener('DOMContentLoaded', function() {
         const tabulacao = $('#tabulacao_vendedor_rua_inline').val();
         
         // Mostrar ou esconder o botão de adicionar produto com base na tabulação
-        if (tabulacao === 'NEGOCIO FECHADO') {
+        if (tabulacao === 'NEGÓCIO FECHADO') {
             $('#addProdutoBtnContainerInline').show();
         } else {
             $('#addProdutoBtnContainerInline').hide();
-            // Limpar container de produtos se a tabulação não for NEGOCIO FECHADO
+            // Limpar container de produtos se a tabulação não for NEGÓCIO FECHADO
             $('#produtosContainerInline').empty();
         }
     }

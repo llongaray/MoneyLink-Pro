@@ -764,7 +764,7 @@ def api_get_agendadosHoje(request):
     # 1️⃣ Base: agendamentos de hoje sem presença
     base_qs = Agendamento.objects.filter(
         dia_agendado__date=hoje,
-        presenca__isnull=True
+        presencas__isnull=True
     ).select_related('cliente_agendamento', 'loja', 'atendente_agendou')
     print(f"[DEBUG] Total de agendamentos base: {base_qs.count()}")
 
@@ -942,7 +942,7 @@ def api_get_clientesAtrasadoLoja(request):
         Agendamento.objects
         .filter(dia_agendado__date__lt=hoje)
         .exclude(tabulacao_agendamento='CONFIRMADO')
-        .filter(presenca__isnull=True)
+        .filter(presencas__isnull=True)
         .select_related('cliente_agendamento', 'loja', 'atendente_agendou')
     )
     print(f"[DEBUG] Total de agendamentos base: {base_qs.count()}")
@@ -1088,164 +1088,91 @@ def api_get_infocliente(request):
 @require_POST
 def api_post_novavenda(request):
     import logging
-    from datetime import datetime
     logger = logging.getLogger(__name__)
 
-    nome = request.POST.get('nome_cliente','').strip()
-    cpf  = request.POST.get('cpf_cliente','').strip().replace('.','').replace('-','')
-    num  = request.POST.get('numero_cliente','').strip()
-    dt_s = request.POST.get('data_comparecimento','')
-    loja_id = request.POST.get('loja','')
-    vend_id = request.POST.get('vendedor_id','')
-    tab_v   = request.POST.get('tabulacao_vendedor','')
+    # 1️⃣ Extrai campos do POST
+    nome      = request.POST.get('nome_cliente', '').strip()
+    cpf       = request.POST.get('cpf_cliente', '').strip().replace('.', '').replace('-', '')
+    num       = request.POST.get('numero_cliente', '').strip()
+    dt_s      = request.POST.get('data_comparecimento', '')
+    loja_id   = request.POST.get('loja', '')
+    vend_id   = request.POST.get('vendedor_id', '')
+    tab_v_raw = request.POST.get('tabulacao_vendedor', '').strip()
 
+    # 2️⃣ Mapeamento das tabulações para as chaves válidas em TextChoices
+    TAB_MAP = {
+        'NEGÓCIO FECHADO':  'NEGOCIO_FECHADO',
+        'FECHOU NEGÓCIO':   'NEGOCIO_FECHADO',
+        'FECHOU NEGOCIO':   'NEGOCIO_FECHADO',
+        'INELEGÍVEL':       'INELEGIVEL',
+        'NAO ACEITOU':      'NAO_ACEITOU',
+        'NÃO ACEITOU':      'NAO_ACEITOU',
+        'NAO QUIS OUVIR':   'NAO_QUIS_OUVIR',
+        'NÃO QUIS OUVIR':   'NAO_QUIS_OUVIR',
+        'PENDENTE':         'PENDENTE',
+    }
+    tab_v = TAB_MAP.get(tab_v_raw.upper(), tab_v_raw.upper())
+
+    # 3️⃣ Validações básicas
     if not all([nome, cpf, num, dt_s, loja_id, vend_id, tab_v]):
         return JsonResponse({'status':'error','message':'Campos obrigatórios faltando'}, status=400)
 
     try:
         dt_naive = timezone.datetime.strptime(dt_s, '%Y-%m-%d')
         dt_cmp = timezone.make_aware(dt_naive) if settings.USE_TZ else dt_naive
-    except:
+    except ValueError:
         return JsonResponse({'status':'error','message':'Data inválida'}, status=400)
 
+    # 4️⃣ Cria ou atualiza ClienteAgendamento
     cliente, created = ClienteAgendamento.objects.get_or_create(
         cpf=cpf,
-        defaults={'nome_completo':nome.upper(),'numero':num,'flg_whatsapp':True,'status':True}
+        defaults={
+            'nome_completo': nome.upper(),
+            'numero': num,
+            'flg_whatsapp': True,
+            'status': True
+        }
     )
     if not created:
         cliente.nome_completo = nome.upper()
         cliente.numero = num
         cliente.save()
 
+    # 5️⃣ Busca loja e vendedor
     try:
         loja = Loja.objects.get(id=loja_id)
         vend = User.objects.get(id=vend_id)
-    except:
+    except (Loja.DoesNotExist, User.DoesNotExist):
         return JsonResponse({'status':'error','message':'Loja ou vendedor não encontrado'}, status=400)
 
+    # 6️⃣ Processa produtos, se for NEGÓCIO_FECHADO
     produtos_json = request.POST.get('produtos_json') or request.POST.get('produtos','{}')
     produtos = []
     valor_total = Decimal('0')
-    if tab_v == 'NEGOCIO FECHADO':
+    if tab_v == 'NEGOCIO_FECHADO':
         try:
-            produtos = json.loads(produtos_json)
-            if isinstance(produtos, list):
-                produtos = {str(i):p for i,p in enumerate(produtos)}
-        except:
+            parsed = json.loads(produtos_json)
+            # converte lista em dict de índices
+            produtos = {str(i): p for i, p in enumerate(parsed)} if isinstance(parsed, list) else parsed
+        except json.JSONDecodeError:
             return JsonResponse({'status':'error','message':'Produtos inválidos'}, status=400)
         if not produtos:
             return JsonResponse({'status':'error','message':'Pelo menos um produto é obrigatório'}, status=400)
 
+    # 7️⃣ Cria as PresencaLoja
     pres_ids = []
     if produtos:
         for info in produtos.values():
-            sub = info.get('subsidio')=='true'
-            ac  = info.get('acao')=='true'
-            asso= info.get('associacao')=='true'
-            aum = info.get('aumento')=='true'
-            vt = info.get('valor_tac','0').replace('R$','').replace('.','').replace(',','.')
-            try: vt_dec = Decimal(vt)
-            except: vt_dec = Decimal('0')
-            valor_total += vt_dec
-            tipo = info.get('tipo_negociacao','').upper()
-            pid = info.get('produto_id')
-            if pid:
-                try:
-                    prod = Produto.objects.get(id=pid)
-                    tipo = prod.nome.upper()
-                except:
-                    pass
-            p = PresencaLoja.objects.create(
-                cliente_agendamento=cliente,
-                loja_comp=loja,
-                vendedor=vend,
-                tabulacao_venda=tab_v,
-                tipo_negociacao=tipo,
-                banco=info.get('banco','').upper(),
-                subsidio=sub, valor_tac=vt_dec,
-                acao=ac, associacao=asso, aumento=aum,
-                status_pagamento=PresencaLoja.StatusPagamentoChoices.EM_ESPERA,
-                cliente_rua=True,
-                data_presenca=dt_cmp
-            )
-            pres_ids.append(p.id)
-    else:
-        p = PresencaLoja.objects.create(
-            cliente_agendamento=cliente,
-            loja_comp=loja,
-            vendedor=vend,
-            tabulacao_venda=tab_v,
-            cliente_rua=True,
-            data_presenca=dt_cmp
-        )
-        pres_ids.append(p.id)
-
-    resp = {'status':'success','message':f'Cliente {cliente.nome_completo} registrado','cliente_id':cliente.id,'presencas_ids':pres_ids}
-    if valor_total>0:
-        resp['valor_total_tac'] = f'R$ {valor_total:.2f}'.replace('.',',')
-    return JsonResponse(resp, status=201)
-
-
-@login_required
-@require_POST
-def api_post_addvenda(request):
-    ag_id   = request.POST.get('agendamento_id', '')
-    vend_id = request.POST.get('vendedor_id', '')
-    tab_v   = request.POST.get('tabulacao_vendedor', '')
-    loja_id = request.POST.get('loja_id', '')
-
-    # validações iniciais
-    if not all([ag_id, vend_id, tab_v]):
-        return JsonResponse({'status':'error','message':'Campos obrigatórios faltando'}, status=400)
-
-    try:
-        ag = Agendamento.objects.select_related('cliente_agendamento').get(id=ag_id)
-    except Agendamento.DoesNotExist:
-        return JsonResponse({'status':'error','message':'Agendamento não encontrado'}, status=404)
-
-    if PresencaLoja.objects.filter(agendamento=ag).exists():
-        return JsonResponse({'status':'error','message':'Presença já existe'}, status=400)
-
-    try:
-        vend = User.objects.get(id=vend_id)
-    except User.DoesNotExist:
-        return JsonResponse({'status':'error','message':'Vendedor não encontrado'}, status=404)
-
-    if loja_id:
-        try:
-            loja = Loja.objects.get(id=loja_id)
-        except Loja.DoesNotExist:
-            return JsonResponse({'status':'error','message':'Loja não encontrada'}, status=404)
-    else:
-        loja = ag.loja
-
-    pres_feats = []
-
-    # fluxo de produtos (NEGÓCIO FECHADO)
-    if tab_v in ["FECHOU NEGOCIO", "NEGOCIO FECHADO"]:
-        raw = request.POST.get('produtos_json') or request.POST.get('produtos','{}')
-        try:
-            produtos = json.loads(raw)
-            if isinstance(produtos, list):
-                produtos = {str(i): p for i, p in enumerate(produtos)}
-        except json.JSONDecodeError:
-            return JsonResponse({'status':'error','message':'Produtos inválidos'}, status=400)
-
-        if not produtos:
-            return JsonResponse({'status':'error','message':'Produto obrigatório'}, status=400)
-
-        total = Decimal('0')
-        for info in produtos.values():
-            sub = str(info.get('subsidio')).lower() in ['true','1','sim']
-            ac  = str(info.get('acao')).lower()     in ['true','1','sim']
-            aso = str(info.get('associacao')).lower() in ['true','1','sim']
-            aum = str(info.get('aumento')).lower()  in ['true','1','sim']
-            vt = info.get('valor_tac','0').replace('R$','').replace('.','').replace(',','.')
+            sub   = str(info.get('subsidio')).lower() in ['true', '1', 'sim']
+            acao  = str(info.get('acao')).lower()     in ['true', '1', 'sim']
+            asso  = str(info.get('associacao')).lower() in ['true', '1', 'sim']
+            aum   = str(info.get('aumento')).lower()  in ['true', '1', 'sim']
+            vt    = info.get('valor_tac','0').replace('R$','').replace('.','').replace(',','.')
             try:
                 vt_dec = Decimal(vt)
             except:
                 vt_dec = Decimal('0')
-            total += vt_dec
+            valor_total += vt_dec
 
             tipo = info.get('tipo_negociacao','').upper()
             pid  = info.get('produto_id')
@@ -1256,8 +1183,8 @@ def api_post_addvenda(request):
                 except Produto.DoesNotExist:
                     pass
 
-            p = PresencaLoja(
-                agendamento=ag,
+            p = PresencaLoja.objects.create(
+                cliente_agendamento=cliente,
                 loja_comp=loja,
                 vendedor=vend,
                 tabulacao_venda=tab_v,
@@ -1265,46 +1192,166 @@ def api_post_addvenda(request):
                 banco=info.get('banco','').upper(),
                 subsidio=sub,
                 valor_tac=vt_dec,
-                acao=ac,
-                associacao=aso,
+                acao=acao,
+                associacao=asso,
                 aumento=aum,
-                status_pagamento=PresencaLoja.StatusPagamentoChoices.EM_ESPERA
+                status_pagamento=PresencaLoja.StatusPagamentoChoices.EM_ESPERA,
+                cliente_rua=True,
+                data_presenca=dt_cmp
             )
-            p.save()
-            pres_feats.append(p.id)
+            pres_ids.append(p.id)
 
-        # marca o Agendamento como CONFIRMADO
-        if ag.tabulacao_agendamento != 'CONFIRMADO':
-            ag.tabulacao_agendamento = 'CONFIRMADO'
-            ag.save()
-
-        return JsonResponse({
-            'status':'success',
-            'message': f'{len(pres_feats)} produtos registrados',
-            'presencas_ids': pres_feats,
-            'valor_total_tac': f'R$ {total:.2f}'.replace('.',',')
-        })
-
-    # fluxo padrão (sem produtos)
     else:
-        p = PresencaLoja(
-            agendamento=ag,
+        # sem produto
+        p = PresencaLoja.objects.create(
+            cliente_agendamento=cliente,
             loja_comp=loja,
             vendedor=vend,
-            tabulacao_venda=tab_v
+            tabulacao_venda=tab_v,
+            cliente_rua=True,
+            data_presenca=dt_cmp
         )
-        p.save()
+        pres_ids.append(p.id)
 
-        # marca o Agendamento como CONFIRMADO
+    # 8️⃣ Monta resposta
+    resp = {
+        'status': 'success',
+        'message': f'Cliente {cliente.nome_completo} registrado',
+        'cliente_id': cliente.id,
+        'presencas_ids': pres_ids
+    }
+    if valor_total > 0:
+        resp['valor_total_tac'] = f'R$ {valor_total:.2f}'.replace('.', ',')
+
+    return JsonResponse(resp, status=201)
+
+@login_required
+@require_POST
+def api_post_addvenda(request):
+    ag_id   = request.POST.get('agendamento_id','').strip()
+    vend_id = request.POST.get('vendedor_id','').strip()
+    raw_tab = request.POST.get('tabulacao_vendedor','').strip()
+    loja_id = request.POST.get('loja_id','').strip()
+
+    # 1️⃣ Campos obrigatórios
+    if not all([ag_id, vend_id, raw_tab]):
+        return JsonResponse({'status':'error','message':'Campos obrigatórios faltando'}, status=400)
+
+    # 2️⃣ Normaliza tabulação
+    TAB_MAP = {
+        'NEGÓCIO FECHADO':  PresencaLoja.TabulacaoVendaChoices.NEGOCIO_FECHADO,
+        'FECHOU NEGOCIO':   PresencaLoja.TabulacaoVendaChoices.NEGOCIO_FECHADO,
+        'INELEGÍVEL':       PresencaLoja.TabulacaoVendaChoices.INELEGIVEL,
+        'INELEGIVEL':       PresencaLoja.TabulacaoVendaChoices.INELEGIVEL,
+        'NÃO ACEITOU':      PresencaLoja.TabulacaoVendaChoices.NAO_ACEITOU,
+        'NAO ACEITOU':      PresencaLoja.TabulacaoVendaChoices.NAO_ACEITOU,
+        'NÃO QUIS OUVIR':   PresencaLoja.TabulacaoVendaChoices.NAO_QUIS_OUVIR,
+        'NAO QUIS OUVIR':   PresencaLoja.TabulacaoVendaChoices.NAO_QUIS_OUVIR,
+        'PENDENTE':         PresencaLoja.TabulacaoVendaChoices.PENDENTE,
+    }
+    tab_v = TAB_MAP.get(raw_tab, raw_tab.replace(' ', '_').upper())
+    if tab_v not in PresencaLoja.TabulacaoVendaChoices.values:
+        return JsonResponse({
+            'status':'error','message':f"Tabulação inválida: '{raw_tab}'."
+        }, status=400)
+
+    # 3️⃣ Carrega agendamento
+    try:
+        ag = Agendamento.objects.get(id=ag_id)
+    except Agendamento.DoesNotExist:
+        return JsonResponse({'status':'error','message':'Agendamento não encontrado'}, status=404)
+
+    # Carrega vendedor
+    try:
+        vend = User.objects.get(id=vend_id)
+    except User.DoesNotExist:
+        return JsonResponse({'status':'error','message':'Vendedor não encontrado'}, status=404)
+
+    # Carrega loja (ou usa a do agendamento)
+    if loja_id:
+        try:
+            loja = Loja.objects.get(id=loja_id)
+        except Loja.DoesNotExist:
+            return JsonResponse({'status':'error','message':'Loja não encontrada'}, status=404)
+    else:
+        loja = ag.loja
+
+    pres_ids = []
+
+    # 4️⃣ NEGÓCIO FECHADO → itera sobre produtos JSON
+    if tab_v == PresencaLoja.TabulacaoVendaChoices.NEGOCIO_FECHADO:
+        raw = request.POST.get('produtos_json','[]')
+        try:
+            produtos = json.loads(raw)
+        except json.JSONDecodeError:
+            return JsonResponse({'status':'error','message':'JSON de produtos inválido'}, status=400)
+
+        if not isinstance(produtos, list) or not produtos:
+            return JsonResponse({
+                'status':'error',
+                'message':'Ao menos um produto é obrigatório para NEGÓCIO FECHADO'
+            }, status=400)
+
+        total_tac = Decimal('0')
+        for info in produtos:
+            # parsing...
+            vt_str = info.get('valor_tac','0').replace('R$','').replace('.','').replace(',','.')
+            try: vt_dec = Decimal(vt_str)
+            except: vt_dec = Decimal('0')
+            total_tac += vt_dec
+
+            # monta PresencaLoja
+            p = PresencaLoja(
+                agendamento       = ag,
+                loja_comp         = loja,
+                vendedor          = vend,
+                tabulacao_venda   = tab_v,
+                tipo_negociacao   = info.get('tipo_negociacao','').upper(),
+                banco             = info.get('banco','').upper(),
+                subsidio          = str(info.get('subsidio')).lower() in ('true','1','sim'),
+                valor_tac         = vt_dec,
+                acao              = str(info.get('acao')).lower() in ('true','1','sim'),
+                associacao        = str(info.get('associacao')).lower() in ('true','1','sim'),
+                aumento           = str(info.get('aumento')).lower() in ('true','1','sim'),
+                status_pagamento  = PresencaLoja.StatusPagamentoChoices.EM_ESPERA,
+                data_presenca     = timezone.now(),  # Adiciona data da presença
+            )
+            # Salva sem validar unicidade de agendamento
+            p.save()
+            pres_ids.append(p.id)
+
+        # marca confirmado
         if ag.tabulacao_agendamento != 'CONFIRMADO':
             ag.tabulacao_agendamento = 'CONFIRMADO'
             ag.save()
 
         return JsonResponse({
             'status':'success',
-            'message':'Presença registrada',
-            'presenca_id': p.id
+            'message':f'{len(pres_ids)} produto(s) registrado(s)',
+            'presencas_ids': pres_ids,
+            'valor_total_tac': f'R$ {total_tac:.2f}'.replace('.',',')
         })
+
+    # 5️⃣ Fluxo padrão (sem produtos)
+    p = PresencaLoja(
+        agendamento     = ag,
+        loja_comp       = loja,
+        vendedor        = vend,
+        tabulacao_venda = tab_v,
+        data_presenca   = timezone.now()  # Adiciona data da presença
+    )
+    p.save()
+    pres_ids.append(p.id)
+
+    if ag.tabulacao_agendamento != 'CONFIRMADO':
+        ag.tabulacao_agendamento = 'CONFIRMADO'
+        ag.save()
+
+    return JsonResponse({
+        'status':'success',
+        'message':'Presença registrada',
+        'presenca_id': p.id
+    })
 
 
 @login_required
@@ -1608,24 +1655,16 @@ def api_get_submodal_cliente(request):
     - dados da presença (PresencaLoja), se houver
     """
     try:
-        agendamento_id      = request.GET.get('agendamento_id')
-        cpf_cliente_param   = request.GET.get('cpf_cliente')
-        agendamento         = None
+        agendamento_id    = request.GET.get('agendamento_id')
+        cpf_cliente_param = request.GET.get('cpf_cliente')
 
-        # Query base já com select_related
-        base_qs = Agendamento.objects.select_related(
-            'cliente_agendamento',
-            'loja',
-            'atendente_agendou',
-            'presenca',           # PresencaLoja OneToOne
-            'presenca__vendedor'  # vendedor via PresencaLoja
+        # 1) busca o Agendamento
+        qs = Agendamento.objects.select_related(
+            'cliente_agendamento', 'loja', 'atendente_agendou'
         )
-
-        # 1) Escolha Agendamento pelo ID ou CPF
         if agendamento_id:
-            try:
-                agendamento = base_qs.get(pk=int(agendamento_id))
-            except (ValueError, Agendamento.DoesNotExist):
+            ag = qs.filter(pk=agendamento_id).first()
+            if not ag:
                 return JsonResponse(
                     {'texto': 'Agendamento não encontrado pelo ID', 'classe': 'error'},
                     status=404
@@ -1637,15 +1676,13 @@ def api_get_submodal_cliente(request):
                     {'texto': 'CPF inválido fornecido', 'classe': 'error'},
                     status=400
                 )
-            agendamento = base_qs.filter(
+            ag = qs.filter(
                 cliente_agendamento__cpf=cpf_limpo
             ).order_by('-dia_agendado').first()
-
-            if not agendamento:
-                # Cliente existe mas sem agendamento?
-                from apps.siape.models import ClienteAgendamento
-                try:
-                    cliente = ClienteAgendamento.objects.get(cpf=cpf_limpo)
+            if not ag:
+                # se cliente existe mas sem agendamento...
+                cliente = ClienteAgendamento.objects.filter(cpf=cpf_limpo).first()
+                if cliente:
                     return JsonResponse({
                         'texto': 'Cliente sem agendamentos registrados.',
                         'cliente_info': {
@@ -1654,55 +1691,56 @@ def api_get_submodal_cliente(request):
                             'numero': cliente.numero
                         }
                     }, status=404)
-                except ClienteAgendamento.DoesNotExist:
-                    return JsonResponse(
-                        {'texto': 'Nenhum cliente ou agendamento encontrado', 'classe': 'error'},
-                        status=404
-                    )
+                return JsonResponse(
+                    {'texto': 'Nenhum cliente ou agendamento encontrado', 'classe': 'error'},
+                    status=404
+                )
         else:
             return JsonResponse(
                 {'texto': 'agendamento_id ou cpf_cliente não fornecido', 'classe': 'error'},
                 status=400
             )
 
-        # 2) Serialização do agendamento
-        cli = agendamento.cliente_agendamento
+        # 2) Serializa dados do cliente
+        cli = ag.cliente_agendamento
         cliente_data = {
             'nome_cliente':   cli.nome_completo if cli else 'N/A',
             'cpf_cliente':    getattr(cli, 'cpf', 'N/A'),
             'numero_cliente': getattr(cli, 'numero', 'N/A'),
         }
 
-        # Formata dia_agendado: se USE_TZ True, usa localtime; senão, strftime direto
-        dt = agendamento.dia_agendado
-        if dt:
-            if settings.USE_TZ:
-                dt = timezone.localtime(dt)
-            dia_ag = dt.strftime('%Y-%m-%d %H:%M')
-        else:
-            dia_ag = ''
+        # formata dia_agendado
+        dt = ag.dia_agendado
+        if dt and settings.USE_TZ:
+            dt = timezone.localtime(dt)
+        dia_ag = dt.strftime('%Y-%m-%d %H:%M') if dt else ''
 
-        # atente ao apelido ou nome do atendente
-        user_at = agendamento.atendente_agendou
-        atendente_nome = 'N/A'
-        if user_at:
-            try:
-                fn = Funcionario.objects.get(usuario=user_at)
-                atendente_nome = fn.apelido.split()[0] if fn.apelido else fn.nome_completo
-            except Funcionario.DoesNotExist:
-                atendente_nome = user_at.get_full_name() or user_at.username
+        # nome do atendente que agendou
+        atend = ag.atendente_agendou
+        if atend:
+            fn = Funcionario.objects.filter(usuario=atend).first()
+            atend_nome = fn.apelido.split()[0] if fn and fn.apelido else (atend.get_full_name() or atend.username)
+        else:
+            atend_nome = 'N/A'
 
         agendamento_data = {
-            'id': agendamento.id,
+            'id': ag.id,
             'dia_agendado': dia_ag,
-            'atendente_agendou': atendente_nome,
-            'loja_agendada': agendamento.loja.nome if agendamento.loja else 'N/A',
-            'tabulacao_agendamento': agendamento.tabulacao_agendamento or '',
+            'atendente_agendou': atend_nome,
+            'loja_agendada': ag.loja.nome if ag.loja else 'N/A',
+            'tabulacao_agendamento': ag.tabulacao_agendamento or '',
         }
 
-        # 3) Serialização da PresencaLoja
-        pres = getattr(agendamento, 'presenca', None)
+        # 3) Pega a primeira PresencaLoja, se existir
+        pres = ag.presencas.first()
         if pres:
+            # nome do vendedor
+            vend_fn = Funcionario.objects.filter(usuario=pres.vendedor).first()
+            vendedor_nome = (
+                vend_fn.apelido.split()[0] if vend_fn and vend_fn.apelido
+                else (pres.vendedor.get_full_name() or pres.vendedor.username)
+            ) if pres.vendedor else 'N/A'
+
             presenca_data = {
                 'tabulacao_vendedor':    pres.tabulacao_venda or '',
                 'tipo_negociacao':       pres.tipo_negociacao or '',
@@ -1715,9 +1753,7 @@ def api_get_submodal_cliente(request):
                 'status_tac':            pres.get_status_pagamento_display() or '',
                 'data_pagamento_tac':    pres.data_pagamento.strftime('%Y-%m-%d') if pres.data_pagamento else '',
                 'cliente_rua':           bool(pres.cliente_rua),
-                'vendedor_loja':         (pres.vendedor.funcionario_profile.apelido.split()[0]
-                                          if hasattr(pres.vendedor, 'funcionario_profile') and pres.vendedor.funcionario_profile.apelido
-                                          else pres.vendedor.get_full_name() or pres.vendedor.username),
+                'vendedor_loja':         vendedor_nome,
             }
         else:
             presenca_data = {
@@ -1727,12 +1763,11 @@ def api_get_submodal_cliente(request):
                 'data_pagamento_tac': '', 'cliente_rua': False,  'vendedor_loja': 'N/A',
             }
 
-        # 4) Combina tudo
+        # 4) combina tudo
         resultado = {**cliente_data, **agendamento_data, **presenca_data}
-
         return JsonResponse(resultado, status=200)
 
-    except Exception as e:
+    except Exception:
         traceback.print_exc()
         return JsonResponse(
             {'texto': 'Erro interno ao obter submodal do cliente', 'classe': 'error'},
@@ -1859,7 +1894,11 @@ def api_get_emloja(request):
         # Query base: todos com presença não-nula
         qs = Agendamento.objects.filter(
             presenca__isnull=False
-        ).select_related('cliente_agendamento', 'loja').prefetch_related('presenca')
+        ).select_related(
+            'cliente_agendamento',
+            'loja',
+            'presenca'  # Inclui o relacionamento presenca
+        )
 
         # 1) Filtrar por data de agendamento (superuser) ou por loja (estágio/padrão)
         if user.is_superuser:
@@ -1895,8 +1934,8 @@ def api_get_emloja(request):
         # 2) Serializa resultados
         clientes = []
         for ag in qs.order_by('-dia_agendado'):
-            # busca primeiro registro de PresencaLoja
-            pres = PresencaLoja.objects.filter(agendamento=ag).first()
+            # Usa o relacionamento presenca diretamente
+            pres = ag.presenca
             tab_venda = pres.tabulacao_venda if pres and pres.tabulacao_venda else 'PENDENTE'
 
             cliente = ag.cliente_agendamento

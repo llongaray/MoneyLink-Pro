@@ -67,11 +67,11 @@ class PresencaLoja(models.Model):
         NAO_PAGO  = 'NAO_PAGO',  'NÃO PAGO'
         PAGO      = 'PAGO',      'PAGO'
 
-    agendamento = models.OneToOneField(
+    agendamento = models.ForeignKey(
         'inss.Agendamento',
         on_delete=models.SET_NULL,
         null=True, blank=True,
-        related_name='presenca',
+        related_name='presencas',
         verbose_name="Agendamento Associado"
     )
     cliente_agendamento = models.ForeignKey(
