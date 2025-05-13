@@ -4,6 +4,8 @@ from django.core.files.storage import FileSystemStorage
 from django.conf import settings
 import os
 from django.utils.text import slugify
+from django.utils import timezone
+from django.core.validators import FileExtensionValidator
 
 # --- Configuração de Armazenamento ---
 
@@ -221,7 +223,7 @@ class Funcionario(models.Model):
     matricula = models.CharField(max_length=50, unique=True, blank=True, null=True, verbose_name="Matrícula") # Adicionado unique=True
     pis = models.CharField(max_length=20, blank=True, null=True, verbose_name="PIS") # Campo PIS adicionado aqui
     empresa = models.ForeignKey(Empresa, on_delete=models.PROTECT, related_name='funcionarios', verbose_name="Empresa")
-    loja = models.ForeignKey(Loja, on_delete=models.SET_NULL, null=True, blank=True, related_name='funcionarios', verbose_name="Loja")
+    lojas = models.ManyToManyField(Loja, blank=True, related_name='funcionarios', verbose_name="Lojas")
     departamento = models.ForeignKey(Departamento, on_delete=models.PROTECT, related_name='funcionarios', verbose_name="Departamento")
     setor = models.ForeignKey(Setor, on_delete=models.PROTECT, related_name='funcionarios', verbose_name="Setor")
     cargo = models.ForeignKey(Cargo, on_delete=models.PROTECT, related_name='funcionarios', verbose_name="Cargo")
@@ -531,3 +533,120 @@ class Comissionamento(models.Model):
              # ou que campos de faixa sejam usados corretamente, pode ser complexo via constraints.
              # O método clean() é geralmente mais adequado para essas validações condicionais.
         ]
+
+# --- Modelos de Comunicados ---
+
+class Comunicado(models.Model):
+    """
+    Modelo para armazenar comunicados enviados pelo RH para os funcionários.
+    """
+    assunto = models.CharField(max_length=255, verbose_name="Assunto")
+    destinatarios = models.ManyToManyField(
+        User,
+        related_name='comunicados_recebidos',
+        verbose_name="Destinatários"
+    )
+    texto = models.TextField(verbose_name="Texto do Comunicado", blank=True)
+    banner = models.ImageField(
+        upload_to='comunicados/banners/',
+        verbose_name="Banner",
+        blank=True,
+        null=True,
+        validators=[
+            FileExtensionValidator(allowed_extensions=['png', 'jpg', 'jpeg', 'webp'])
+        ]
+    )
+    status = models.BooleanField(default=True, verbose_name="Ativo")
+    data_criacao = models.DateTimeField(auto_now_add=True, verbose_name="Data de Criação")
+    criado_por = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        related_name='comunicados_criados',
+        verbose_name="Criado por"
+    )
+
+    def clean(self):
+        if not self.texto and not self.banner:
+            raise ValidationError('O comunicado deve ter texto ou banner.')
+        if self.texto and self.banner:
+            raise ValidationError('O comunicado não pode ter texto e banner simultaneamente.')
+
+    def __str__(self):
+        return f"{self.assunto} ({self.data_criacao.strftime('%d/%m/%Y')})"
+
+    def marcar_como_lido(self, usuario):
+        """
+        Marca o comunicado como lido para um usuário específico.
+        Cria ou atualiza o registro de controle.
+        """
+        controle, created = ControleComunicado.objects.get_or_create(
+            comunicado=self,
+            usuario=usuario,
+            defaults={'lido': True, 'data_leitura': timezone.now()}
+        )
+        
+        if not created and not controle.lido:
+            controle.lido = True
+            controle.data_leitura = timezone.now()
+            controle.save()
+        
+        return controle
+
+    class Meta:
+        verbose_name = "Comunicado"
+        verbose_name_plural = "Comunicados"
+        ordering = ['-data_criacao']
+
+class ControleComunicado(models.Model):
+    """
+    Modelo para controlar quais comunicados foram lidos por cada usuário.
+    """
+    comunicado = models.ForeignKey(
+        Comunicado,
+        on_delete=models.CASCADE,
+        related_name='controles',
+        verbose_name="Comunicado"
+    )
+    usuario = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='controles_comunicados',
+        verbose_name="Usuário"
+    )
+    lido = models.BooleanField(default=False, verbose_name="Lido")
+    data_leitura = models.DateTimeField(null=True, blank=True, verbose_name="Data da Leitura")
+
+    class Meta:
+        verbose_name = "Controle de Comunicado"
+        verbose_name_plural = "Controles de Comunicados"
+        unique_together = ['comunicado', 'usuario']
+        ordering = ['-data_leitura']
+
+    def __str__(self):
+        status = "Lido" if self.lido else "Não lido"
+        return f"{self.comunicado.assunto} - {self.usuario.username} ({status})"
+
+class ArquivoComunicado(models.Model):
+    """
+    Modelo para armazenar arquivos anexados aos comunicados.
+    """
+    comunicado = models.ForeignKey(
+        Comunicado,
+        on_delete=models.CASCADE,
+        related_name='arquivos',
+        verbose_name="Comunicado"
+    )
+    arquivo = models.FileField(
+        upload_to='comunicados/arquivos/',
+        verbose_name="Arquivo"
+    )
+    status = models.BooleanField(default=True, verbose_name="Ativo")
+    data_criacao = models.DateTimeField(auto_now_add=True, verbose_name="Data de Criação")
+
+    def __str__(self):
+        return f"Arquivo: {os.path.basename(self.arquivo.name)} - {self.comunicado.assunto}"
+
+    class Meta:
+        verbose_name = "Arquivo de Comunicado"
+        verbose_name_plural = "Arquivos de Comunicados"
+        ordering = ['-data_criacao']

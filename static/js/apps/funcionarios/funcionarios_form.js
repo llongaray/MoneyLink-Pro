@@ -30,105 +30,52 @@ $(document).ready(function() {
 
     // Obtém o token CSRF do cookie
     function getCsrfToken() {
-        let cookieValue = null;
-        if (document.cookie && document.cookie !== '') {
-            const cookies = document.cookie.split(';');
-            for (let i = 0; i < cookies.length; i++) {
-                const cookie = cookies[i].trim();
-                if (cookie.substring(0, 'csrftoken'.length + 1) === ('csrftoken' + '=')) {
-                    cookieValue = decodeURIComponent(cookie.substring('csrftoken'.length + 1));
-                    break;
-                }
-            }
-        }
-        return cookieValue;
+        return document.querySelector('[name=csrfmiddlewaretoken]').value;
     }
 
     // Exibe mensagens como Toasts (ATUALIZADO)
     function showMessage(type, message, duration = 5000) {
-        const alertClass = type === 'success' ? 'alert-success' : 'alert-danger';
-        const iconClass = type === 'success' ? 'bxs-check-circle' : 'bxs-x-circle';
-
-        // Cria o elemento de alerta (toast)
-        const $alert = $(`
-            <div class="alert ${alertClass} alert-dismissible fade" role="alert" style="display: flex; align-items: center; gap: 0.75rem;">
-                <i class='bx ${iconClass}' style="font-size: 1.3rem; flex-shrink: 0;"></i>
-                <div style="flex-grow: 1;">${message}</div>
-                <button type="button" class="btn-close" aria-label="Close" style="padding: 0.8rem; opacity: 0.8; background: none; border: none; font-size: 1.2rem; line-height: 1; color: inherit;"></button>
-            </div>
-        `);
-
-        // Cria o container de toasts se ainda não existir
-        let $toastContainer = $('#message-container'); // Usa o ID do CSS
-        if ($toastContainer.length === 0) {
-            // Cria o container com os estilos corretos
-            $toastContainer = $('<div id="message-container" style="position: fixed; top: 20px; right: 20px; z-index: 1056; width: auto; max-width: 400px;"></div>');
-            $('body').append($toastContainer);
-        }
-
-        // Adiciona o novo toast ao container
-        $toastContainer.append($alert);
-
-        // Força reflow para garantir que a animação funcione
-        $alert.width();
-
-        // Adiciona a classe 'show' para iniciar a animação de entrada
-        $alert.addClass('show');
-
-        // Define timeout para remover o toast
-        const timer = setTimeout(() => {
-            $alert.removeClass('show'); // Inicia animação de saída
-            $alert.on('transitionend webkitTransitionEnd oTransitionEnd', function () {
-                $(this).remove();
-            });
-            setTimeout(() => $alert.remove(), 600); // Fallback
-        }, duration);
-
-        // Permite fechar manualmente
-        $alert.find('.btn-close').on('click', function() {
-            clearTimeout(timer);
-             const $thisAlert = $(this).closest('.alert');
-             $thisAlert.removeClass('show');
-             $thisAlert.on('transitionend webkitTransitionEnd oTransitionEnd', function () {
-                 $(this).remove();
-             });
-             setTimeout(() => $thisAlert.remove(), 600);
-        });
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+        document.querySelector('.container').insertBefore(alertDiv, document.querySelector('.row'));
+        setTimeout(() => alertDiv.remove(), duration);
     }
 
     // Limpa e reseta um select
     function resetSelect($select, defaultOptionText) {
-        $select.empty().append(`<option value="">${defaultOptionText}</option>`).prop('disabled', true);
+        $select.html(`<option value="">--- ${defaultOptionText} ---</option>`);
+        $select.prop('disabled', true);
     }
 
     // Validação básica de CPF (algoritmo)
     function validarCPF(cpf) {
-        cpf = cpf.replace(/[^\d]+/g, ''); // Remove caracteres não numéricos
-        if (cpf == '') return false;
-        if (cpf.length != 11 ||
-            cpf == "00000000000" ||
-            cpf == "11111111111" ||
-            cpf == "22222222222" ||
-            cpf == "33333333333" ||
-            cpf == "44444444444" ||
-            cpf == "55555555555" ||
-            cpf == "66666666666" ||
-            cpf == "77777777777" ||
-            cpf == "88888888888" ||
-            cpf == "99999999999")
-            return false;
-        // Valida DVs
-        let add = 0;
-        for (let i = 0; i < 9; i++) add += parseInt(cpf.charAt(i)) * (10 - i);
-        let rev = 11 - (add % 11);
-        if (rev == 10 || rev == 11) rev = 0;
-        if (rev != parseInt(cpf.charAt(9))) return false;
-        add = 0;
-        for (let i = 0; i < 10; i++) add += parseInt(cpf.charAt(i)) * (11 - i);
-        rev = 11 - (add % 11);
-        if (rev == 10 || rev == 11) rev = 0;
-        if (rev != parseInt(cpf.charAt(10))) return false;
-        return true;
+        cpf = cpf.replace(/[^\d]/g, '');
+        if (cpf.length !== 11) return false;
+        
+        // Validação do CPF
+        if (/^(\d)\1{10}$/.test(cpf)) return false;
+        
+        let soma = 0;
+        for (let i = 0; i < 9; i++) {
+            soma += parseInt(cpf.charAt(i)) * (10 - i);
+        }
+        let resto = 11 - (soma % 11);
+        let digitoVerificador1 = resto > 9 ? 0 : resto;
+        
+        if (digitoVerificador1 !== parseInt(cpf.charAt(9))) return false;
+        
+        soma = 0;
+        for (let i = 0; i < 10; i++) {
+            soma += parseInt(cpf.charAt(i)) * (11 - i);
+        }
+        resto = 11 - (soma % 11);
+        let digitoVerificador2 = resto > 9 ? 0 : resto;
+        
+        return digitoVerificador2 === parseInt(cpf.charAt(10));
     }
 
     // --- Funções de Carregamento e População ---
@@ -153,9 +100,9 @@ $(document).ready(function() {
                 todosEquipes = dataGeral.equipes || [];
 
                 // Popula selects principais
-                popularSelect($empresaSelect, todosEmpresas, 'id', 'nome', '--- Selecione a Empresa ---');
-                popularSelect($horarioSelect, todosHorarios, 'id', 'nome', '--- Selecione o Horário ---'); // Usar 'nome' para exibição
-                popularSelect($equipeSelect, todosEquipes, 'id', 'nome', '--- Nenhuma Equipe ---');
+                popularSelect($empresaSelect, todosEmpresas, 'id', 'nome', 'Selecione uma Empresa', false);
+                popularSelect($horarioSelect, todosHorarios, 'id', 'nome', 'Selecione um Horário', false);
+                popularSelect($equipeSelect, todosEquipes, 'id', 'nome', 'Selecione uma Equipe', false);
 
                 // Habilita selects principais se tiverem opções
                 $empresaSelect.prop('disabled', todosEmpresas.length === 0);
@@ -185,55 +132,106 @@ $(document).ready(function() {
 
     // Popula Departamentos e Cargos com base na Empresa
     function popularSelectsDependentes(empresaId) {
-        resetSelect($departamentoSelect, '--- Selecione a Empresa Primeiro ---');
-        resetSelect($setorSelect, '--- Selecione o Departamento Primeiro ---');
-        resetSelect($cargoSelect, '--- Selecione a Empresa Primeiro ---');
-
         if (!empresaId) {
-            return; // Já estão resetados e desabilitados
+            resetSelect($('#departamento'), 'Selecione a Empresa Primeiro');
+            resetSelect($('#setor'), 'Selecione o Departamento Primeiro');
+            resetSelect($('#cargo'), 'Selecione a Empresa Primeiro');
+            $('#lojas-container').html('<p class="text-muted small">Selecione a empresa primeiro para carregar as lojas disponíveis.</p>');
+            return;
         }
 
-        // Filtra Departamentos
-        const departamentosFiltrados = todosDepartamentos.filter(d => String(d.empresa_id) === String(empresaId));
-        popularSelect($departamentoSelect, departamentosFiltrados, 'id', 'nome', '--- Selecione o Departamento ---');
-        $departamentoSelect.prop('disabled', departamentosFiltrados.length === 0);
+        $.ajax({
+            url: '/rh/api/get/infogeralemp/',
+            method: 'GET',
+            success: function(response) {
+                const empresa = response.empresas.find(e => e.id === parseInt(empresaId));
+                if (!empresa) return;
 
-        // Filtra Cargos
-        const cargosFiltrados = todosCargos.filter(c => String(c.empresa_id) === String(empresaId));
-        popularSelect($cargoSelect, cargosFiltrados, 'id', 'nome_com_hierarquia', '--- Selecione o Cargo ---');
-        $cargoSelect.prop('disabled', cargosFiltrados.length === 0);
+                // Popular departamentos
+                const departamentos = empresa.departamentos.map(dept => ({
+                    id: dept.id,
+                    nome: dept.nome
+                }));
+                popularSelect($('#departamento'), departamentos, 'id', 'nome', 'Selecione um Departamento', false);
+
+                // Popular cargos
+                const cargos = empresa.cargos.map(cargo => ({
+                    id: cargo.id,
+                    nome: cargo.nome
+                }));
+                popularSelect($('#cargo'), cargos, 'id', 'nome', 'Selecione um Cargo', false);
+
+                // Popular lojas
+                popularLojas(empresa.lojas);
+            },
+            error: function(xhr, status, error) {
+                showMessage('danger', 'Erro ao carregar dados dependentes: ' + error);
+            }
+        });
     }
 
     // Popula Setores com base no Departamento
     function popularSetores(departamentoId) {
-        resetSelect($setorSelect, '--- Selecione o Departamento Primeiro ---');
-
         if (!departamentoId) {
-            return; // Já está resetado e desabilitado
+            resetSelect($setorSelect, 'Selecione o Departamento Primeiro');
+            return;
         }
 
-        const setoresFiltrados = todosSetores.filter(s => String(s.departamento_id) === String(departamentoId));
-        popularSelect($setorSelect, setoresFiltrados, 'id', 'nome', '--- Selecione o Setor ---');
-        $setorSelect.prop('disabled', setoresFiltrados.length === 0);
+        $.ajax({
+            url: '/rh/api/get/infogeralemp/',
+            method: 'GET',
+            success: function(response) {
+                const departamento = response.empresas
+                    .flatMap(e => e.departamentos)
+                    .find(d => d.id === parseInt(departamentoId));
+                
+                if (!departamento) return;
+
+                const setores = departamento.setores.map(setor => ({
+                    id: setor.id,
+                    nome: setor.nome
+                }));
+                popularSelect($setorSelect, setores, 'id', 'nome', 'Selecione um Setor', false);
+            },
+            error: function(xhr, status, error) {
+                showMessage('danger', 'Erro ao carregar setores: ' + error);
+            }
+        });
     }
 
     // Função genérica para popular um select
-    function popularSelect($select, data, valueField, textField, defaultOptionText) {
-        $select.empty().append(`<option value="">${defaultOptionText}</option>`);
-        if (data && data.length > 0) {
-             data.forEach(item => {
-                // Para Horário, usa a representação __str__ que já vem formatada (assumindo que a API retorna)
-                // Se a API retornar campos separados, ajuste aqui para formatar como quiser.
-                // Ex: const displayText = textField === 'horario_formatado' ? item.horario_formatado : item[textField];
-                const displayText = item[textField];
-                $select.append(`<option value="${item[valueField]}">${displayText}</option>`);
-            });
-            // Habilita o select SE ele foi populado com opções válidas
-             $select.prop('disabled', false);
-        } else {
-            // Mantém desabilitado se não houver dados
-            $select.prop('disabled', true);
+    function popularSelect($select, data, valueField, textField, defaultOptionText, isDisabled = true) {
+        $select.html(`<option value="">--- ${defaultOptionText} ---</option>`);
+        data.forEach(item => {
+            $select.append(`<option value="${item[valueField]}">${item[textField]}</option>`);
+        });
+        $select.prop('disabled', isDisabled);
+    }
+
+    // Função para popular o container de lojas
+    function popularLojas(lojas) {
+        const container = $('#lojas-container');
+        container.empty();
+        
+        if (!lojas || lojas.length === 0) {
+            container.html('<p class="text-muted small">Nenhuma loja disponível para esta empresa.</p>');
+            return;
         }
+        
+        const checkboxGroup = $('<div class="checkbox-group"></div>');
+        lojas.forEach(loja => {
+            const checkbox = $(`
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="lojas" value="${loja.id}" id="loja_${loja.id}">
+                    <label class="form-check-label" for="loja_${loja.id}">
+                        ${loja.nome}
+                    </label>
+                </div>
+            `);
+            checkboxGroup.append(checkbox);
+        });
+        
+        container.html(checkboxGroup);
     }
 
     // Função para carregar dados dos cards (funcionários ativos e inativos)
@@ -343,6 +341,17 @@ $(document).ready(function() {
 
         // Envia a requisição POST diretamente
         const formData = new FormData($form[0]); // Cria FormData a partir do formulário
+
+        // Adiciona as lojas selecionadas
+        const lojasSelecionadas = [];
+        $('input[name="lojas"]:checked').each(function() {
+            lojasSelecionadas.push($(this).val());
+        });
+        lojasSelecionadas.forEach(lojaId => {
+            formData.append('lojas', lojaId);
+        });
+        console.log("Lojas selecionadas:", lojasSelecionadas);
+
         const submitButtonText = $submitButton.html();
         $submitButton.prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Salvando...');
 
@@ -361,9 +370,9 @@ $(document).ready(function() {
                     showMessage('success', response.message); // Exibe a mensagem de sucesso recebida da API
                     $form[0].reset(); // Limpa o formulário
                     // Reseta selects dependentes e validação de CPF
-                    resetSelect($departamentoSelect, '--- Selecione a Empresa Primeiro ---');
-                    resetSelect($setorSelect, '--- Selecione o Departamento Primeiro ---');
-                    resetSelect($cargoSelect, '--- Selecione a Empresa Primeiro ---');
+                    resetSelect($departamentoSelect, 'Selecione a Empresa Primeiro');
+                    resetSelect($setorSelect, 'Selecione o Departamento Primeiro');
+                    resetSelect($cargoSelect, 'Selecione a Empresa Primeiro');
                     $cpfInput.removeClass('is-valid is-invalid');
                     // Recarrega a lista de CPFs para incluir o novo
                     carregarDadosIniciais();
@@ -385,14 +394,12 @@ $(document).ready(function() {
 
     // Ao mudar a Empresa, popula os selects dependentes
     $empresaSelect.change(function() {
-        const empresaId = $(this).val();
-        popularSelectsDependentes(empresaId);
+        popularSelectsDependentes($(this).val());
     });
 
     // Ao mudar o Departamento, popula os Setores
     $departamentoSelect.change(function() {
-        const departamentoId = $(this).val();
-        popularSetores(departamentoId);
+        popularSetores($(this).val());
     });
 
     // Ao sair do campo CPF ou mudar seu valor, valida

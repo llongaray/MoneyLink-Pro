@@ -9,6 +9,7 @@ class ControleCampanha(models.Model):
         ('SETOR', 'Setor'),
         ('LOJA', 'Loja'),
         ('EQUIPE', 'Equipe'),
+        ('CARGO', 'Cargo'),
     ]
     
     titulo = models.CharField(max_length=100, verbose_name="Título da Campanha")
@@ -26,6 +27,7 @@ class ControleCampanha(models.Model):
     setores = models.ManyToManyField('funcionarios.Setor', blank=True, verbose_name="Setores")
     lojas = models.ManyToManyField('funcionarios.Loja', blank=True, verbose_name="Lojas")
     equipes = models.ManyToManyField('funcionarios.Equipe', blank=True, verbose_name="Equipes")
+    cargos = models.ManyToManyField('funcionarios.Cargo', blank=True, verbose_name="Cargos")
     
     status = models.BooleanField(default=True, verbose_name="Status Ativo")
 

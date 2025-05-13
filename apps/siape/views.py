@@ -1523,7 +1523,7 @@ from django.db.models import Sum
 def api_cards(request, periodo='mes'):
     hoje = timezone.now().date()
 
-    # metas...
+    # --- Carrega metas ---
     meta_geral = RegisterMeta.objects.filter(
         categoria='GERAL', status=True,
         data_inicio__lte=hoje, data_fim__gte=hoje
@@ -1538,84 +1538,76 @@ def api_cards(request, periodo='mes'):
         setor__nome='SIAPE'
     ).first()
 
-    # período GERAL
-    if meta_geral:
-        primeiro_dia_geral = datetime.combine(meta_geral.data_inicio, time.min)
-        ultimo_dia_geral  = datetime.combine(meta_geral.data_fim,    time.max)
-    else:
-        primeiro_dia_geral = datetime.combine(hoje.replace(day=1),                time.min)
-        ultimo_dia_geral  = datetime.combine(
-            hoje.replace(day=calendar.monthrange(hoje.year, hoje.month)[1]),
-            time.max
-        )
+    # --- Define períodos ---
+    def period_bounds(meta, default_month=True):
+        if meta:
+            start = datetime.combine(meta.data_inicio, time.min)
+            end   = datetime.combine(meta.data_fim,    time.max)
+        elif default_month:
+            first = hoje.replace(day=1)
+            last  = hoje.replace(day=calendar.monthrange(hoje.year, hoje.month)[1])
+            start = datetime.combine(first, time.min)
+            end   = datetime.combine(last,  time.max)
+        else:
+            start = end = None
+        return start, end
 
-    # filtro geral
-    valores_range = RegisterMoney.objects.filter(
-        data__range=[primeiro_dia_geral, ultimo_dia_geral]
-    ).select_related('user')
+    p0_start, p0_end = period_bounds(meta_geral)
+    p1_start, p1_end = period_bounds(meta_empresa)
+    p2_start, p2_end = period_bounds(meta_siape)
 
-    faturamento_total = sum((Decimal(str(v.valor_est)) for v in valores_range if v.valor_est), Decimal('0'))
+    # --- Soma helper ---
+    def sum_range(model_qs):
+        tot = model_qs.aggregate(
+            total=Sum('valor_est')
+        )['total'] or Decimal('0')
+        return tot
 
-    # período EMPRESA
-    if meta_empresa:
-        primeiro_dia_empresa = datetime.combine(meta_empresa.data_inicio, time.min)
-        # **Não** usar make_aware: gera naive também
-        ultimo_dia_empresa = datetime.combine(meta_empresa.data_fim, time.max)
+    # --- Meta Geral ---
+    valores_geral = RegisterMoney.objects.filter(
+        data__range=[p0_start, p0_end]
+    )
+    faturamento_total = sum((Decimal(str(v.valor_est)) for v in valores_geral if v.valor_est), Decimal('0'))
+    percentual_geral = (
+        round((faturamento_total / meta_geral.valor) * 100, 2)
+        if meta_geral and meta_geral.valor and meta_geral.valor > 0 else 0
+    )
 
-        valores_empresa = RegisterMoney.objects.filter(
-            data__range=[primeiro_dia_empresa, ultimo_dia_empresa],
-            status=True
-        ).select_related('user')
-        faturamento_empresa = Decimal('0')
-        for v in valores_empresa:
-            if v.valor_est is not None:
-                try:
-                    faturamento_empresa += Decimal(str(v.valor_est))
-                except InvalidOperation:
-                    pass
+    # --- Meta Empresa (exclui franquias) ---
+    qs_emp_base = RegisterMoney.objects.filter(
+        data__range=[p1_start, p1_end],
+        status=True
+    )
+    total_emp = sum((Decimal(str(v.valor_est)) for v in qs_emp_base if v.valor_est), Decimal('0'))
+    # subtrai o faturamento das franquias
+    franquias_emp = sum((Decimal(str(v.valor_est)) for v in qs_emp_base.filter(loja__franquia=True) if v.valor_est), Decimal('0'))
+    faturamento_empresa = total_emp - franquias_emp
 
-        percentual_empresa = (round((faturamento_empresa / meta_empresa.valor) * 100, 2)
-                             if meta_empresa.valor and meta_empresa.valor > 0 else 0)
-        valor_meta_empresa = format_currency(meta_empresa.valor) if meta_empresa.valor else "R$ 0,00"
-    else:
-        primeiro_dia_empresa = datetime.combine(hoje.replace(day=1), time.min)
-        ultimo = calendar.monthrange(hoje.year, hoje.month)[1]
-        ultimo_dia_empresa = datetime.combine(hoje.replace(day=ultimo), time.max)
+    percentual_empresa = (
+        round((faturamento_empresa / meta_empresa.valor) * 100, 2)
+        if meta_empresa and meta_empresa.valor and meta_empresa.valor > 0 else 0
+    )
+    valor_meta_empresa = (
+        format_currency(meta_empresa.valor) if meta_empresa and meta_empresa.valor else "R$ 0,00"
+    )
 
-        valores_empresa = RegisterMoney.objects.filter(
-            data__range=[primeiro_dia_empresa, ultimo_dia_empresa],
-            status=True
-        ).select_related('user')
-        faturamento_empresa = sum((Decimal(str(v.valor_est)) for v in valores_empresa if v.valor_est),
-                                  Decimal('0'))
+    # --- Meta Siape ---
+    qs_siape = RegisterMoney.objects.filter(
+        data__range=[p2_start, p2_end],
+        setor__nome='SIAPE'
+    )
+    faturamento_siape = sum((Decimal(str(v.valor_est)) for v in qs_siape if v.valor_est), Decimal('0'))
+    percentual_siape = (
+        round((faturamento_siape / meta_siape.valor) * 100, 2)
+        if meta_siape and meta_siape.valor and meta_siape.valor > 0 else 0
+    )
 
-        percentual_empresa = Decimal('100.00')
-        valor_meta_empresa = "R$ 0,00"
-
-    # período SIAPE
-    if meta_siape:
-        primeiro_dia_siape = datetime.combine(meta_siape.data_inicio, time.min)
-        ultimo_dia_siape  = datetime.combine(meta_siape.data_fim,    time.max)
-        valores_siape = RegisterMoney.objects.filter(
-            data__range=[primeiro_dia_siape, ultimo_dia_siape],
-            setor__nome='SIAPE'
-        ).select_related('user')
-
-        faturamento_siape = sum((Decimal(str(v.valor_est)) for v in valores_siape if v.valor_est),
-                                Decimal('0'))
-    else:
-        faturamento_siape = Decimal('0')
-
-    percentual_geral = (round((faturamento_total / meta_geral.valor) * 100, 2)
-                       if meta_geral and meta_geral.valor and meta_geral.valor > 0 else 0)
-    percentual_siape = (round((faturamento_siape / meta_siape.valor) * 100, 2)
-                       if meta_siape and meta_siape.valor and meta_siape.valor > 0 else 0)
-
+    # --- Monta resposta ---
     data = {
         'meta_geral': {
             'valor_total': format_currency(faturamento_total),
             'percentual': percentual_geral,
-            'valor_meta': format_currency(meta_geral.valor) if meta_geral else "R$ 0,00"
+            'valor_meta': format_currency(meta_geral.valor) if meta_geral and meta_geral.valor else "R$ 0,00"
         },
         'meta_empresa': {
             'valor_total': format_currency(faturamento_empresa),
@@ -1625,7 +1617,7 @@ def api_cards(request, periodo='mes'):
         'meta_siape': {
             'valor_total': format_currency(faturamento_siape),
             'percentual': percentual_siape,
-            'valor_meta': format_currency(meta_siape.valor) if meta_siape else "R$ 0,00"
+            'valor_meta': format_currency(meta_siape.valor) if meta_siape and meta_siape.valor else "R$ 0,00"
         }
     }
     return JsonResponse(data)

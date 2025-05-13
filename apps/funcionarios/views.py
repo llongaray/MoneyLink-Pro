@@ -19,7 +19,7 @@ from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, transaction
 from django.db.models.fields.files import FileField, ImageField
-from django.http import Http404, HttpResponse, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse, FileResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -135,7 +135,94 @@ def api_get_infogeral(request):
         print(f"Erro em api_get_infogeral: {e}")
         return JsonResponse({'error': f'Erro ao buscar informações gerais: {e}'}, status=500)
 
-
+@require_GET
+def api_get_infogeralemp(request):
+    """
+    Retorna todos os dados relacionados (empresas, departamentos, setores, lojas, equipes, cargos, horários)
+    de forma estruturada, mantendo as relações entre eles.
+    """
+    try:
+        # Busca todas as empresas
+        empresas = Empresa.objects.filter(status=True).order_by('nome')
+        
+        data = {
+            'empresas': []
+        }
+        
+        for empresa in empresas:
+            empresa_data = {
+                'id': empresa.id,
+                'nome': empresa.nome,
+                'departamentos': [],
+                'lojas': [],
+                'cargos': [],
+                'horarios': []
+            }
+            
+            # Busca departamentos da empresa
+            departamentos = Departamento.objects.filter(empresa=empresa, status=True).order_by('nome')
+            for departamento in departamentos:
+                dept_data = {
+                    'id': departamento.id,
+                    'nome': departamento.nome,
+                    'setores': []
+                }
+                
+                # Busca setores do departamento
+                setores = Setor.objects.filter(departamento=departamento, status=True).order_by('nome')
+                for setor in setores:
+                    dept_data['setores'].append({
+                        'id': setor.id,
+                        'nome': setor.nome
+                    })
+                
+                empresa_data['departamentos'].append(dept_data)
+            
+            # Busca lojas da empresa
+            lojas = Loja.objects.filter(empresa=empresa, status=True).order_by('nome')
+            for loja in lojas:
+                empresa_data['lojas'].append({
+                    'id': loja.id,
+                    'nome': loja.nome,
+                    'franquia': loja.franquia,
+                    'filial': loja.filial
+                })
+            
+            # Busca cargos da empresa
+            cargos = Cargo.objects.filter(empresa=empresa, status=True).order_by('nome')
+            for cargo in cargos:
+                empresa_data['cargos'].append({
+                    'id': cargo.id,
+                    'nome': cargo.nome,
+                    'hierarquia': cargo.hierarquia,
+                    'hierarquia_display': cargo.get_hierarquia_display()
+                })
+            
+            # Busca horários ativos
+            horarios = HorarioTrabalho.objects.filter(status=True).order_by('nome')
+            for horario in horarios:
+                empresa_data['horarios'].append({
+                    'id': horario.id,
+                    'nome': horario.nome,
+                    'entrada': horario.entrada.strftime('%H:%M') if horario.entrada else None,
+                    'saida_almoco': horario.saida_almoco.strftime('%H:%M') if horario.saida_almoco else None,
+                    'volta_almoco': horario.volta_almoco.strftime('%H:%M') if horario.volta_almoco else None,
+                    'saida': horario.saida.strftime('%H:%M') if horario.saida else None
+                })
+            
+            data['empresas'].append(empresa_data)
+        
+        # Busca equipes ativas (não vinculadas a empresa)
+        equipes = Equipe.objects.filter(status=True).order_by('nome')
+        data['equipes'] = [{'id': equipe.id, 'nome': equipe.nome} for equipe in equipes]
+        
+        return JsonResponse(data)
+    
+    except Exception as e:
+        print(f"Erro em api_get_infogeralemp: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({'error': str(e)}, status=500)
 
 @require_GET
 def api_get_infocardsnovo(request):
@@ -237,95 +324,58 @@ def api_get_funcionario(request, funcionario_id):
     print(f"\n----- Iniciando api_get_funcionario para ID: {funcionario_id} -----")
     try:
         funcionario = get_object_or_404(Funcionario.objects.select_related(
-            'empresa', 'departamento', 'setor', 'cargo', 'horario', 'equipe', 'usuario', 'loja'
-        ), pk=funcionario_id)
-        print(f"Funcionário '{funcionario.nome_completo}' encontrado.")
-
-        # Monta o dicionário com IDs e Nomes relacionados
+            'empresa', 'departamento', 'setor', 'cargo', 'horario', 'equipe', 'usuario'
+        ).prefetch_related('lojas'), pk=funcionario_id)
+        
         data = {
             'id': funcionario.id,
-            'apelido': funcionario.apelido,
             'nome_completo': funcionario.nome_completo,
+            'apelido': funcionario.apelido,
             'cpf': funcionario.cpf,
-            'data_nascimento': funcionario.data_nascimento, # Formato YYYY-MM-DD
+            'matricula': funcionario.matricula,
+            'pis': funcionario.pis,
+            'data_nascimento': funcionario.data_nascimento.strftime('%Y-%m-%d') if funcionario.data_nascimento else None,
             'genero': funcionario.genero,
             'estado_civil': funcionario.estado_civil,
+            'celular1': funcionario.celular1,
+            'celular2': funcionario.celular2,
             'cep': funcionario.cep,
             'endereco': funcionario.endereco,
             'bairro': funcionario.bairro,
             'cidade': funcionario.cidade,
             'estado': funcionario.estado,
-            'celular1': funcionario.celular1,
-            'celular2': funcionario.celular2,
             'nome_mae': funcionario.nome_mae,
             'nome_pai': funcionario.nome_pai,
             'nacionalidade': funcionario.nacionalidade,
             'naturalidade': funcionario.naturalidade,
-            'matricula': funcionario.matricula,
-            'pis': funcionario.pis,
-            'status': funcionario.status,
-            'data_admissao': funcionario.data_admissao, # Formato YYYY-MM-DD
-            'data_demissao': funcionario.data_demissao, # Formato YYYY-MM-DD
-            'foto_url': funcionario.foto.url if funcionario.foto else None,
-            'foto_nome': os.path.basename(funcionario.foto.name) if funcionario.foto else None,
-
-            # IDs e Nomes/Textos relacionados
-            'empresa_id': funcionario.empresa_id,
+            'empresa_id': funcionario.empresa.id if funcionario.empresa else None,
             'empresa_nome': funcionario.empresa.nome if funcionario.empresa else None,
-
-            'loja_id': funcionario.loja_id,
-            'loja_nome': funcionario.loja.nome if funcionario.loja else None,
-
-            'departamento_id': funcionario.departamento_id,
+            'lojas': [{'id': loja.id, 'nome': loja.nome} for loja in funcionario.lojas.all()],
+            'departamento_id': funcionario.departamento.id if funcionario.departamento else None,
             'departamento_nome': funcionario.departamento.nome if funcionario.departamento else None,
-
-            'setor_id': funcionario.setor_id,
+            'setor_id': funcionario.setor.id if funcionario.setor else None,
             'setor_nome': funcionario.setor.nome if funcionario.setor else None,
-
-            'cargo_id': funcionario.cargo_id,
-            'cargo_nome': f"{funcionario.cargo.nome} ({funcionario.cargo.get_hierarquia_display()})" if funcionario.cargo else None,
-
-            'horario_id': funcionario.horario_id,
-            'horario_nome': funcionario.horario.nome if funcionario.horario else None, # Nome base do horário
-            'horario_display_text': f"{funcionario.horario.nome} ({funcionario.horario.entrada.strftime('%H:%M')} - {funcionario.horario.saida.strftime('%H:%M')})" if funcionario.horario and funcionario.horario.entrada and funcionario.horario.saida else None,
-
-            'equipe_id': funcionario.equipe_id,
+            'cargo_id': funcionario.cargo.id if funcionario.cargo else None,
+            'cargo_nome': funcionario.cargo.nome if funcionario.cargo else None,
+            'horario_id': funcionario.horario.id if funcionario.horario else None,
+            'horario_nome': funcionario.horario.nome if funcionario.horario else None,
+            'equipe_id': funcionario.equipe.id if funcionario.equipe else None,
             'equipe_nome': funcionario.equipe.nome if funcionario.equipe else None,
-
+            'status': funcionario.status,
+            'data_admissao': funcionario.data_admissao.strftime('%Y-%m-%d') if funcionario.data_admissao else None,
+            'data_demissao': funcionario.data_demissao.strftime('%Y-%m-%d') if funcionario.data_demissao else None,
+            'foto_url': funcionario.foto.url if funcionario.foto else None,
             'usuario_id': funcionario.usuario.id if funcionario.usuario else None,
             'usuario_username': funcionario.usuario.username if funcionario.usuario else None,
         }
-        from django.urls import reverse
-        # Adicionar arquivos relacionados ao funcionário
-        arquivos = []
-        for arquivo in funcionario.arquivos.filter(status=True):
-            download_url = request.build_absolute_uri(
-                reverse('funcionarios:api_download_arquivo', args=[arquivo.id])
-            )
-            arquivos.append({
-                'id': arquivo.id,
-                'titulo': arquivo.titulo,
-                'descricao': arquivo.descricao,
-                'url': arquivo.arquivo.url,            # pode manter se quiser visualizar inline
-                'download_url': download_url,          # novo
-                'nome_arquivo': os.path.basename(arquivo.arquivo.name),
-                'data_upload': arquivo.data_upload,
-            })
-        data['arquivos'] = arquivos
-        
-        # Adicionar IDs das regras de comissionamento associadas
-        regras_comissionamento_ids = list(funcionario.regras_comissionamento.values_list('id', flat=True))
-        data['regras_comissionamento_ids'] = regras_comissionamento_ids
-        
-        print(f"Dados do funcionário serializados com {len(arquivos)} arquivos e {len(regras_comissionamento_ids)} regras de comissão.")
+        print("Dados do funcionário serializados:", data)
         return JsonResponse(data)
-    except Http404:
-        print(f"Erro: Funcionário com ID {funcionario_id} não encontrado.")
-        return JsonResponse({'error': 'Funcionário não encontrado'}, status=404)
     except Exception as e:
-        print(f"Erro em api_get_funcionario: {e}")
-        logger.exception("Erro detalhado em api_get_funcionario") # Log com traceback
-        return JsonResponse({'error': f'Erro ao buscar dados do funcionário: {e}'}, status=500)
+        print(f"Erro em api_get_funcionario: {str(e)}")
+        print("Erro detalhado em api_get_funcionario")
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({'error': str(e)}, status=500)
 
 @require_GET
 #@login_required
@@ -478,10 +528,6 @@ def api_post_userfuncionario(request):
             equipe = Equipe.objects.filter(pk=equipe_pk).first() if equipe_pk else None
             print(f"Equipe: {equipe}")
 
-            loja_pk = request.POST.get('loja')
-            loja = Loja.objects.filter(pk=loja_pk).first() if loja_pk else None
-            print(f"Loja: {loja}")
-
             # 8. Converter data de nascimento
             try:
                 data_nasc = datetime.strptime(request.POST['data_nascimento'], '%Y-%m-%d').date()
@@ -505,7 +551,6 @@ def api_post_userfuncionario(request):
                 cargo=cargo,
                 horario=horario,
                 equipe=equipe,
-                loja=loja,
                 genero=request.POST.get('genero'),
                 estado_civil=request.POST.get('estado_civil'),
                 cep=request.POST.get('cep'),
@@ -522,6 +567,14 @@ def api_post_userfuncionario(request):
                 matricula=request.POST.get('matricula'),
                 pis=request.POST.get('pis'),
             )
+
+            # Adicionar lojas selecionadas
+            lojas_ids = request.POST.getlist('lojas')
+            if lojas_ids:
+                print(f"Adicionando lojas: {lojas_ids}")
+                funcionario.lojas.set(lojas_ids)
+                print(f"Lojas adicionadas com sucesso ao funcionário {funcionario.id}")
+
             print(f"Funcionário criado com sucesso. ID: {funcionario.id}")
 
         # 10. Resposta de sucesso
@@ -804,7 +857,6 @@ def api_post_horario(request):
 
 # ----- API POST para Editar Funcionário -----
 
-@csrf_exempt
 @require_POST
 @login_required
 def api_edit_funcionario(request):
@@ -812,25 +864,37 @@ def api_edit_funcionario(request):
     Edita um Funcionario existente, atualiza todos os campos (exceto CPF),
     faz parsing de datas YYYY-MM-DD, trata FKs e salva novos ArquivoFuncionario.
     """
+    print("\n[EDITFUNC] ----- Iniciando api_edit_funcionario -----")
+    print("[EDITFUNC] Content-Type:", request.content_type)
+    print("[EDITFUNC] POST data:", request.POST)
+    print("[EDITFUNC] FILES:", request.FILES)
+
     # 1) carrega dados JSON ou form-data
     if request.content_type.startswith('application/json'):
         try:
             data = json.loads(request.body)
+            print("[EDITFUNC] Dados JSON carregados:", data)
         except json.JSONDecodeError:
+            print("[EDITFUNC] Erro ao decodificar JSON")
             return JsonResponse({'error': 'JSON inválido.'}, status=400)
         files = {}
     else:
         data = request.POST
         files = request.FILES
+        print("[EDITFUNC] Dados form-data carregados")
 
     func_id = data.get('funcionario_id')
     if not func_id:
+        print("[EDITFUNC] funcionario_id não fornecido")
         return JsonResponse({'error': 'funcionario_id é obrigatório.'}, status=400)
 
+    print(f"[EDITFUNC] Buscando funcionário com ID {func_id}")
     funcionario = get_object_or_404(Funcionario, pk=func_id)
 
     try:
         with transaction.atomic():
+            print("[EDITFUNC] Iniciando transação atômica")
+            
             # 2) campos simples (exceto cpf)
             simples = (
                 'apelido','nome_completo','genero','estado_civil',
@@ -841,11 +905,18 @@ def api_edit_funcionario(request):
             for f in simples:
                 if f in data:
                     val = data.get(f).strip()
+                    print(f"[EDITFUNC] Atualizando campo {f}: {val}")
                     setattr(funcionario, f, val or None)
 
             # status
             if 'status' in data:
-                funcionario.status = data.get('status') in ('on','true',True,'True')
+                status_val = data.get('status') in ('on','true',True,'True')
+                print(f"[EDITFUNC] Atualizando status: {status_val}")
+                funcionario.status = status_val
+                # Atualiza o status do usuário Django associado
+                if funcionario.usuario:
+                    funcionario.usuario.is_active = status_val
+                    funcionario.usuario.save()
 
             # 3) datas
             for f in ('data_nascimento','data_admissao','data_demissao'):
@@ -853,46 +924,64 @@ def api_edit_funcionario(request):
                     s = data.get(f).strip()
                     if s:
                         try:
+                            print(f"[EDITFUNC] Atualizando data {f}: {s}")
                             setattr(funcionario, f, datetime.strptime(s, '%Y-%m-%d').date())
                         except ValueError:
+                            print(f"[EDITFUNC] Formato inválido para {f}: {s}")
                             return JsonResponse(
                                 {'error': f'Formato inválido para {f}. Use YYYY-MM-DD.'},
                                 status=400
                             )
                     else:
+                        print(f"[EDITFUNC] Limpando campo de data {f}")
                         setattr(funcionario, f, None)
 
             # 4) FKs
             fk_map = {
                 'empresa': Empresa, 'departamento': Departamento,
                 'setor': Setor, 'cargo': Cargo,
-                'horario': HorarioTrabalho, 'equipe': Equipe,
-                'loja': Loja
+                'horario': HorarioTrabalho, 'equipe': Equipe
             }
-            for key, Model in fk_map.items():
-                if key in data:
-                    val = data.get(key).strip()
+
+            for f, model in fk_map.items():
+                if f in data:
+                    val = data.get(f).strip()
                     if val:
                         try:
-                            obj = Model.objects.get(pk=int(val))
-                        except (ValueError, Model.DoesNotExist):
-                            return JsonResponse({'error': f'{key} inválido ({val}).'}, status=400)
-                        setattr(funcionario, key, obj)
+                            print(f"[EDITFUNC] Atualizando FK {f} com ID {val}")
+                            setattr(funcionario, f, model.objects.get(pk=val))
+                        except model.DoesNotExist:
+                            print(f"[EDITFUNC] {f.title()} não encontrado com ID {val}")
+                            return JsonResponse(
+                                {'error': f'{f.title()} não encontrado.'},
+                                status=400
+                            )
                     else:
-                        setattr(funcionario, key, None)
+                        print(f"[EDITFUNC] Limpando FK {f}")
+                        setattr(funcionario, f, None)
+
+            # Atualizar lojas
+            lojas_ids = data.getlist('edit_lojas')
+            if lojas_ids:
+                print(f"[EDITFUNC] Atualizando lojas com IDs {lojas_ids}")
+                funcionario.lojas.clear()
+                funcionario.lojas.add(*lojas_ids)
 
             # 5) foto
             if 'foto' in files:
+                print("[EDITFUNC] Atualizando foto do funcionário")
                 novo = files['foto']
                 if funcionario.foto:
                     funcionario.foto.delete(save=False)
                 funcionario.foto = novo
             elif data.get('foto_clear') in ('on','true','True'):
+                print("[EDITFUNC] Removendo foto do funcionário")
                 if funcionario.foto:
                     funcionario.foto.delete(save=False)
                     funcionario.foto = None
 
             # 6) validação e save principal
+            print("[EDITFUNC] Validando e salvando funcionário")
             funcionario.full_clean(exclude=['regras_comissionamento'])
             funcionario.save()
 
@@ -900,9 +989,11 @@ def api_edit_funcionario(request):
             titulos = request.POST.getlist('arquivo_titulos[]')
             descrs  = request.POST.getlist('arquivo_descricoes[]')
             arquivos= request.FILES.getlist('arquivo_files[]')
+            print(f"[EDITFUNC] Processando {len(arquivos)} arquivos anexados")
             for titulo, arquivo_file, descricao in zip(titulos, arquivos, descrs):
                 t = titulo.strip()
                 if t and arquivo_file:
+                    print(f"[EDITFUNC] Criando arquivo anexo: {t}")
                     ArquivoFuncionario.objects.create(
                         funcionario=funcionario,
                         titulo=t,
@@ -910,18 +1001,22 @@ def api_edit_funcionario(request):
                         arquivo=arquivo_file
                     )
 
+        print("[EDITFUNC] Funcionário atualizado com sucesso")
         return JsonResponse({'message': 'Funcionário e arquivos atualizados com sucesso.'})
 
     except IntegrityError as e:
         msg = str(e)
         if 'cpf' in msg.lower(): msg = 'CPF já em uso.'
         if 'matricula' in msg.lower(): msg = 'Matrícula já em uso.'
+        print(f"[EDITFUNC] Erro de integridade: {msg}")
         return JsonResponse({'error': msg}, status=400)
 
     except ValidationError as e:
+        print(f"[EDITFUNC] Erro de validação: {e.message_dict}")
         return JsonResponse({'error': 'Erro de validação.', 'details': e.message_dict}, status=400)
 
     except Exception:
+        print("[EDITFUNC] Erro interno no servidor")
         import traceback; traceback.print_exc()
         return JsonResponse({'error': 'Erro interno no servidor.'}, status=500)
 
@@ -1268,8 +1363,8 @@ def api_get_dashboard(request):
                 'inativos': total_inativos,
             },
             'por_empresa': list(ativos_qs.values('empresa__nome').annotate(total=Count('id')).order_by('empresa__nome')),
-            'por_loja':    list(ativos_qs.exclude(loja__isnull=True)
-                                   .values('loja__nome').annotate(total=Count('id')).order_by('loja__nome')),
+            'por_loja':    list(ativos_qs.exclude(lojas__isnull=True)
+                                   .values('lojas__nome').annotate(total=Count('id')).order_by('lojas__nome')),
             'por_departamento': list(ativos_qs.values('departamento__nome')
                                      .annotate(total=Count('id')).order_by('departamento__nome')),
             'por_setor': list(ativos_qs.values('setor__nome')
@@ -1321,3 +1416,311 @@ def api_get_dashboard(request):
         print(f"Erro em api_get_dashboard: {e}\n{tb}")
         return JsonResponse({'error': f'Erro interno ao buscar dados do dashboard: {e}'}, status=500)
 
+
+
+# SUB CATEGORIA: COMUNICADOS - INICIO
+
+@login_required
+@controle_acess('SCT16')   # 16 – RECURSOS HUMANOS | COMUNICADOS
+def render_formscomunicados(request):
+    """Renderiza o formulário para criar novos comunicados."""
+    return render(request, 'funcionarios/forms/formscomunicados.html')
+
+@login_required
+@controle_acess('SCT54')   # 16 – RECURSOS HUMANOS | COMUNICADOS
+@require_POST
+def api_post_addcomunicados(request):
+    """
+    API para criar um novo comunicado.
+    Aceita dados via form-data, incluindo arquivos e banner.
+    """
+    try:
+        # Validação dos campos obrigatórios
+        assunto = request.POST.get('assunto')
+        texto = request.POST.get('texto', '')
+        banner = request.FILES.get('banner')
+        destinatarios_data = json.loads(request.POST.get('destinatarios', '{}'))
+
+        if not assunto:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'O assunto é obrigatório.'
+            }, status=400)
+
+        if not texto and not banner:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'O comunicado deve ter texto ou banner.'
+            }, status=400)
+
+        if texto and banner:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'O comunicado não pode ter texto e banner simultaneamente.'
+            }, status=400)
+
+        # Cria o comunicado
+        comunicado = Comunicado(
+            assunto=assunto,
+            texto=texto,
+            criado_por=request.user
+        )
+
+        if banner:
+            comunicado.banner = banner
+
+        comunicado.full_clean()  # Valida o modelo
+        comunicado.save()
+
+        # Processa os destinatários por categoria
+        usuarios_ids = set()  # Usa set para evitar duplicatas
+
+        # Processa empresas
+        if 'empresas' in destinatarios_data and destinatarios_data['empresas']:
+            funcionarios = Funcionario.objects.filter(
+                empresa_id__in=destinatarios_data['empresas'],
+                usuario__isnull=False
+            ).values_list('usuario_id', flat=True)
+            usuarios_ids.update(funcionarios)
+
+        # Processa departamentos
+        if 'departamentos' in destinatarios_data and destinatarios_data['departamentos']:
+            funcionarios = Funcionario.objects.filter(
+                departamento_id__in=destinatarios_data['departamentos'],
+                usuario__isnull=False
+            ).values_list('usuario_id', flat=True)
+            usuarios_ids.update(funcionarios)
+
+        # Processa setores
+        if 'setores' in destinatarios_data and destinatarios_data['setores']:
+            funcionarios = Funcionario.objects.filter(
+                setor_id__in=destinatarios_data['setores'],
+                usuario__isnull=False
+            ).values_list('usuario_id', flat=True)
+            usuarios_ids.update(funcionarios)
+
+        # Processa lojas
+        if 'lojas' in destinatarios_data and destinatarios_data['lojas']:
+            funcionarios = Funcionario.objects.filter(
+                loja_id__in=destinatarios_data['lojas'],
+                usuario__isnull=False
+            ).values_list('usuario_id', flat=True)
+            usuarios_ids.update(funcionarios)
+
+        # Processa equipes
+        if 'equipes' in destinatarios_data and destinatarios_data['equipes']:
+            funcionarios = Funcionario.objects.filter(
+                equipe_id__in=destinatarios_data['equipes'],
+                usuario__isnull=False
+            ).values_list('usuario_id', flat=True)
+            usuarios_ids.update(funcionarios)
+
+        # Processa funcionários individuais
+        if 'funcionarios' in destinatarios_data and destinatarios_data['funcionarios']:
+            usuarios_ids.update(destinatarios_data['funcionarios'])
+
+        # Verifica se há destinatários
+        if not usuarios_ids:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Selecione pelo menos um destinatário.'
+            }, status=400)
+
+        # Adiciona os destinatários ao comunicado
+        comunicado.destinatarios.set(usuarios_ids)
+
+        # Cria os registros de controle para cada destinatário
+        for user_id in usuarios_ids:
+            ControleComunicado.objects.create(
+                comunicado=comunicado,
+                usuario_id=user_id
+            )
+
+        # Processa os arquivos, se houver
+        arquivos = request.FILES.getlist('arquivos[]')
+        for arquivo in arquivos:
+            ArquivoComunicado.objects.create(
+                comunicado=comunicado,
+                arquivo=arquivo
+            )
+
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Comunicado criado com sucesso!',
+            'comunicado_id': comunicado.id
+        })
+
+    except ValidationError as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=400)
+    except Exception as e:
+        print(f"Erro ao criar comunicado: {e}")
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
+
+@login_required
+@controle_acess('SCT53')   # 53 – RECURSOS HUMANOS | COMUNICADOS
+def render_comunicados(request):
+    """Renderiza a página de visualização de comunicados."""
+    return render(request, 'administrativo/comunicados.html')
+
+@login_required
+@require_GET
+def api_get_comunicados(request):
+    """
+    API para listar os comunicados do usuário logado.
+    Retorna os comunicados com status de leitura, banner e arquivos anexados.
+    """
+    try:
+        # Busca comunicados onde o usuário é destinatário
+        comunicados = Comunicado.objects.filter(
+            destinatarios=request.user,
+            status=True
+        ).prefetch_related(
+            'controles',
+            'arquivos'
+        ).order_by('-data_criacao')
+
+        data = []
+        for comunicado in comunicados:
+            # Busca o controle específico deste usuário
+            controle = comunicado.controles.filter(usuario=request.user).first()
+            
+            # Prepara os dados do comunicado
+            comunicado_data = {
+                'id': comunicado.id,
+                'assunto': comunicado.assunto,
+                'texto': comunicado.texto,
+                'banner': comunicado.banner.url if comunicado.banner else None,
+                'data_criacao': comunicado.data_criacao.strftime('%d/%m/%Y %H:%M'),
+                'lido': controle.lido if controle else False,
+                'data_leitura': controle.data_leitura.strftime('%d/%m/%Y %H:%M') if controle and controle.data_leitura else None,
+                'arquivos': []
+            }
+
+            # Adiciona os arquivos anexados
+            for arquivo in comunicado.arquivos.filter(status=True):
+                comunicado_data['arquivos'].append({
+                    'id': arquivo.id,
+                    'nome': os.path.basename(arquivo.arquivo.name),
+                    'url': arquivo.arquivo.url
+                })
+
+            data.append(comunicado_data)
+
+        return JsonResponse(data, safe=False)
+
+    except Exception as e:
+        print(f"Erro ao buscar comunicados: {e}")
+        return JsonResponse({'error': 'Erro interno ao buscar comunicados.'}, status=500)
+
+@login_required
+@require_POST
+@csrf_exempt
+def api_post_marcarcomolido_comunicado(request, comunicado_id):
+    """Marca um comunicado como lido para o usuário atual."""
+    try:
+        comunicado = get_object_or_404(Comunicado, id=comunicado_id)
+        comunicado.marcar_como_lido(request.user)
+        return JsonResponse({'status': 'success'})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+@login_required
+@require_GET
+def api_get_destinatarios(request):
+    """
+    API para retornar a lista de funcionários ativos que podem receber comunicados.
+    Retorna nome do funcionário e ID do usuário associado.
+    """
+    try:
+        # Busca funcionários ativos que têm usuário associado
+        funcionarios = Funcionario.objects.filter(
+            status=True,
+            usuario__isnull=False
+        ).select_related('usuario').order_by('nome_completo')
+
+        # Prepara a lista de destinatários
+        destinatarios = []
+        for func in funcionarios:
+            destinatarios.append({
+                'id': func.usuario.id,
+                'nome': func.nome_completo,
+                'apelido': func.apelido or func.nome_completo.split()[0],
+                'departamento': func.departamento.nome if func.departamento else 'N/A',
+                'cargo': func.cargo.nome if func.cargo else 'N/A'
+            })
+
+        return JsonResponse(destinatarios, safe=False)
+
+    except Exception as e:
+        print(f"Erro ao buscar destinatários: {e}")
+        return JsonResponse({'error': 'Erro interno ao buscar destinatários.'}, status=500)
+
+
+@require_GET
+def download_arquivo_comunicado(request, arquivo_id):
+    """
+    Força o download do arquivo do comunicado, enviando Content-Disposition: attachment.
+    """
+    arquivo_obj = get_object_or_404(ArquivoComunicado, pk=arquivo_id, status=True)
+    # abre o arquivo em modo binário
+    fp = arquivo_obj.arquivo.open('rb')
+    filename = os.path.basename(arquivo_obj.arquivo.name)
+    response = FileResponse(fp, as_attachment=True, filename=filename)
+    return response
+
+
+# SUB CATEGORIA: COMUNICADOS - FIM
+
+@login_required
+def render_comunicados_visualizacao(request):
+    """Renderiza a página de visualização de comunicados."""
+    return render(request, 'apps/funcionarios/comunicados.html')
+
+@login_required
+@require_GET
+def api_get_infosgerais(request):
+    """
+    API para buscar todas as informações necessárias para o formulário de comunicados.
+    Retorna empresas, departamentos, setores, lojas, equipes e funcionários ativos.
+    """
+    try:
+        # Busca todas as informações em uma única chamada
+        data = {
+            'empresas': list(Empresa.objects.filter(status=True).values('id', 'nome')),
+            'departamentos': list(Departamento.objects.filter(status=True).values('id', 'nome')),
+            'setores': list(Setor.objects.filter(status=True).values('id', 'nome')),
+            'lojas': list(Loja.objects.filter(status=True).values('id', 'nome')),
+            'equipes': list(Equipe.objects.filter(status=True).values('id', 'nome')),
+            'funcionarios': list(User.objects.filter(
+                funcionario_profile__isnull=False,
+                funcionario_profile__status=True
+            ).values('id', 'username', 'first_name', 'last_name'))
+        }
+
+        # Formata os nomes dos funcionários
+        for funcionario in data['funcionarios']:
+            funcionario['nome'] = f"{funcionario['first_name']} {funcionario['last_name']}".strip()
+            if not funcionario['nome']:
+                funcionario['nome'] = funcionario['username']
+            # Remove campos desnecessários
+            del funcionario['first_name']
+            del funcionario['last_name']
+            del funcionario['username']
+
+        return JsonResponse({
+            'status': 'success',
+            'data': data
+        })
+
+    except Exception as e:
+        print(f"Erro ao buscar informações gerais: {e}")
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)

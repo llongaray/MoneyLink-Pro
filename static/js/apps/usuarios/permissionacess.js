@@ -6,15 +6,28 @@ $(function() {
     // --- Pega o CSRF token ---
     function getCookie(name) {
       let cookieValue = null;
-      document.cookie.split(';').forEach(c => {
-        c = c.trim();
-        if (c.startsWith(name + '=')) {
-          cookieValue = decodeURIComponent(c.slice(name.length + 1));
+      if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+          const cookie = cookies[i].trim();
+          if (cookie.substring(0, name.length + 1) === (name + '=')) {
+            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+            break;
+          }
         }
-      });
+      }
       return cookieValue;
     }
     const csrftoken = getCookie('csrftoken');
+  
+    // Configuração global do AJAX para incluir o CSRF token
+    $.ajaxSetup({
+      beforeSend: function(xhr, settings) {
+        if (!/^(GET|HEAD|OPTIONS|TRACE)$/i.test(settings.type) && !this.crossDomain) {
+          xhr.setRequestHeader("X-CSRFToken", csrftoken);
+        }
+      }
+    });
   
     // --- Genérico AJAX POST ---
     function sendPost(url, data, onSuccess) {
@@ -84,24 +97,29 @@ $(function() {
         });
     }
   
-    // --- Atualizado: Carrega e popula o select de Usuários via nova API ---
+    // --- Atualizado: Carrega e popula o container de Usuários via API ---
     function loadUsers() {
-      const sel = $('#controle_acesso_usuario')
-        .empty()
-        .append('<option value="">--- Selecione o Usuário ---</option>');
-      $.getJSON('/autenticacao/api/users-info/')  // <— nova rota
+      const container = $('#controle_acesso_usuarios_container').empty();
+      $.getJSON('/autenticacao/api/users-info/')
         .done(res => {
-          // res.infousers: [{ user_id, nome_completo }, ...]
+          if (!res.infousers.length) {
+            container.html('<p class="text-muted text-center">Nenhum usuário encontrado.</p>');
+            return;
+          }
+          
+          // Adiciona checkbox para cada usuário
           res.infousers.forEach(u => {
-            sel.append(
-              `<option value="${u.user_id}">
-                 ${u.nome_completo}
-               </option>`
-            );
+            container.append(`
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="user_${u.user_id}" value="${u.user_id}">
+                <label class="form-check-label" for="user_${u.user_id}">
+                  ${u.nome_completo}
+                </label>
+              </div>`);
           });
         })
         .fail(() => {
-          sel.html('<option value="">Erro ao carregar usuários</option>');
+          container.html('<p class="text-danger text-center">Erro ao carregar usuários</p>');
         });
     }
   
@@ -143,21 +161,57 @@ $(function() {
   
     $('#form-controle-acesso').submit(function(e) {
       e.preventDefault();
-      const userId = $('#controle_acesso_usuario').val();
+      const userIds = $('#controle_acesso_usuarios_container input:checked').map((_,c) => c.value).get();
       const metodo = $('#controle_acesso_metodo').val();
       const status = $('#controle_acesso_status').is(':checked');
-      if (!userId || !metodo) return alert('Selecione usuário e método.');
+      
+      if (!userIds.length || !metodo) {
+        return alert('Selecione pelo menos um usuário e o método.');
+      }
+
       let acessos = [];
       if (metodo === 'manual') {
         acessos = $('#controle_acesso_acessos_container input:checked').map((_,c) => c.value).get();
       } else {
         acessos = $('#controle_acesso_favoritos_acessos_container input:checked').map((_,c) => c.value).get();
       }
-      sendPost('/autenticacao/api/users-acessos/register/', { user_id: userId, acessos, status }, () => {
-        this.reset();
-        toggleContainers();
-        $('#controle_acesso_favoritos_acessos_container')
-          .html('<p class="text-muted text-center">Selecione um grupo para ver os acessos.</p>');
+
+      // Envia para a nova API de múltiplos usuários
+      $.ajax({
+        url: '/autenticacao/api/users-acessos/register-multiple/',
+        method: 'POST',
+        contentType: 'application/json',
+        headers: { 'X-CSRFToken': csrftoken },
+        data: JSON.stringify({ 
+          user_ids: userIds,
+          acessos: acessos,
+          status: status
+        }),
+        success: function(resp) {
+          if (resp.status === 'success') {
+            let message = `✅ Acessos registrados com sucesso!\n`;
+            message += `Total processado: ${resp.total_processed}\n`;
+            message += `Sucesso: ${resp.successful}\n`;
+            if (resp.failed > 0) {
+              message += `Falhas: ${resp.failed}\n`;
+              message += `Verifique o console para detalhes.`;
+              console.error('Falhas no registro:', resp.errors);
+            }
+            alert(message);
+            
+            // Limpa o formulário
+            this.reset();
+            toggleContainers();
+            $('#controle_acesso_favoritos_acessos_container')
+              .html('<p class="text-muted text-center">Selecione um grupo para ver os acessos.</p>');
+          } else {
+            alert('❌ Erro ao registrar acessos: ' + resp.message);
+          }
+        }.bind(this),
+        error: function(xhr) {
+          console.error('Erro na requisição:', xhr.responseText);
+          alert('❌ Erro ao registrar acessos. Verifique o console para detalhes.');
+        }
       });
     });
   
@@ -190,52 +244,81 @@ $(function() {
     });
     
     // ⭐️ Ao mudar usuário ou método, marcar os acessos já cadastrados (só em manual)
-    $('#controle_acesso_usuario, #controle_acesso_metodo').on('change', function() {
-        console.log('DEBUG: Evento change acionado para usuário/método');
+    $('#controle_acesso_metodo').on('change', function() {
+        console.log('DEBUG: Evento change acionado para método');
         
-        const userId = $('#controle_acesso_usuario').val();
+        const userIds = $('#controle_acesso_usuarios_container input:checked').map((_,c) => c.value).get();
         const metodo = $('#controle_acesso_metodo').val();
-        console.log(`DEBUG: Usuário selecionado: ${userId}, Método selecionado: ${metodo}`);
+        console.log(`DEBUG: Usuários selecionados: ${userIds}, Método selecionado: ${metodo}`);
 
-        // só continua se for manual e user selecionado
-        if (!userId || metodo !== 'manual') {
-            console.log('DEBUG: Abortando pré-seleção (não é manual ou user vazio)');
+        // só continua se for manual e users selecionados
+        if (!userIds.length || metodo !== 'manual') {
+            console.log('DEBUG: Abortando pré-seleção (não é manual ou users vazios)');
             // limpa checkboxes manual
             $('#controle_acesso_acessos_container input[type=checkbox]').prop('checked', false);
             return;
         }
 
-        console.log('DEBUG: Iniciando pré-seleção de acessos (manual)');
-        // limpa todas as checagens antigas
-        $('#controle_acesso_acessos_container input[type=checkbox]')
-        .prop('checked', false);
-
-        // busca lista completa de controles de usuário
-        $.getJSON('/autenticacao/api/users-acessos/')
-        .done(res => {
-            console.log('DEBUG: Dados recebidos da API:', res);
-            
-            // encontra o controle do user selecionado
-            const controle = res.user_acessos.find(u => String(u.user_id) === userId);
-            if (!controle) {
-                console.log('DEBUG: Nenhum controle encontrado para o usuário selecionado');
-                return;
-            }
-
-            const ids = controle.acessos || [];
-            console.log(`DEBUG: Acessos encontrados para o usuário: ${ids.join(', ')}`);
-
-            // marca no container manual
-            ids.forEach(id => {
-                $(`#controle_acesso_acessos_container input[value="${id}"]`)
-                .prop('checked', true);
+        // Se for manual e tiver apenas um usuário selecionado, busca os acessos dele
+        if (userIds.length === 1) {
+            console.log('DEBUG: Buscando acessos para um único usuário');
+            $.getJSON('/autenticacao/api/users-acessos/')
+            .done(res => {
+                const controle = res.user_acessos.find(u => String(u.user_id) === userIds[0]);
+                if (controle) {
+                    const acessosIds = controle.acessos || [];
+                    console.log(`DEBUG: Acessos encontrados para o usuário: ${acessosIds.join(', ')}`);
+                    
+                    // Marca os checkboxes correspondentes
+                    acessosIds.forEach(id => {
+                        $(`#controle_acesso_acessos_container input[value="${id}"]`)
+                        .prop('checked', true);
+                    });
+                }
+            })
+            .fail(() => {
+                console.error('ERRO: Falha ao carregar os acessos do usuário');
             });
-        })
-        .fail(() => {
-            console.error('ERRO: Falha ao carregar os acessos do usuário para pré-seleção');
-        });
+        } else {
+            // Se tiver mais de um usuário, mantém os checkboxes como estão
+            console.log('DEBUG: Múltiplos usuários selecionados, mantendo checkboxes atuais');
+        }
     });
 
+    // Adiciona evento para atualizar acessos quando usuários são selecionados/deselecionados
+    $('#controle_acesso_usuarios_container').on('change', 'input[type="checkbox"]', function() {
+        const userIds = $('#controle_acesso_usuarios_container input:checked').map((_,c) => c.value).get();
+        const metodo = $('#controle_acesso_metodo').val();
+        
+        // Se o método for manual
+        if (metodo === 'manual') {
+            // Se tiver apenas um usuário selecionado, busca os acessos dele
+            if (userIds.length === 1) {
+                console.log('DEBUG: Buscando acessos para novo usuário único');
+                $.getJSON('/autenticacao/api/users-acessos/')
+                .done(res => {
+                    const controle = res.user_acessos.find(u => String(u.user_id) === userIds[0]);
+                    if (controle) {
+                        const acessosIds = controle.acessos || [];
+                        console.log(`DEBUG: Acessos encontrados para o usuário: ${acessosIds.join(', ')}`);
+                        
+                        // Marca os checkboxes correspondentes
+                        acessosIds.forEach(id => {
+                            $(`#controle_acesso_acessos_container input[value="${id}"]`)
+                            .prop('checked', true);
+                        });
+                    }
+                })
+                .fail(() => {
+                    console.error('ERRO: Falha ao carregar os acessos do usuário');
+                });
+            } else if (userIds.length === 0) {
+                // Se não tiver nenhum usuário selecionado, limpa os checkboxes
+                $('#controle_acesso_acessos_container input[type=checkbox]').prop('checked', false);
+            }
+            // Se tiver mais de um usuário, mantém os checkboxes como estão
+        }
+    });
 
     // --- Inicialização ---
     loadAll();

@@ -25,6 +25,7 @@ CSRF_TRUSTED_ORIGINS = [
     'http://192.168.18.246:8000',
     'http://borealpoa.dyndns.org:8000',
     'https://sistema.moneypromotora.com.br',
+    'http://sistema.moneypromotora.com.br',
     'http://168.231.97.235:7000',
     'http://168.231.97.235',
 ]
@@ -192,11 +193,12 @@ LOGGING = {
 
 CSRF_COOKIE_SECURE = False  # Permite CSRF em HTTP
 SESSION_COOKIE_SECURE = False  # Permite sessões sem HTTPS
-#CSRF_USE_SESSIONS = True  # Usa a sessão para validar CSRF
+CSRF_USE_SESSIONS = True  # Usa a sessão para validar CSRF
 CSRF_COOKIE_HTTPONLY = False  # Permite acesso ao cookie via JavaScript
 CSRF_COOKIE_NAME = "csrftoken"  # Nome do cookie CSRF padrão
 CSRF_COOKIE_DOMAIN = None  # Permite CSRF funcionar sem um domínio específico
-CSRF_COOKIE_SAMESITE = 'Lax'  # Permite CSRF funcionar entre origens confiáveis
+CSRF_COOKIE_SAMESITE = None  # Permite CSRF funcionar em qualquer contexto
+CSRF_COOKIE_PATH = '/'  # Cookie disponível em todo o site
 
 # Em settings.py, logo abaixo de ALLOWED_HOSTS:
 LOGIN_URL = '/autenticacao/login/'

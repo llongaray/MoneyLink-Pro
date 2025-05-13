@@ -1,345 +1,423 @@
 $(document).ready(function() {
-    let dashboardData = {}; // Store fetched data globally within this scope
+    console.log("Inicializando dashboard administrativo...");
+    let dashboardData = {
+        financeiro: {},
+        lojas: {},
+        rh: {},
+        metas: {}
+    };
 
-    // --- Helper Functions ---
+    // --- Helpers de formatação ---
     function formatCurrency(value) {
-        if (value === null || value === undefined) return 'R$ 0,00';
-        const number = Number(value);
-        if (isNaN(number)) return 'R$ 0,00';
-        return number.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        console.log("Formatando valor monetário:", value);
+        if (value == null) return 'R$ 0,00';
+        return Number(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     }
 
     function formatPercentage(value) {
-        if (value === null || value === undefined) return '0.0%';
-        const number = Number(value);
-        if (isNaN(number)) return '0.0%';
-        return number.toFixed(1) + '%';
+        console.log("Formatando porcentagem:", value);
+        if (value == null) return '0,0%';
+        return Number(value).toFixed(1) + '%';
+    }
+
+    function formatInteger(value) {
+        console.log("Formatando número inteiro:", value);
+        if (value == null) return '0';
+        return Number(value).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
     }
 
     function updateCardValue(cardId, value, formatter = formatCurrency) {
-        const element = $(`#${cardId} .value`);
-        if (element.length) {
-            element.text(formatter(value));
-            // Optional: Add a subtle animation on update
-            element.addClass('updated');
-            setTimeout(() => element.removeClass('updated'), 500);
-        } else {
-            console.warn(`Element not found for card value: ${cardId}`);
-        }
+        console.log(`Atualizando card ${cardId} com valor:`, value);
+        const el = $(`#${cardId} .value`);
+        if (!el.length) return console.warn(`Card não encontrado: ${cardId}`);
+        el.text(formatter(value));
     }
 
-     function populateSelect(selectId, options, valueKey = 'id', textKey = 'nome', defaultOptionValue = "", defaultOptionText = 'Selecione...') {
-        const select = $(`#${selectId}`);
-        if (!select.length) {
-            console.warn(`Select element not found: ${selectId}`);
-            return;
-        }
-        select.empty(); // Clear existing options
-        select.append($('<option>', { value: defaultOptionValue, text: defaultOptionText })); // Add default option
-        options.forEach(option => {
-            select.append($('<option>', {
-                value: option[valueKey],
-                text: option[textKey]
-            }));
+    function populateSelect(selectId, options, defaultText = 'Selecione...') {
+        console.log(`Populando select ${selectId} com ${options.length} opções`);
+        const sel = $(`#${selectId}`);
+        if (!sel.length) return console.warn(`Select não encontrado: ${selectId}`);
+        sel.empty().append(`<option value="">${defaultText}</option>`);
+        options.forEach((opt, i) => {
+            const val = opt.id !== undefined ? opt.id : i;
+            sel.append(`<option value="${val}">${opt.nome}</option>`);
         });
     }
 
-    // --- Data Fetching and Initial Population ---
+    // --- Carrega e popula tudo ---
     function fetchDataAndPopulate() {
-        console.log("Fetching dashboard data...");
-        $.ajax({
-            url: '/api/dashboard/', // Use the correct URL (removed /administrativo prefix)
-            method: 'GET',
-            dataType: 'json',
-            success: function(data) {
-                console.log("Data received:", data);
-                dashboardData = data; // Store data
-                populateDashboard(data);
-            },
-            error: function(jqXHR, textStatus, errorThrown) {
-                console.error("Error fetching dashboard data:", textStatus, errorThrown);
-                $('#last-update-time').text('Erro ao carregar dados');
-                // Display a user-friendly error message if needed
-            }
-        });
+        console.log("Iniciando carregamento de dados do dashboard...");
+        
+        // Carrega dados financeiros
+        $.getJSON('/api/dashboard/financeiro/')
+            .done(data => {
+                console.log("Dados financeiros recebidos:", data);
+                dashboardData.financeiro = data;
+                populateFinanceiro(data);
+            })
+            .fail((jqXHR, textStatus, errorThrown) => {
+                console.error("Erro ao carregar dados financeiros:", errorThrown);
+            });
+
+        // Carrega dados das lojas
+        $.getJSON('/api/dashboard/lojas/')
+            .done(data => {
+                console.log("Dados das lojas recebidos:", data);
+                dashboardData.lojas = data;
+                populateLojas(data);
+            })
+            .fail((jqXHR, textStatus, errorThrown) => {
+                console.error("Erro ao carregar dados das lojas:", errorThrown);
+            });
+
+        // Carrega dados de RH
+        $.getJSON('/api/dashboard/rh/')
+            .done(data => {
+                console.log("Dados de RH recebidos:", data);
+                dashboardData.rh = data;
+                populateRH(data);
+            })
+            .fail((jqXHR, textStatus, errorThrown) => {
+                console.error("Erro ao carregar dados de RH:", errorThrown);
+            });
+
+        // Carrega dados de metas
+        $.getJSON('/api/dashboard/metas/')
+            .done(data => {
+                console.log("Dados de metas recebidos:", data);
+                dashboardData.metas = data;
+                populateMetas(data);
+            })
+            .fail((jqXHR, textStatus, errorThrown) => {
+                console.error("Erro ao carregar dados de metas:", errorThrown);
+            });
     }
 
-    function populateDashboard(data) {
-        if (!data) return;
+    function populateFinanceiro(data) {
+        console.log("Populando dados financeiros:", data);
+        
+        // Empresas
+        const empresasOptions = Object.entries(data.empresas).map(([nome, vals], i) => ({
+            id: i,
+            nome,
+            faturamento_anual: vals.faturamento_ano,
+            faturamento_mensal: vals.faturamento_mes
+        }));
+        console.log("Opções de empresas:", empresasOptions);
+        populateSelect('select-empresa-financeiro', empresasOptions, 'Todas as empresas');
+        updateFinanceiroEmpresaCards();
 
-        // === SESSÃO: FINANCEIRO ===
-        console.log("Populating Financeiro...");
-        if (data.financeiro) {
-            // Populate Empresa Select
-            populateSelect('select-empresa-financeiro', data.financeiro.empresas_list || [], 'id', 'nome', "", "Todas as Empresas");
-            updateFinanceiroEmpresaCards(); // Initial state (Todas)
-
-            // Interno Cards
-            updateCardValue('card-interno-fat-ano', data.financeiro.interno?.faturamento_ano);
-            updateCardValue('card-interno-fat-mes', data.financeiro.interno?.faturamento_mes);
-            // Franquia Cards
-            updateCardValue('card-franquia-fat-ano', data.financeiro.franquia?.faturamento_ano);
-            updateCardValue('card-franquia-fat-mes', data.financeiro.franquia?.faturamento_mes);
-            // Filial Cards
-            updateCardValue('card-filial-fat-ano', data.financeiro.filial?.faturamento_ano);
-            updateCardValue('card-filial-fat-mes', data.financeiro.filial?.faturamento_mes);
+        // Financeiro interno (sedes)
+        console.log("Dados financeiros internos:", data.interno);
+        if (data.interno) {
+            const internoOptions = Object.entries(data.interno).map(([nome, vals]) => ({
+                id: nome,
+                nome: nome,
+                faturamento_ano: vals.faturamento_ano,
+                faturamento_mes: vals.faturamento_mes
+            }));
+            populateSelect('select-interno-financeiro', internoOptions, 'Todas as sedes');
+            updateFinanceiroInternoCards();
         }
 
-        // === SESSÃO: LOJAS ===
-        console.log("Populating Lojas...");
-        if (data.lojas) {
-            // Sede Cards
-            const sede = data.lojas.sede || {};
-            updateCardValue('card-sede-fat-ano', sede.faturamento_ano);
-            updateCardValue('card-sede-fat-mes', sede.faturamento_mes);
-            updateCardValue('card-sede-taxa-comp', sede.taxa_comparecimento, formatPercentage);
-            updateCardValue('card-sede-cli-rua', sede.clientes_rua, val => val); // No formatting
-            updateCardValue('card-sede-neg-fechados', sede.negocios_fechados, val => val);
-            updateCardValue('card-sede-agendamentos', sede.agendamentos, val => val);
-            updateCardValue('card-sede-sem-interesse', sede.sem_interesse, val => val);
-
-            // Populate Filial Select
-            populateSelect('select-filial-lojas', data.lojas.filiais_list || [], 'id', 'nome', "", "Todas as Filiais");
-            updateLojasFilialCards(); // Initial state (Todas)
-
-            // Populate Franquia Select
-            populateSelect('select-franquia-lojas', data.lojas.franquias_list || [], 'id', 'nome', "", "Todas as Franquias");
-            updateLojasFranquiaCards(); // Initial state (Todas)
+        // Financeiro franquia
+        console.log("Dados financeiros franquia:", data.franquia);
+        if (data.franquia) {
+            const franquiaOptions = Object.entries(data.franquia).map(([nome, vals]) => ({
+                id: nome,
+                nome: nome,
+                faturamento_ano: vals.faturamento_ano,
+                faturamento_mes: vals.faturamento_mes
+            }));
+            populateSelect('select-franquia-financeiro', franquiaOptions, 'Todas as franquias');
+            updateFinanceiroFranquiaCards();
         }
 
-        // === SESSÃO: RH ===
-        console.log("Populating RH...");
-        if (data.rh) {
-            // Geral Cards
-            updateCardValue('card-rh-func-ativos', data.rh.geral?.ativos, val => val);
-            updateCardValue('card-rh-func-inativos', data.rh.geral?.inativos, val => val);
-
-            // Populate Funcionário Select
-            populateSelect('select-funcionario-rh', data.rh.funcionarios_list || [], 'id', 'nome', "", "Selecione um funcionário");
-            updateRhFuncionarioCards(); // Initial state (None selected)
+        // Financeiro filial
+        console.log("Dados financeiros filial:", data.filial);
+        if (data.filial) {
+            const filialOptions = Object.entries(data.filial).map(([nome, vals]) => ({
+                id: nome,
+                nome: nome,
+                faturamento_ano: vals.faturamento_ano,
+                faturamento_mes: vals.faturamento_mes
+            }));
+            populateSelect('select-filial-financeiro', filialOptions, 'Todas as filiais');
+            updateFinanceiroFilialCards();
         }
-
-        // === SESSÃO: METAS ===
-        console.log("Populating Metas...");
-        if (data.metas) {
-            // Populate Meta Ativa Select
-            populateSelect('select-meta-ativa', data.metas.ativas_list || [], 'id', 'titulo', "", "Selecione uma meta ativa");
-            updateMetaAtivaCards(); // Initial state (None selected)
-
-            // Populate Meta Inativada Select
-            populateSelect('select-meta-inativada', data.metas.inativadas_list || [], 'id', 'titulo', "", "Selecione uma meta inativa");
-            updateMetaInativadaCards(); // Initial state (None selected)
-        }
-
-        // === TIMESTAMP ===
-        if (data.timestamp) {
-            try {
-                const date = new Date(data.timestamp);
-                $('#last-update-time').text(date.toLocaleString('pt-BR'));
-            } catch (e) {
-                $('#last-update-time').text('Data inválida');
-            }
-        } else {
-            $('#last-update-time').text('Não disponível');
-        }
-         console.log("Dashboard populated.");
     }
 
-    // --- Update Functions for Selectors ---
+    function populateLojas(data) {
+        // Lista de filiais e franquias
+        console.log("Lista de filiais:", data.filiais_list);
+        console.log("Lista de franquias:", data.franquias_list);
+        populateSelect('select-filial-lojas', data.filiais_list, 'Todas as filiais');
+        populateSelect('select-franquia-lojas', data.franquias_list, 'Todas as franquias');
 
-    // Financeiro - Empresa
+        // Métricas da sede
+        updateCardValue('card-sede-fat-ano', data.sede.faturamento_ano);
+        updateCardValue('card-sede-fat-mes', data.sede.faturamento_mes);
+        updateCardValue('card-sede-taxa-comp', data.sede.taxa_comparecimento, formatPercentage);
+        updateCardValue('card-sede-cli-rua', data.sede.clientes_rua, formatInteger);
+        updateCardValue('card-sede-neg-fechados', data.sede.negocios_fechados, formatInteger);
+        updateCardValue('card-sede-agendamentos', data.sede.agendamentos, formatInteger);
+        updateCardValue('card-sede-sem-interesse', data.sede.sem_interesse, formatInteger);
+
+        // Atualiza cards de filiais e franquias
+        updateLojasFilialCards();
+        updateLojasFranquiaCards();
+    }
+
+    function populateRH(data) {
+        // Lista de funcionários
+        console.log("Lista de funcionários:", data.funcionarios_list);
+        populateSelect('select-funcionario-rh', data.funcionarios_list, 'Todos os funcionários');
+
+        // Métricas gerais
+        updateCardValue('card-rh-func-ativos', data.geral.ativos, formatInteger);
+        updateCardValue('card-rh-func-inativos', data.geral.inativos, formatInteger);
+
+        // Atualiza cards de desempenho
+        updateRhFuncionarioCards();
+    }
+
+    function populateMetas(data) {
+        // Lista de metas
+        console.log("Metas ativas:", data.ativas_list);
+        console.log("Metas inativadas:", data.inativadas_list);
+        populateSelect('select-meta-ativa', data.ativas_list, 'Todas as metas ativas');
+        populateSelect('select-meta-inativada', data.inativadas_list, 'Todas as metas inativas');
+
+        // Atualiza cards de metas
+        updateMetaCards();
+    }
+
     function updateFinanceiroEmpresaCards() {
-        const selectedEmpresaId = $('#select-empresa-financeiro').val();
-        let fatAno = 0;
-        let fatMes = 0;
-
-        if (selectedEmpresaId && dashboardData.financeiro?.empresas_list) {
-            const empresa = dashboardData.financeiro.empresas_list.find(e => e.id == selectedEmpresaId);
-            if (empresa) {
-                fatAno = empresa.faturamento_ano;
-                fatMes = empresa.faturamento_mes;
-            }
-        } else if (!selectedEmpresaId && dashboardData.financeiro?.empresas_list) {
-            // "Todas as Empresas" - Sum all
-            dashboardData.financeiro.empresas_list.forEach(empresa => {
-                fatAno += Number(empresa.faturamento_ano || 0);
-                fatMes += Number(empresa.faturamento_mes || 0);
+        const sel = $('#select-empresa-financeiro').val();
+        console.log("Empresa selecionada:", sel);
+        let ano = 0, mes = 0;
+        const arr = Object.values(dashboardData.financeiro.empresas);
+        if (sel) {
+            const item = arr[sel];
+            console.log("Dados da empresa selecionada:", item);
+            ano = item.faturamento_ano;
+            mes = item.faturamento_mes;
+        } else {
+            console.log("Calculando totais de todas as empresas");
+            arr.forEach(i => {
+                ano += i.faturamento_ano;
+                mes += i.faturamento_mes;
             });
         }
-        updateCardValue('card-empresa-fat-ano', fatAno);
-        updateCardValue('card-empresa-fat-mes', fatMes);
+        console.log("Valores calculados - Ano:", ano, "Mês:", mes);
+        updateCardValue('card-empresa-fat-ano', ano);
+        updateCardValue('card-empresa-fat-mes', mes);
     }
 
-    // Lojas - Filial
-    function updateLojasFilialCards() {
-        const selectedFilialId = $('#select-filial-lojas').val();
-        let metrics = {
-            faturamento_ano: 0, faturamento_mes: 0, taxa_comparecimento: 0,
-            clientes_rua: 0, negocios_fechados: 0, agendamentos: 0, sem_interesse: 0
-        };
-        let totalAgendamentos = 0;
-        let totalComparecimentos = 0; // Needed for aggregated percentage
+    function updateFinanceiroInternoCards() {
+        const sel = $('#select-interno-financeiro').val();
+        console.log("Sede selecionada:", sel);
+        let ano = 0, mes = 0;
+        const arr = Object.values(dashboardData.financeiro.interno);
+        
+        if (sel) {
+            const item = dashboardData.financeiro.interno[sel];
+            console.log("Dados da sede selecionada:", item);
+            ano = item.faturamento_ano;
+            mes = item.faturamento_mes;
+        } else {
+            console.log("Calculando totais de todas as sedes");
+            arr.forEach(i => {
+                ano += Number(i.faturamento_ano);
+                mes += Number(i.faturamento_mes);
+            });
+        }
+        console.log("Valores calculados - Ano:", ano, "Mês:", mes);
+        updateCardValue('card-interno-fat-ano', ano);
+        updateCardValue('card-interno-fat-mes', mes);
+    }
 
-        if (selectedFilialId && dashboardData.lojas?.filiais_list) {
-             const filial = dashboardData.lojas.filiais_list.find(f => f.id == selectedFilialId);
-            if (filial && filial.metrics) {
-                metrics = filial.metrics;
-            }
-        } else if (!selectedFilialId && dashboardData.lojas?.filiais_list) {
-             // "Todas as Filiais" - Sum metrics
-             dashboardData.lojas.filiais_list.forEach(filial => {
-                 if (filial.metrics) {
-                     metrics.faturamento_ano += Number(filial.metrics.faturamento_ano || 0);
-                     metrics.faturamento_mes += Number(filial.metrics.faturamento_mes || 0);
-                     metrics.clientes_rua += Number(filial.metrics.clientes_rua || 0);
-                     metrics.negocios_fechados += Number(filial.metrics.negocios_fechados || 0);
-                     metrics.agendamentos += Number(filial.metrics.agendamentos || 0);
-                     metrics.sem_interesse += Number(filial.metrics.sem_interesse || 0);
-                     // For aggregated percentage, we need sum of components
-                     totalAgendamentos += Number(filial.metrics.agendamentos || 0); // Assuming 'agendamentos' is the base
-                     // Assuming 'comparecimentos' can be derived or is provided. If derived from taxa:
-                     // totalComparecimentos += (Number(filial.metrics.taxa_comparecimento || 0)/100) * Number(filial.metrics.agendamentos || 0);
-                     // Using the taxa directly is simpler but less accurate for aggregation. Let's use the agendamentos count as provided.
-                     // The backend should ideally provide summed comparecimentos if needed for accurate aggregated %.
-                     // Using individual taxa for sum isn't mathematically correct. We'll display average/sum based on available data.
-                     // Let's display the summed agendamentos and calculate an *average* taxa if needed, or rely on backend calculation if provided.
-                     // For simplicity, we'll just sum the raw counts here. Taxa % will be inaccurate when summed.
-                 }
-             });
-             // Calculate average taxa if needed (example - may not be required)
-             // if(totalAgendamentos > 0) metrics.taxa_comparecimento = (totalComparecimentos / totalAgendamentos) * 100;
-             // If the backend sends an aggregated taxa for "Todas", use that instead.
-             // For now, we will just show the summed raw counts. Let's zero out the taxa for "Todas".
-             metrics.taxa_comparecimento = 0; // Indicate taxa is not applicable/accurate for sum.
+    function updateFinanceiroFranquiaCards() {
+        const sel = $('#select-franquia-financeiro').val();
+        console.log("Franquia selecionada:", sel);
+        let ano = 0, mes = 0;
+        const arr = Object.values(dashboardData.financeiro.franquia);
+        
+        if (sel) {
+            const item = dashboardData.financeiro.franquia[sel];
+            console.log("Dados da franquia selecionada:", item);
+            ano = item.faturamento_ano;
+            mes = item.faturamento_mes;
+        } else {
+            console.log("Calculando totais de todas as franquias");
+            arr.forEach(i => {
+                ano += Number(i.faturamento_ano);
+                mes += Number(i.faturamento_mes);
+            });
+        }
+        console.log("Valores calculados - Ano:", ano, "Mês:", mes);
+        updateCardValue('card-franquia-fat-ano', ano);
+        updateCardValue('card-franquia-fat-mes', mes);
+    }
+
+    function updateFinanceiroFilialCards() {
+        const sel = $('#select-filial-financeiro').val();
+        console.log("Filial selecionada:", sel);
+        let ano = 0, mes = 0;
+        const arr = Object.values(dashboardData.financeiro.filial);
+        
+        if (sel) {
+            const item = dashboardData.financeiro.filial[sel];
+            console.log("Dados da filial selecionada:", item);
+            ano = item.faturamento_ano;
+            mes = item.faturamento_mes;
+        } else {
+            console.log("Calculando totais de todas as filiais");
+            arr.forEach(i => {
+                ano += Number(i.faturamento_ano);
+                mes += Number(i.faturamento_mes);
+            });
+        }
+        console.log("Valores calculados - Ano:", ano, "Mês:", mes);
+        updateCardValue('card-filial-fat-ano', ano);
+        updateCardValue('card-filial-fat-mes', mes);
+    }
+
+    function updateLojasFilialCards() {
+        const id = $('#select-filial-lojas').val();
+        console.log("Filial selecionada:", id);
+        let metrics = {
+            faturamento_ano: 0,
+            faturamento_mes: 0,
+            taxa_comparecimento: 0,
+            clientes_rua: 0,
+            negocios_fechados: 0,
+            agendamentos: 0,
+            sem_interesse: 0
+        };
+
+        if (id) {
+            const loja = dashboardData.lojas.filiais_list.find(l => String(l.id) === id);
+            console.log("Dados da filial encontrada:", loja);
+            if (loja) metrics = loja.metrics;
         }
 
+        console.log("Métricas da filial:", metrics);
         updateCardValue('card-filial-loja-fat-ano', metrics.faturamento_ano);
         updateCardValue('card-filial-loja-fat-mes', metrics.faturamento_mes);
         updateCardValue('card-filial-loja-taxa-comp', metrics.taxa_comparecimento, formatPercentage);
-        updateCardValue('card-filial-loja-cli-rua', metrics.clientes_rua, val => val);
-        updateCardValue('card-filial-loja-neg-fechados', metrics.negocios_fechados, val => val);
-        updateCardValue('card-filial-loja-agendamentos', metrics.agendamentos, val => val);
-        updateCardValue('card-filial-loja-sem-interesse', metrics.sem_interesse, val => val);
+        updateCardValue('card-filial-loja-cli-rua', metrics.clientes_rua, formatInteger);
+        updateCardValue('card-filial-loja-neg-fechados', metrics.negocios_fechados, formatInteger);
+        updateCardValue('card-filial-loja-agendamentos', metrics.agendamentos, formatInteger);
+        updateCardValue('card-filial-loja-sem-interesse', metrics.sem_interesse, formatInteger);
     }
 
-
-    // Lojas - Franquia (Similar to Filial)
     function updateLojasFranquiaCards() {
-        const selectedFranquiaId = $('#select-franquia-lojas').val();
+        const id = $('#select-franquia-lojas').val();
+        console.log("Franquia selecionada:", id);
         let metrics = {
-            faturamento_ano: 0, faturamento_mes: 0, taxa_comparecimento: 0,
-            clientes_rua: 0, negocios_fechados: 0, agendamentos: 0, sem_interesse: 0
+            faturamento_ano: 0,
+            faturamento_mes: 0,
+            taxa_comparecimento: 0,
+            clientes_rua: 0,
+            negocios_fechados: 0,
+            agendamentos: 0,
+            sem_interesse: 0
         };
-        // Add aggregation logic similar to updateLojasFilialCards if needed for "Todas as Franquias"
 
-        if (selectedFranquiaId && dashboardData.lojas?.franquias_list) {
-             const franquia = dashboardData.lojas.franquias_list.find(f => f.id == selectedFranquiaId);
-            if (franquia && franquia.metrics) {
-                metrics = franquia.metrics;
-            }
-        } else if (!selectedFranquiaId && dashboardData.lojas?.franquias_list) {
-             // "Todas as Franquias" - Sum metrics
-              dashboardData.lojas.franquias_list.forEach(franquia => {
-                 if (franquia.metrics) {
-                     metrics.faturamento_ano += Number(franquia.metrics.faturamento_ano || 0);
-                     metrics.faturamento_mes += Number(franquia.metrics.faturamento_mes || 0);
-                     metrics.clientes_rua += Number(franquia.metrics.clientes_rua || 0);
-                     metrics.negocios_fechados += Number(franquia.metrics.negocios_fechados || 0);
-                     metrics.agendamentos += Number(franquia.metrics.agendamentos || 0);
-                     metrics.sem_interesse += Number(franquia.metrics.sem_interesse || 0);
-                 }
-             });
-             metrics.taxa_comparecimento = 0; // Taxa aggregated isn't straightforward.
+        if (id) {
+            const loja = dashboardData.lojas.franquias_list.find(l => String(l.id) === id);
+            console.log("Dados da franquia encontrada:", loja);
+            if (loja) metrics = loja.metrics;
         }
 
-
+        console.log("Métricas da franquia:", metrics);
         updateCardValue('card-franquia-loja-fat-ano', metrics.faturamento_ano);
         updateCardValue('card-franquia-loja-fat-mes', metrics.faturamento_mes);
         updateCardValue('card-franquia-loja-taxa-comp', metrics.taxa_comparecimento, formatPercentage);
-        updateCardValue('card-franquia-loja-cli-rua', metrics.clientes_rua, val => val);
-        updateCardValue('card-franquia-loja-neg-fechados', metrics.negocios_fechados, val => val);
-        updateCardValue('card-franquia-loja-agendamentos', metrics.agendamentos, val => val);
-        updateCardValue('card-franquia-loja-sem-interesse', metrics.sem_interesse, val => val);
+        updateCardValue('card-franquia-loja-cli-rua', metrics.clientes_rua, formatInteger);
+        updateCardValue('card-franquia-loja-neg-fechados', metrics.negocios_fechados, formatInteger);
+        updateCardValue('card-franquia-loja-agendamentos', metrics.agendamentos, formatInteger);
+        updateCardValue('card-franquia-loja-sem-interesse', metrics.sem_interesse, formatInteger);
     }
 
-    // RH - Desempenho Funcionário
     function updateRhFuncionarioCards() {
-        const selectedFuncId = $('#select-funcionario-rh').val();
+        const id = $('#select-funcionario-rh').val();
+        console.log("Funcionário selecionado:", id);
         let desempenho = {
-            faturamento_ano: 0, faturamento_mes: 0, clientes_concluidos: 0, comissao_total_mes: 0
+            faturamento_ano: 0,
+            faturamento_mes: 0,
+            clientes_concluidos: 0,
+            comissao_total_mes: 0
         };
 
-        if (selectedFuncId && dashboardData.rh?.desempenho) {
-            desempenho = dashboardData.rh.desempenho[selectedFuncId] || desempenho;
+        if (id) {
+            desempenho = dashboardData.rh.desempenho[id] || desempenho;
         }
-        // If no selection, keep default zero values
 
+        console.log("Desempenho do funcionário:", desempenho);
         updateCardValue('card-rh-func-fat-ano', desempenho.faturamento_ano);
         updateCardValue('card-rh-func-fat-mes', desempenho.faturamento_mes);
-        updateCardValue('card-rh-func-clientes', desempenho.clientes_concluidos, val => val);
+        updateCardValue('card-rh-func-clientes', desempenho.clientes_concluidos, formatInteger);
         updateCardValue('card-rh-func-comissao', desempenho.comissao_total_mes);
     }
 
-    // Metas - Ativa
-    function updateMetaAtivaCards() {
-        const selectedMetaId = $('#select-meta-ativa').val();
-        let meta = {
-            valor_meta: 0, valor_atingido: 0, valor_restante: 0, status: '-', percentual: 0
+    function updateMetaCards() {
+        const idAtiva = $('#select-meta-ativa').val();
+        const idInativa = $('#select-meta-inativada').val();
+        console.log("Meta ativa selecionada:", idAtiva);
+        console.log("Meta inativa selecionada:", idInativa);
+
+        let metaAtiva = {
+            valor_meta: 0,
+            valor_atingido: 0,
+            valor_restante: 0,
+            percentual: 0,
+            status: ''
         };
 
-        if (selectedMetaId && dashboardData.metas?.ativas_list) {
-            meta = dashboardData.metas.ativas_list.find(m => m.id == selectedMetaId) || meta;
-        }
-        // If no selection, keep default values
-
-        updateCardValue('card-meta-ativa-valor', meta.valor_meta);
-        updateCardValue('card-meta-ativa-atingido', meta.valor_atingido);
-        updateCardValue('card-meta-ativa-restante', meta.valor_restante);
-        updateCardValue('card-meta-ativa-status', meta.status, val => val); // No formatting
-    }
-
-    // Metas - Inativada
-    function updateMetaInativadaCards() {
-        const selectedMetaId = $('#select-meta-inativada').val();
-        let meta = {
-            valor_meta: 0, valor_atingido: 0, valor_restante: 0, status: '-'
+        let metaInativa = {
+            valor_meta: 0,
+            valor_atingido: 0,
+            valor_restante: 0,
+            status: ''
         };
 
-        if (selectedMetaId && dashboardData.metas?.inativadas_list) {
-            meta = dashboardData.metas.inativadas_list.find(m => m.id == selectedMetaId) || meta;
+        if (idAtiva) {
+            metaAtiva = dashboardData.metas.ativas_list.find(m => String(m.id) === idAtiva) || metaAtiva;
         }
-        // If no selection, keep default values
 
-        updateCardValue('card-meta-inativa-valor', meta.valor_meta);
-        updateCardValue('card-meta-inativa-atingido', meta.valor_atingido);
-        updateCardValue('card-meta-inativa-restante', meta.valor_restante);
-        updateCardValue('card-meta-inativa-status', meta.status, val => val); // No formatting
+        if (idInativa) {
+            metaInativa = dashboardData.metas.inativadas_list.find(m => String(m.id) === idInativa) || metaInativa;
+        }
+
+        console.log("Dados da meta ativa:", metaAtiva);
+        console.log("Dados da meta inativa:", metaInativa);
+
+        // Atualiza cards de meta ativa
+        updateCardValue('card-meta-ativa-valor', metaAtiva.valor_meta);
+        updateCardValue('card-meta-ativa-atingido', metaAtiva.valor_atingido);
+        updateCardValue('card-meta-ativa-restante', metaAtiva.valor_restante);
+        updateCardValue('card-meta-ativa-status', metaAtiva.percentual, formatPercentage);
+        $('#card-meta-ativa-status .value').text(metaAtiva.status);
+
+        // Atualiza cards de meta inativa
+        updateCardValue('card-meta-inativa-valor', metaInativa.valor_meta);
+        updateCardValue('card-meta-inativa-atingido', metaInativa.valor_atingido);
+        updateCardValue('card-meta-inativa-restante', metaInativa.valor_restante);
+        $('#card-meta-inativa-status .value').text(metaInativa.status);
     }
-
 
     // --- Event Listeners ---
     $('#select-empresa-financeiro').on('change', updateFinanceiroEmpresaCards);
+    $('#select-interno-financeiro').on('change', updateFinanceiroInternoCards);
+    $('#select-franquia-financeiro').on('change', updateFinanceiroFranquiaCards);
+    $('#select-filial-financeiro').on('change', updateFinanceiroFilialCards);
     $('#select-filial-lojas').on('change', updateLojasFilialCards);
     $('#select-franquia-lojas').on('change', updateLojasFranquiaCards);
     $('#select-funcionario-rh').on('change', updateRhFuncionarioCards);
-    $('#select-meta-ativa').on('change', updateMetaAtivaCards);
-    $('#select-meta-inativada').on('change', updateMetaInativadaCards);
+    $('#select-meta-ativa, #select-meta-inativada').on('change', updateMetaCards);
 
-    // --- Initial Load ---
+    // --- Inicialização ---
     fetchDataAndPopulate();
-
 });
-
-// Adicione um pouco de CSS para a animação de atualização (opcional)
-const style = document.createElement('style');
-style.textContent = `
-.value.updated {
-  animation: pulse- nhẹ 0.5s ease-out;
-}
-@keyframes pulse- nhẹ {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.05); opacity: 0.8; }
-  100% { transform: scale(1); opacity: 1; }
-}
-`;
-document.head.append(style);

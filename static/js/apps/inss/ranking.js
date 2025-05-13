@@ -7,36 +7,32 @@ $(document).ready(function() {
         $.getJSON("/inss/api/inss/cards/" + periodoAtual + "/", function(data) {
             console.log("Dados da API cards:", data);
 
-            // Atualiza o card "Meta Geral"
             if (data.meta_geral) {
-                $(".dashboard-card.meta-geral .card-value").text(data.meta_geral.valor || 'R$ 0,00');
-                $(".dashboard-card.meta-geral .percentage-value").text((data.meta_geral.percentual || 0) + "%");
+                $(".dashboard-card.meta-geral .card-value")
+                    .text(data.meta_geral.valor || 'R$ 0,00');
+                $(".dashboard-card.meta-geral .percentage-value")
+                    .text((data.meta_geral.percentual || 0) + "%");
             }
-
-            // Atualiza o card "Meta Empresa"
-            if (data.meta_empresa) { 
-                $(".dashboard-card.meta-empresa .card-value").text(data.meta_empresa.valor || 'R$ 0,00');
-                $(".dashboard-card.meta-empresa .percentage-value").text((data.meta_empresa.percentual || 0) + "%");
+            if (data.meta_empresa) {
+                $(".dashboard-card.meta-empresa .card-value")
+                    .text(data.meta_empresa.valor || 'R$ 0,00');
+                $(".dashboard-card.meta-empresa .percentage-value")
+                    .text((data.meta_empresa.percentual || 0) + "%");
             }
-
-            // Atualiza o card "Meta Setor"
             if (data.meta_setor) {
-                $(".dashboard-card.meta-setor .card-value").text(data.meta_setor.valor || 'R$ 0,00');
-                $(".dashboard-card.meta-setor .percentage-value").text((data.meta_setor.percentual || 0) + "%");
+                $(".dashboard-card.meta-setor .card-value")
+                    .text(data.meta_setor.valor || 'R$ 0,00');
+                $(".dashboard-card.meta-setor .percentage-value")
+                    .text((data.meta_setor.percentual || 0) + "%");
             }
-
-            // Atualiza o card "Qtd Em Loja"
             if (data.quantidade) {
-                $(".dashboard-card.quantidade .card-value").text(data.quantidade.valor || 0);
+                $(".dashboard-card.quantidade .card-value")
+                    .text(data.quantidade.valor || 0);
             }
-
-            // Atualiza o card "Qtd Confirmados"
             if (data.agendamentos) {
-                $(".dashboard-card.agendamentos .card-value").text(data.agendamentos.valor || 0);
+                $(".dashboard-card.agendamentos .card-value")
+                    .text(data.agendamentos.valor || 0);
             }
-
-            // Removido: Atualiza informações do período
-
         }).fail(function(jqXHR, textStatus, errorThrown) {
             console.error("Erro ao carregar dados dos cards:", textStatus, errorThrown);
         });
@@ -46,226 +42,168 @@ $(document).ready(function() {
     function updatePodium() {
         $.getJSON("/inss/api/inss/podium/" + periodoAtual + "/", function(data) {
             console.log("Dados do pódio:", data);
-            var podium = data.podium;
-            // Atualiza Top 2 (índice 1)
-            if (podium[1]) {
-                var top2 = podium[1];
-                // Verifica se a loja tem um logo válido e acessível
-                var logoUrl = "/static/img/default-store.png";
-                if (top2.logo && top2.logo.startsWith("/")) {
-                    logoUrl = top2.logo;
+            var podium = data.podium || [];
+
+            function renderSlot(idx, selector) {
+                var slot = podium[idx];
+                var $box = $(selector);
+                if (!slot) {
+                    $box.find(".foto__pos img")
+                        .attr("src", "/static/img/default-store.png")
+                        .attr("alt", "Posição Disponível");
+                    $box.find(".circle__position").text(idx+1);
+                    $box.find(".valor").text("R$ 0,00");
+                    $box.find(".bar .nome").text("Posição Disponível");
+                    return;
                 }
-                $(".top2.box__ranking .foto__pos img").attr("src", logoUrl);
-                $(".top2.box__ranking .foto__pos img").attr("alt", top2.nome);
-                $(".top2.box__ranking .circle__position").text("2");
-                $(".top2.box__ranking .valor").text(top2.valor);
-                $(".top2.box__ranking .bar .nome").text(top2.nome);
-            } else {
-                $(".top2.box__ranking .foto__pos img").attr("src", "/static/img/default-store.png");
-                $(".top2.box__ranking .foto__pos img").attr("alt", "Posição Disponível");
-                $(".top2.box__ranking .circle__position").text("2");
-                $(".top2.box__ranking .valor").text("R$ 0,00");
-                $(".top2.box__ranking .bar .nome").text("Posição Disponível");
-            }
-            // Atualiza Top 1 (índice 0)
-            if (podium[0]) {
-                var top1 = podium[0];
-                // Verifica se a loja tem um logo válido e acessível
-                var logoUrl = "/static/img/default-store.png";
-                if (top1.logo && top1.logo.startsWith("/")) {
-                    logoUrl = top1.logo;
-                }
-                $(".top1.box__ranking .foto__pos img").attr("src", logoUrl);
-                $(".top1.box__ranking .foto__pos img").attr("alt", top1.nome);
-                $(".top1.box__ranking .circle__position").text("1");
-                $(".top1.box__ranking .valor").text(top1.valor);
-                $(".top1.box__ranking .bar .nome").text(top1.nome);
-            } else {
-                $(".top1.box__ranking .foto__pos img").attr("src", "/static/img/default-store.png");
-                $(".top1.box__ranking .foto__pos img").attr("alt", "Posição Disponível");
-                $(".top1.box__ranking .circle__position").text("1");
-                $(".top1.box__ranking .valor").text("R$ 0,00");
-                $(".top1.box__ranking .bar .nome").text("Posição Disponível");
-            }
-            // Atualiza Top 3 (índice 2)
-            if (podium[2]) {
-                var top3 = podium[2];
-                // Verifica se a loja tem um logo válido e acessível
-                var logoUrl = "/static/img/default-store.png";
-                if (top3.logo && top3.logo.startsWith("/")) {
-                    logoUrl = top3.logo;
-                }
-                $(".top3.box__ranking .foto__pos img").attr("src", logoUrl);
-                $(".top3.box__ranking .foto__pos img").attr("alt", top3.nome);
-                $(".top3.box__ranking .circle__position").text("3");
-                $(".top3.box__ranking .valor").text(top3.valor);
-                $(".top3.box__ranking .bar .nome").text(top3.nome);
-            } else {
-                $(".top3.box__ranking .foto__pos img").attr("src", "/static/img/default-store.png");
-                $(".top3.box__ranking .foto__pos img").attr("alt", "Posição Disponível");
-                $(".top3.box__ranking .circle__position").text("3");
-                $(".top3.box__ranking .valor").text("R$ 0,00");
-                $(".top3.box__ranking .bar .nome").text("Posição Disponível");
+                var logoUrl = slot.logo && slot.logo.startsWith("/") 
+                              ? slot.logo 
+                              : "/static/img/default-store.png";
+                $box.find(".foto__pos img")
+                    .attr("src", logoUrl)
+                    .attr("alt", slot.nome);
+                $box.find(".circle__position").text(idx+1);
+                $box.find(".valor").text(slot.valor);
+                $box.find(".bar .nome").text(slot.nome);
             }
 
-            // Removido: Atualiza informações do período
+            renderSlot(1, ".top2.box__ranking");
+            renderSlot(0, ".top1.box__ranking");
+            renderSlot(2, ".top3.box__ranking");
 
         }).fail(function(jqXHR, textStatus, errorThrown) {
-            console.error("Erro ao carregar dados do pódium:", textStatus, errorThrown);
+            console.error("Erro ao carregar dados do pódio:", textStatus, errorThrown);
         });
     }
 
-    // Variável global para armazenar a ordem anterior (usando o nome dos atendentes)
+    // Variável para animação de reordenação
     var previousOrder = [];
 
+    // FUNÇÃO: Atualiza a tabela, agora ordenando por qtd_emloja desc, depois qtd_agendados desc
     function updateTabela() {
         $.getJSON("/inss/api/inss/tabela/" + periodoAtual + "/", function(data) {
-            var ranking = data.ranking_data;
-            var tbody = $("table tbody");
+            var ranking = data.ranking_data || [];
+            var tbody   = $("table tbody");
             var newOrder = [];
-            var newRows = [];
+            var newRows  = [];
 
-            // Cria as novas linhas e armazena a nova ordem (usando o atributo data-nome)
-            if (ranking && ranking.length > 0) {
-                $.each(ranking, function(i, item) {
-                    newOrder.push(item.nome);
-                    var row = $("<tr></tr>").attr("data-nome", item.nome);
-                    row.append("<td>" + item.posicao + "</td>");
-                    if (item.foto) {
-                        row.append("<td><img src='" + item.foto + "' alt='" + item.nome + "' class='ranking-foto'></td>");
-                    } else {
-                        row.append("<td><img src='/static/img/geral/default_image.png' alt='" + item.nome + "' class='ranking-foto'></td>");
-                    }
-                    row.append("<td>" + item.nome + "</td>");
-                    row.append("<td>" + item.qtd_agendados + "</td>");
-                    row.append("<td>" + item.qtd_emloja + "</td>");
-                    newRows.push(row);
-                });
-            } else {
-                var row = $("<tr></tr>");
-                row.append("<td colspan='5' class='text-center'>Nenhum dado disponível para o período</td>");
-                newRows.push(row);
-                newOrder = [];
-            }
-
-            // Define a altura de uma linha (pode ser ajustada conforme necessário)
-            var rowHeight = $("table tbody tr").outerHeight() || 50;
-
-            // Se já houver uma ordem anterior, compara e anima as linhas que mudaram de posição
-            if (previousOrder.length > 0) {
-                newRows.forEach(function(newRow, index) {
-                    var nome = newRow.attr("data-nome");
-                    var oldIndex = previousOrder.indexOf(nome);
-                    // Se o atendente existia anteriormente e sua posição mudou
-                    if (oldIndex !== -1 && oldIndex !== index) {
-                        var diff = (oldIndex - index) * rowHeight;
-                        // Aplica posição relativa e anima a mudança do valor de 'top'
-                        newRow.css({ position: "relative", top: diff + "px" });
-                        newRow.animate({ top: "0px" }, 500);
-                    }
-                });
-            }
-
-            // Atualiza o conteúdo da tabela com as novas linhas
-            tbody.empty();
-            $.each(newRows, function(i, row) {
-                tbody.append(row);
+            // 1) Ordena: primeiro por qtd_emloja (desc), depois por qtd_agendados (desc)
+            ranking.sort(function(a, b) {
+                if (b.qtd_emloja !== a.qtd_emloja) {
+                    return b.qtd_emloja - a.qtd_emloja;
+                }
+                return b.qtd_agendados - a.qtd_agendados;
             });
 
-            // Atualiza a ordem anterior
-            previousOrder = newOrder;
+            // 2) Atualiza posição sequencial
+            ranking.forEach(function(item, idx) {
+                item.posicao = idx + 1;
+            });
 
-            // Removido: Atualiza informações do período
+            // 3) Monta linhas
+            if (ranking.length) {
+                ranking.forEach(function(item) {
+                    newOrder.push(item.nome);
+                    var $tr = $("<tr>").attr("data-nome", item.nome);
+                    $tr.append("<td>" + item.posicao + "</td>");
+                    var fotoSrc = item.foto || "/static/img/geral/default_image.png";
+                    $tr.append("<td><img src='" + fotoSrc + "' alt='" + 
+                               item.nome + "' class='ranking-foto'></td>");
+                    $tr.append("<td>" + item.nome + "</td>");
+                    $tr.append("<td>" + item.qtd_agendados + "</td>");
+                    $tr.append("<td>" + item.qtd_emloja + "</td>");
+                    newRows.push($tr);
+                });
+            } else {
+                var $empty = $("<tr>")
+                    .append("<td colspan='5' class='text-center'>Nenhum dado disponível para o período</td>");
+                newRows.push($empty);
+            }
+
+            // 4) Anima reordenação (opcional)
+            var rowHeight = $("table tbody tr").outerHeight() || 50;
+            if (previousOrder.length) {
+                newRows.forEach(function($row, newIdx) {
+                    var nome = $row.data("nome");
+                    var oldIdx = previousOrder.indexOf(nome);
+                    if (oldIdx !== -1 && oldIdx !== newIdx) {
+                        var diff = (oldIdx - newIdx) * rowHeight;
+                        $row.css({ position: "relative", top: diff + "px" })
+                            .animate({ top: "0px" }, 500);
+                    }
+                });
+            }
+
+            // 5) Substitui o conteúdo da tabela
+            tbody.empty();
+            newRows.forEach(function($r) {
+                tbody.append($r);
+            });
+
+            // 6) Atualiza a ordem anterior
+            previousOrder = newOrder;
 
         }).fail(function(jqXHR, textStatus, errorThrown) {
             console.error("Erro ao carregar dados da tabela:", textStatus, errorThrown);
-            // Exibe mensagem de erro na tabela
-            $("table tbody").html("<tr><td colspan='5' class='text-center text-danger'>Erro ao carregar dados. Tente novamente mais tarde.</td></tr>");
+            $("table tbody").html(
+                "<tr><td colspan='5' class='text-center text-danger'>" +
+                "Erro ao carregar dados. Tente novamente mais tarde.</td></tr>"
+            );
         });
     }
 
-    // Removido: FUNÇÃO: Atualiza as informações do período (updatePeriodoInfo)
+    // FUNÇÃO: Atualiza handlers de ordenação manual
+    function atualizarHandlersOrdenacao() {
+        $('.sort-icon').off('click').on('click', function() {
+            var column = $(this).data('column');
+            var tbody   = $('table tbody');
+            var rows    = Array.from(tbody.find('tr'));
+            var icon    = $(this).find('i');
+            var asc     = icon.hasClass('fa-sort') || icon.hasClass('fa-sort-down');
 
-    // FUNÇÃO: Atualiza todas as informações (cards, pódium e tabela)
-    function updateAll() {
+            // reset icons
+            $('.sort-icon i').removeClass('fa-sort-up fa-sort-down').addClass('fa-sort');
+            icon.removeClass('fa-sort').addClass(asc ? 'fa-sort-up' : 'fa-sort-down');
+
+            rows.sort(function(a, b) {
+                var va, vb;
+                if (column === 'rank') {
+                    va = parseInt($(a).find('td').eq(0).text(),10);
+                    vb = parseInt($(b).find('td').eq(0).text(),10);
+                } else if (column === 'nome') {
+                    va = $(a).find('td').eq(2).text().toLowerCase();
+                    vb = $(b).find('td').eq(2).text().toLowerCase();
+                } else if (column === 'agendados') {
+                    va = parseInt($(a).find('td').eq(3).text(),10);
+                    vb = parseInt($(b).find('td').eq(3).text(),10);
+                } else if (column === 'taxa') {
+                    va = parseInt($(a).find('td').eq(4).text(),10);
+                    vb = parseInt($(b).find('td').eq(4).text(),10);
+                }
+                return asc
+                    ? (va > vb ? 1 : va < vb ? -1 : 0)
+                    : (va < vb ? 1 : va > vb ? -1 : 0);
+            });
+
+            rows.forEach(function(r) {
+                tbody.append(r);
+            });
+        });
+    }
+
+    // Inicialização
+    function inicializar() {
+        console.log("Inicializando ranking INSS...");
+        atualizarHandlersOrdenacao();
         updateCards();
         updatePodium();
         updateTabela();
+        setInterval(function() {
+            updateCards();
+            updatePodium();
+            updateTabela();
+        }, 30000);
     }
 
-    // Removido: Criação dinâmica dos botões de seleção de período (criarBotoesPeriodo)
-
-    // Atualiza os handlers de ordenação para todas as colunas
-    function atualizarHandlersOrdenacao() {
-        // Remove handlers existentes para evitar duplicação
-        $('.sort-icon').off('click');
-        
-        // Adiciona os handlers para todos os ícones de ordenação
-        $('.sort-icon').on('click', function() {
-            var column = $(this).data('column');
-            var tbody = $('table tbody');
-            var rows = Array.from(tbody.find('tr'));
-            var currentIcon = $(this).find('i');
-            
-            // Alterna entre ascendente e descendente
-            var isAscending = currentIcon.hasClass('fa-sort') || currentIcon.hasClass('fa-sort-down');
-            
-            // Reseta todos os ícones para o estado padrão
-            $('.sort-icon i').removeClass('fa-sort-up fa-sort-down').addClass('fa-sort');
-            
-            // Atualiza apenas o ícone clicado
-            currentIcon.removeClass('fa-sort');
-            currentIcon.addClass(isAscending ? 'fa-sort-up' : 'fa-sort-down');
-            
-            // Ordena as linhas
-            rows.sort(function(a, b) {
-                var valueA, valueB;
-                
-                if (column === 'rank') {
-                    valueA = parseInt($(a).find('td').eq(0).text(), 10);
-                    valueB = parseInt($(b).find('td').eq(0).text(), 10);
-                } else if (column === 'nome') {
-                    valueA = $(a).find('td').eq(2).text().toLowerCase();
-                    valueB = $(b).find('td').eq(2).text().toLowerCase();
-                } else if (column === 'agendados') {
-                    valueA = parseInt($(a).find('td').eq(3).text(), 10);
-                    valueB = parseInt($(b).find('td').eq(3).text(), 10);
-                } else if (column === 'taxa') { // "taxa" corresponde à coluna "Em Loja"
-                    valueA = parseInt($(a).find('td').eq(4).text(), 10);
-                    valueB = parseInt($(b).find('td').eq(4).text(), 10);
-                }
-                
-                if (isNaN(valueA)) valueA = 0;
-                if (isNaN(valueB)) valueB = 0;
-                
-                return isAscending ? 
-                    (valueA > valueB ? 1 : valueA < valueB ? -1 : 0) : 
-                    (valueA < valueB ? 1 : valueA > valueB ? -1 : 0);
-            });
-            
-            // Reinsere as linhas ordenadas
-            $.each(rows, function(index, row) {
-                tbody.append(row);
-            });
-        });
-    }
-
-    // Função de inicialização
-    function inicializar() {
-        console.log("Inicializando ranking INSS...");
-        
-        // Removido: Cria os botões de seleção de período
-        
-        // Atualiza os handlers de ordenação
-        atualizarHandlersOrdenacao();
-        
-        // Atualiza os dados inicialmente
-        updateAll();
-        
-        // Atualiza os dados a cada 30 segundos
-        setInterval(updateAll, 30000);
-    }
-
-    // Inicializa a página
     inicializar();
 });

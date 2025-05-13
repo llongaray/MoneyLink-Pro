@@ -115,7 +115,7 @@ class HorarioTrabalhoForm(forms.ModelForm):
 
 # --- Formulário Principal do Funcionário ---
 
-class FuncionarioForm(forms.ModelForm): # Renomeado de FuncionarioFullForm para FuncionarioForm
+class FuncionarioForm(forms.ModelForm):
     class Meta:
         model = Funcionario
         fields = [
@@ -128,7 +128,7 @@ class FuncionarioForm(forms.ModelForm): # Renomeado de FuncionarioFullForm para 
             # Filiação / Origem
             'nome_mae', 'nome_pai', 'nacionalidade', 'naturalidade',
             # Profissional
-            'matricula', 'pis', 'empresa', 'loja', 'departamento', 'setor', 'cargo', 
+            'matricula', 'pis', 'empresa', 'lojas', 'departamento', 'setor', 'cargo', 
             'horario', 'equipe', 'status', 'data_admissao', 'data_demissao'
             # Adicionar campos de documentos (RG, CNH, CTPS, etc.) se forem reativados no modelo
         ]
@@ -143,7 +143,7 @@ class FuncionarioForm(forms.ModelForm): # Renomeado de FuncionarioFullForm para 
             'status': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             # Selects (serão configurados no __init__)
             'empresa': forms.Select(attrs={'class': 'form-control'}),
-            'loja': forms.Select(attrs={'class': 'form-control'}),
+            'lojas': forms.CheckboxSelectMultiple(attrs={'class': 'form-check-input'}),
             'departamento': forms.Select(attrs={'class': 'form-control'}),
             'setor': forms.Select(attrs={'class': 'form-control'}),
             'cargo': forms.Select(attrs={'class': 'form-control'}),
@@ -178,7 +178,7 @@ class FuncionarioForm(forms.ModelForm): # Renomeado de FuncionarioFullForm para 
 
         # Filtrar Querysets baseado na empresa (se aplicável)
         self.fields['empresa'].queryset = Empresa.objects.filter(status=True)
-        self.fields['loja'].queryset = Loja.objects.filter(status=True)
+        self.fields['lojas'].queryset = Loja.objects.filter(status=True)
         self.fields['departamento'].queryset = Departamento.objects.filter(status=True)
         self.fields['setor'].queryset = Setor.objects.filter(status=True)
         self.fields['cargo'].queryset = Cargo.objects.filter(status=True)
@@ -188,13 +188,13 @@ class FuncionarioForm(forms.ModelForm): # Renomeado de FuncionarioFullForm para 
 
         # Filtragem dependente (ex: Lojas da Empresa selecionada)
         if empresa:
-            self.fields['loja'].queryset = Loja.objects.filter(empresa=empresa, status=True)
+            self.fields['lojas'].queryset = Loja.objects.filter(empresa=empresa, status=True)
             self.fields['departamento'].queryset = Departamento.objects.filter(empresa=empresa, status=True)
             self.fields['cargo'].queryset = Cargo.objects.filter(empresa=empresa, status=True)
         else:
             # Se nenhuma empresa selecionada (novo funcionário), mostrar apenas os não vinculados ou todos?
             # Ou exigir seleção de empresa primeiro (via JS)
-            self.fields['loja'].queryset = Loja.objects.none()
+            self.fields['lojas'].queryset = Loja.objects.none()
             self.fields['departamento'].queryset = Departamento.objects.none()
             self.fields['cargo'].queryset = Cargo.objects.none()
             self.fields['setor'].queryset = Setor.objects.none()

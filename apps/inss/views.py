@@ -21,6 +21,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.core.exceptions import FieldError
 from decimal import Decimal
 from django.utils import timezone
+from datetime import timedelta
 from django.conf import settings
 
 # Importações de terceiros
@@ -214,8 +215,7 @@ def format_currency(value):
 
 def _filter_por_hierarquia(qs, user):
     """
-    Filtra o queryset de Agendamento conforme o cargo do usuário:
-    - superuser: todos
+    Filtra agendamentos por hierarquia do usuário:
     - estágio/padrão: apenas próprios
     - coordenador/gerente: própria loja + próprios
     - demais: todos
@@ -224,17 +224,17 @@ def _filter_por_hierarquia(qs, user):
         return qs
 
     try:
-        func = Funcionario.objects.select_related('cargo', 'loja').get(usuario=user)
+        func = Funcionario.objects.select_related('cargo').prefetch_related('lojas').get(usuario=user)
     except Funcionario.DoesNotExist:
         return Agendamento.objects.none()
 
     nivel = func.cargo.hierarquia if func.cargo else None
-    loja = func.loja
+    lojas = func.lojas.all()
 
     if nivel in [Cargo.HierarquiaChoices.ESTAGIO, Cargo.HierarquiaChoices.PADRAO]:
         return qs.filter(atendente_agendou=user)
     if nivel in [Cargo.HierarquiaChoices.COORDENADOR, Cargo.HierarquiaChoices.GERENTE]:
-        return qs.filter(Q(loja=loja) | Q(atendente_agendou=user))
+        return qs.filter(Q(loja__in=lojas) | Q(atendente_agendou=user))
     return qs  # outros níveis sem filtro adicional
 
 
@@ -251,12 +251,12 @@ def _serialize_agendamento(a):
     except:
         atendente = f"{usuario.first_name} {usuario.last_name}".strip() or usuario.username
 
-    # data do agendamento no formato YYYY-MM-DD
+    # data do agendamento no formato YYYY-MM-DD HH:mm
     if settings.USE_TZ:
         dt = timezone.localtime(a.dia_agendado)
     else:
         dt = a.dia_agendado
-    dia_str = dt.strftime('%Y-%m-%d') if dt else ''
+    dia_str = dt.strftime('%Y-%m-%d %H:%M') if dt else ''
 
     return {
         'id': a.id,
@@ -776,8 +776,8 @@ def api_get_agendadosHoje(request):
         # 3️⃣ Perfil do funcionário
         func = Funcionario.objects.filter(
             usuario=user, status=True
-        ).select_related('cargo', 'loja').first()
-        if not func or not func.loja:
+        ).prefetch_related('lojas').first()
+        if not func or not func.lojas.exists():
             print("[DEBUG] Funcionário não encontrado ou sem loja")
             return JsonResponse({'agendamentos': [], 'message': 'Sem permissão'}, status=200)
 
@@ -792,8 +792,8 @@ def api_get_agendadosHoje(request):
             qs = base_qs.exclude(loja__is_franquia=True)
             print("[DEBUG] Filtro gerente - excluindo franquias")
         else:
-            qs = base_qs.filter(loja=func.loja)
-            print(f"[DEBUG] Filtro loja específica: {func.loja}")
+            qs = base_qs.filter(loja__in=func.lojas.all())
+            print(f"[DEBUG] Filtro loja específica: {func.lojas.all()}")
 
     # 5️⃣ Filtros opcionais por querystring
     nome = request.GET.get('nomeCliente','').strip()
@@ -863,10 +863,10 @@ def api_get_agendPendentes(request):
         func = (
             Funcionario.objects
             .filter(usuario=user, status=True)
-            .select_related('cargo', 'loja')
+            .prefetch_related('lojas')
             .first()
         )
-        if not func or not func.loja:
+        if not func or not func.lojas.exists():
             return JsonResponse({'agendamentos': [], 'message': 'Sem permissão'}, status=200)
 
         hier = func.cargo.hierarquia if func.cargo else Cargo.HierarquiaChoices.PADRAO
@@ -879,7 +879,7 @@ def api_get_agendPendentes(request):
             qs = base_qs.exclude(loja__is_franquia=True)
         # 6️⃣ Demais veem apenas a própria loja
         else:
-            qs = base_qs.filter(loja=func.loja)
+            qs = base_qs.filter(loja__in=func.lojas.all())
 
     # 7️⃣ Filtros opcionais via querystring
     nome = request.GET.get('nomeCliente', '').strip()
@@ -956,7 +956,7 @@ def api_get_clientesAtrasadoLoja(request):
         func = (
             Funcionario.objects
             .filter(usuario=user, status=True)
-            .select_related('cargo', 'loja')
+            .prefetch_related('lojas')
             .first()
         )
         if not func:
@@ -976,11 +976,11 @@ def api_get_clientesAtrasadoLoja(request):
             print("[DEBUG] Gerente – excluindo franquias")
         # 5️⃣ Demais: apenas a própria loja
         else:
-            if not func.loja:
+            if not func.lojas.exists():
                 print("[DEBUG] Funcionário sem loja associada")
                 return JsonResponse({'agendamentos': [], 'message': 'Sem permissão'}, status=200)
-            qs = base_qs.filter(loja=func.loja)
-            print(f"[DEBUG] Filtrando pela loja: {func.loja.nome}")
+            qs = base_qs.filter(loja__in=func.lojas.all())
+            print(f"[DEBUG] Filtrando pelas lojas: {func.lojas.all()}")
 
     # 6️⃣ Filtros opcionais
     nome = request.GET.get('nomeCliente', '').strip()
@@ -1367,8 +1367,8 @@ def api_get_infolojaefuncionario(request):
 
     A lista de funcionários e de lojas depende do nível hierárquico do usuário logado:
     - Superusuários ou cargos SUPERVISOR_GERAL e GESTOR veem todas as lojas ativas e todos os funcionários dessas lojas.
-    - Cargos de nível superior a PADRAO (COORDENADOR, GERENTE, FRANQUEADO) veem apenas a própria loja e todos os funcionários dessa loja.
-    - Cargos ESTAGIO ou PADRAO veem apenas a própria loja e apenas a si mesmos.
+    - Cargos de nível superior a PADRAO (COORDENADOR, GERENTE, FRANQUEADO) veem apenas suas lojas e todos os funcionários dessas lojas.
+    - Cargos ESTAGIO ou PADRAO veem apenas suas lojas e apenas a si mesmos.
     - Usuários sem perfil de funcionário ou sem cargo definido (e não superusuários) veem apenas a si mesmos, sem nenhuma loja adicional.
     """
     try:
@@ -1382,7 +1382,7 @@ def api_get_infolojaefuncionario(request):
         }
 
         # 2. Determinar perfil do funcionário logado (se existir)
-        func_logado = Funcionario.objects.select_related('cargo', 'loja').filter(
+        func_logado = Funcionario.objects.select_related('cargo').prefetch_related('lojas').filter(
             usuario=user, status=True
         ).first()
 
@@ -1397,15 +1397,15 @@ def api_get_infolojaefuncionario(request):
             # funcionários de todas essas lojas
             funcionarios_qs = Funcionario.objects.filter(
                 status=True,
-                loja__in=lojas_permitidas,
+                lojas__in=lojas_permitidas,
                 usuario__isnull=False
-            ).select_related('usuario').order_by('nome_completo')
+            ).select_related('usuario').prefetch_related('lojas').order_by('nome_completo')
 
         else:
             # 5. Se não superuser, mas tem perfil de funcionário
             if func_logado and func_logado.cargo:
                 hier = func_logado.cargo.hierarquia
-                minha_loja = func_logado.loja
+                minhas_lojas = func_logado.lojas.all()
 
                 # SUPERVISOR_GERAL ou GESTOR veem tudo também
                 if hier in [Cargo.HierarquiaChoices.SUPERVISOR_GERAL,
@@ -1413,30 +1413,30 @@ def api_get_infolojaefuncionario(request):
                     lojas_permitidas = lojas_qs
                     funcionarios_qs = Funcionario.objects.filter(
                         status=True,
-                        loja__in=lojas_permitidas,
+                        lojas__in=lojas_permitidas,
                         usuario__isnull=False
-                    ).select_related('usuario').order_by('nome_completo')
+                    ).select_related('usuario').prefetch_related('lojas').order_by('nome_completo')
 
                 # cargos superiores a PADRAO (COORDENADOR, GERENTE, FRANQUEADO)
                 elif hier not in [Cargo.HierarquiaChoices.ESTAGIO,
                                   Cargo.HierarquiaChoices.PADRAO]:
-                    # vê apenas a própria loja, mas todos os funcionários dela
-                    lojas_permitidas = Loja.objects.filter(id=minha_loja.id, status=True)
+                    # vê apenas suas lojas, mas todos os funcionários delas
+                    lojas_permitidas = minhas_lojas
                     funcionarios_qs = Funcionario.objects.filter(
                         status=True,
-                        loja=minha_loja,
+                        lojas__in=minhas_lojas,
                         usuario__isnull=False
-                    ).select_related('usuario').order_by('nome_completo')
+                    ).select_related('usuario').prefetch_related('lojas').order_by('nome_completo')
 
                 else:
-                    # ESTAGIO ou PADRAO: vê apenas a própria loja e somente a si mesmo
-                    lojas_permitidas = Loja.objects.filter(id=minha_loja.id, status=True)
+                    # ESTAGIO ou PADRAO: vê apenas suas lojas e somente a si mesmo
+                    lojas_permitidas = minhas_lojas
                     funcionarios_qs = Funcionario.objects.filter(
                         usuario=user,
                         status=True,
-                        loja=minha_loja,
+                        lojas__in=minhas_lojas,
                         usuario__isnull=False
-                    ).select_related('usuario')
+                    ).select_related('usuario').prefetch_related('lojas')
 
             else:
                 # 6. Sem perfil de funcionário associado: só ele mesmo, sem loja
@@ -1787,8 +1787,22 @@ def api_get_agendados(request):
             tabulacao_agendamento='EM ESPERA'
         ).select_related('cliente_agendamento', 'loja', 'atendente_agendou')
         qs = _filter_por_hierarquia(qs, request.user)
-        resultados = [_serialize_agendamento(a) for a in qs.order_by('-dia_agendado')]
-        return JsonResponse({'agendamentos': resultados}, status=200)
+        
+        # Serializa os resultados
+        agendamentos = []
+        for ag in qs.order_by('-dia_agendado'):
+            agendamentos.append({
+                'id': ag.id,
+                'nome_cliente': ag.cliente_agendamento.nome_completo if ag.cliente_agendamento else 'N/A',
+                'cliente_agendamento_id': ag.cliente_agendamento.id if ag.cliente_agendamento else None,
+                'cpf_cliente': ag.cliente_agendamento.cpf if ag.cliente_agendamento else 'N/A',
+                'numero_cliente': ag.cliente_agendamento.numero if ag.cliente_agendamento else 'N/A',
+                'dia_agendado': ag.dia_agendado.strftime('%Y-%m-%d %H:%M') if ag.dia_agendado else 'N/A',
+                'atendente_agendou': ag.atendente_agendou.get_full_name() if ag.atendente_agendou else 'N/A',
+                'loja_agendada': ag.loja.nome if ag.loja else 'N/A',
+                'loja_id': ag.loja.id if ag.loja else None,
+            })
+        return JsonResponse({'agendamentos': agendamentos}, status=200)
     except Exception as e:
         return JsonResponse({'texto': f'Erro: {str(e)}', 'classe': 'error'}, status=500)
 
@@ -1805,8 +1819,22 @@ def api_get_reagendados(request):
             tabulacao_agendamento='REAGENDADO'
         ).select_related('cliente_agendamento', 'loja', 'atendente_agendou')
         qs = _filter_por_hierarquia(qs, request.user)
-        resultados = [_serialize_agendamento(a) for a in qs.order_by('-dia_agendado')]
-        return JsonResponse({'agendamentos': resultados}, status=200)
+        
+        # Serializa os resultados
+        agendamentos = []
+        for ag in qs.order_by('-dia_agendado'):
+            agendamentos.append({
+                'id': ag.id,
+                'nome_cliente': ag.cliente_agendamento.nome_completo if ag.cliente_agendamento else 'N/A',
+                'cliente_agendamento_id': ag.cliente_agendamento.id if ag.cliente_agendamento else None,
+                'cpf_cliente': ag.cliente_agendamento.cpf if ag.cliente_agendamento else 'N/A',
+                'numero_cliente': ag.cliente_agendamento.numero if ag.cliente_agendamento else 'N/A',
+                'dia_agendado': ag.dia_agendado.strftime('%Y-%m-%d %H:%M') if ag.dia_agendado else 'N/A',
+                'atendente_agendou': ag.atendente_agendou.get_full_name() if ag.atendente_agendou else 'N/A',
+                'loja_agendada': ag.loja.nome if ag.loja else 'N/A',
+                'loja_id': ag.loja.id if ag.loja else None,
+            })
+        return JsonResponse({'agendamentos': agendamentos}, status=200)
     except Exception as e:
         return JsonResponse({'texto': f'Erro: {str(e)}', 'classe': 'error'}, status=500)
 
@@ -1820,143 +1848,128 @@ def api_get_atrasados(request):
     Mantém apenas o mais recente por CPF.
     """
     try:
-        agora = timezone.now()
-        qs = Agendamento.objects.filter(
-            tabulacao_agendamento__in=['EM ESPERA', 'REAGENDADO'],
-            dia_agendado__lt=agora
-        ).select_related('cliente_agendamento', 'loja', 'atendente_agendou')
-        qs = _filter_por_hierarquia(qs, request.user)
+        print(f"[api_get_atrasados] Usuário autenticado: {request.user}")
+        user = request.user
+        hoje = _local(timezone.now()).date()
+        print(f"[api_get_atrasados] Data de hoje: {hoje}")
 
-        # mantém só o mais recente por CPF
-        por_cpf = {}
-        for a in qs:
-            cliente = a.cliente_agendamento
-            if not cliente or not cliente.cpf:
-                continue
-            cpf = cliente.cpf
-            if cpf not in por_cpf or a.dia_agendado > por_cpf[cpf].dia_agendado:
-                por_cpf[cpf] = a
+        # base: agendamentos passados não confirmados e sem presença
+        base_qs = (
+            Agendamento.objects
+            .filter(dia_agendado__date__lt=hoje)
+            .exclude(tabulacao_agendamento='CONFIRMADO')
+            .filter(presencas__isnull=True)
+            .select_related('cliente_agendamento', 'atendente_agendou')
+            .prefetch_related('loja')
+        )
+        print(f"[api_get_atrasados] Total inicial de agendamentos: {base_qs.count()}")
 
-        resultados = [
-            _serialize_agendamento(a)
-            for a in sorted(por_cpf.values(), key=lambda x: x.dia_agendado, reverse=True)
-        ]
-        return JsonResponse({'agendamentos': resultados}, status=200)
+        # 1️⃣ Se for superuser, acesso total
+        if user.is_superuser:
+            qs = base_qs
+            print("[api_get_atrasados] Superuser – acesso total")
+        else:
+            # 2️⃣ Busca perfil do funcionário
+            func = (
+                Funcionario.objects
+                .filter(usuario=user, status=True)
+                .prefetch_related('lojas')
+                .first()
+            )
+            if not func:
+                print("[api_get_atrasados] Sem perfil de funcionário")
+                return JsonResponse({'agendamentos': [], 'message': 'Sem permissão'}, status=200)
+
+            hier = func.cargo.hierarquia if func.cargo else Cargo.HierarquiaChoices.PADRAO
+            print(f"[api_get_atrasados] Hierarquia do usuário: {hier}")
+
+            # 3️⃣ Supervisor(a) Geral sem filtro de loja
+            if hier == Cargo.HierarquiaChoices.SUPERVISOR_GERAL:
+                qs = base_qs
+                print("[api_get_atrasados] Supervisor(a) Geral – acesso total")
+            # 4️⃣ Gerentes veem todas as lojas, exceto franquias
+            elif hier >= Cargo.HierarquiaChoices.GERENTE:
+                qs = base_qs.exclude(loja__franquia=True)
+                print("[api_get_atrasados] Gerente – excluindo franquias")
+            # 5️⃣ Demais: apenas suas lojas
+            else:
+                if not func.lojas.exists():
+                    print("[api_get_atrasados] Funcionário sem lojas associadas")
+                    return JsonResponse({'agendamentos': [], 'message': 'Sem permissão'}, status=200)
+                qs = base_qs.filter(loja__in=func.lojas.all())
+                print(f"[api_get_atrasados] Filtrando pelas lojas: {func.lojas.all()}")
+
+        # 6️⃣ Serializa os resultados
+        agendamentos = []
+        for ag in qs:
+            agendamentos.append({
+                'id': ag.id,
+                'nome': ag.cliente_agendamento.nome_completo,  # Corrigido: usando nome_completo
+                'cpf': ag.cliente_agendamento.cpf,
+                'numero': ag.cliente_agendamento.numero,
+                'dia_agendado': ag.dia_agendado.strftime('%Y-%m-%d %H:%M'),
+                'atendente': ag.atendente_agendou.get_full_name() if ag.atendente_agendou else 'N/A',
+                'loja': ag.loja.nome if ag.loja else 'N/A',
+                'status': ag.tabulacao_agendamento or 'N/A'
+            })
+
+        return JsonResponse({'agendamentos': agendamentos})
+
     except Exception as e:
-        return JsonResponse({'texto': f'Erro: {str(e)}', 'classe': 'error'}, status=500)
-@csrf_exempt
-@require_GET
+        print(f"[api_get_atrasados] Erro: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({
+            'error': f'Erro ao buscar agendamentos atrasados: {str(e)}',
+            'agendamentos': []
+        }, status=500)
+
 @login_required
-def api_get_atrasados(request):
-    """
-    Agendamentos 'EM ESPERA' ou 'REAGENDADO' com dia_agendado < hoje.
-    Retorna apenas o mais recente por CPF.
-    """
-    try:
-        hoje = timezone.now()
-        qs = Agendamento.objects.filter(
-            tabulacao_agendamento__in=['EM ESPERA', 'REAGENDADO'],
-            dia_agendado__lt=hoje
-        ).select_related('cliente_agendamento', 'loja', 'atendente_agendou')
-        qs = _filter_por_hierarquia(qs, request.user)
-
-        # pega o mais recente por CPF
-        por_cpf = {}
-        for a in qs:
-            cliente = a.cliente_agendamento
-            if not cliente or not cliente.cpf:
-                continue
-            cpf = cliente.cpf
-            if cpf not in por_cpf or a.dia_agendado > por_cpf[cpf].dia_agendado:
-                por_cpf[cpf] = a
-
-        data = [_serialize_agendamento(a) for a in sorted(
-            por_cpf.values(),
-            key=lambda x: x.dia_agendado,
-            reverse=True
-        )]
-        return JsonResponse({'agendamentos': data}, status=200)
-    except Exception as e:
-        return JsonResponse({'texto': str(e), 'classe': 'error'}, status=500)
-
-@csrf_exempt
 @require_GET
+@ensure_csrf_cookie
 def api_get_emloja(request):
     """
-    Agendamentos que tiveram presença registrada (PresencaLoja):
-    - Superuser: filtra apenas pela semana atual (domingo→sábado)
-    - ESTAGIO/PADRAO: filtra pela loja do funcionário
-    - Demais: vê todos que têm presença.
+    Lista clientes que compareceram na loja na semana atual e que foram agendados pelo usuário logado.
+    Não inclui clientes de rua (sem agendamento).
     """
     try:
         user = request.user
+        hoje = _local(timezone.now()).date()
+        inicio_semana = hoje - timedelta(days=hoje.weekday())
+        fim_semana = inicio_semana + timedelta(days=6)
 
-        # Query base: todos com presença não-nula
-        qs = Agendamento.objects.filter(
-            presenca__isnull=False
-        ).select_related(
-            'cliente_agendamento',
-            'loja',
-            'presenca'  # Inclui o relacionamento presenca
+        # Busca presenças da semana atual que têm agendamento e o agendamento foi feito pelo user logado
+        presencas = (
+            PresencaLoja.objects
+            .filter(
+                data_presenca__date__range=[inicio_semana, fim_semana],
+                agendamento__isnull=False,
+                agendamento__atendente_agendou=user
+            )
+            .select_related('cliente_agendamento', 'loja_comp', 'vendedor', 'agendamento')
         )
 
-        # 1) Filtrar por data de agendamento (superuser) ou por loja (estágio/padrão)
-        if user.is_superuser:
-            hoje = timezone.now().date()
-            domingo = hoje - timedelta(days=(hoje.weekday() + 1) % 7)
-            sabado  = domingo + timedelta(days=6)
-
-            # Monta datetimes de início e fim
-            dt_start = datetime.combine(domingo, time.min)
-            dt_end   = datetime.combine(sabado,  time.max)
-
-            # Se o projeto usa TZ, torna aware; senão, mantém naive
-            if settings.USE_TZ:
-                dt_start = timezone.make_aware(dt_start, timezone.get_default_timezone())
-                dt_end   = timezone.make_aware(dt_end,   timezone.get_default_timezone())
-
-            qs = qs.filter(dia_agendado__range=(dt_start, dt_end))
-
-        else:
-            # Tenta obter o funcionário para ver qual loja filtrar
-            try:
-                func = Funcionario.objects.select_related('cargo', 'loja').get(usuario=user)
-                nivel = func.cargo.hierarquia if func.cargo else None
-
-                if nivel in [Cargo.HierarquiaChoices.ESTAGIO, Cargo.HierarquiaChoices.PADRAO] and func.loja:
-                    qs = qs.filter(loja=func.loja)
-                # coordenador/gerente e demais níveis não fazem filtro adicional aqui
-
-            except Funcionario.DoesNotExist:
-                # usuário sem funcionário não vê nada
-                return JsonResponse({'clientes_em_loja': []}, status=200)
-
-        # 2) Serializa resultados
-        clientes = []
-        for ag in qs.order_by('-dia_agendado'):
-            # Usa o relacionamento presenca diretamente
-            pres = ag.presenca
-            tab_venda = pres.tabulacao_venda if pres and pres.tabulacao_venda else 'PENDENTE'
-
-            cliente = ag.cliente_agendamento
-            clientes.append({
-                'nome_cliente': cliente.nome_completo if cliente else 'N/A',
-                'cpf_cliente': cliente.cpf if cliente else 'N/A',
-                'loja_agendada': ag.loja.nome if ag.loja else 'N/A',
-                # ao exibir, se USE_TZ=True usamos localtime, senão apenas strftime do naive
-                'dia_agendado': (
-                    timezone.localtime(ag.dia_agendado).strftime('%Y-%m-%d')
-                    if settings.USE_TZ else ag.dia_agendado.strftime('%Y-%m-%d')
-                ),
-                'tabulacao_venda': tab_venda,
+        agendamentos = []
+        for presenca in presencas:
+            ag = presenca.agendamento
+            cliente = ag.cliente_agendamento if ag else None
+            agendamentos.append({
+                'id': presenca.id,
+                'nome': cliente.nome_completo if cliente else 'N/A',
+                'cpf': cliente.cpf if cliente else 'N/A',
+                'loja': presenca.loja_comp.nome if presenca.loja_comp else 'N/A',
+                'data_presenca': presenca.data_presenca.strftime('%Y-%m-%d %H:%M') if presenca.data_presenca else 'N/A',
+                'tabulacao': presenca.tabulacao_venda or 'N/A'
             })
 
-        return JsonResponse({'clientes_em_loja': clientes}, status=200)
-
+        return JsonResponse({'agendamentos': agendamentos})
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return JsonResponse({'texto': 'Erro interno ao obter clientes em loja.', 'classe': 'error'}, status=500)
+        return JsonResponse({
+            'error': f'Erro ao buscar clientes em loja: {str(e)}',
+            'agendamentos': []
+        }, status=500)
 
 @login_required
 @require_GET
@@ -2018,173 +2031,137 @@ def _to_range(dt_date, start=True):
 
 
 def api_get_cards(request, periodo='meta'):
-    print(f"[DEBUG] api_get_cards called with periodo='{periodo}'")
     hoje = timezone.now().date()
-    print(f"[DEBUG] Hoje: {hoje}")
-
-    # helpers
+    
+    # Funções auxiliares
     fmt = lambda v: f"R$ {v:,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
     pct = lambda f, m: round((f / m) * 100, 2) if m > 0 else 0
 
-    # ====================================================
-    # Carrega a meta INSS (usada por vários cards)
-    # ====================================================
-    meta_set_qs = RegisterMeta.objects.filter(
+    # Busca a meta do setor INSS
+    meta_inss = RegisterMeta.objects.filter(
         categoria='SETOR',
         status=True,
         data_inicio__date__lte=hoje,
         data_fim__date__gte=hoje,
         setor__nome='INSS'
-    )
-    if meta_set_qs.exists():
-        m_set = meta_set_qs.first()
-        si_set = datetime.combine(m_set.data_inicio.date(), time.min)
-        sf_set = datetime.combine(m_set.data_fim.date(),     time.max)
-        mv_set = m_set.valor or Decimal('0.0')
-        print(f"[DEBUG] Meta INSS interval: {si_set} → {sf_set}, valor_meta={mv_set}")
+    ).first()
+
+    # Define o período baseado na meta INSS
+    if meta_inss:
+        inicio_periodo = datetime.combine(meta_inss.data_inicio.date(), time.min)
+        fim_periodo = datetime.combine(meta_inss.data_fim.date(), time.max)
+        valor_meta_inss = meta_inss.valor or Decimal('0.0')
     else:
-        si_set = sf_set = None
-        mv_set = Decimal('0.0')
-        print("[DEBUG] Sem meta SETOR INSS ativa")
+        inicio_periodo = fim_periodo = None
+        valor_meta_inss = Decimal('0.0')
 
-    # função para somar reembolsos no intervalo, opcionalmente filtrado
-    def sum_refunds(start, end, **rq_kwargs):
-        qs = Reembolso.objects.filter(
-            status=True,
-            data_reembolso__range=[start, end],
-            registermoney__status=True,
-            **{f"registermoney__{k}": v for k, v in rq_kwargs.items()}
-        )
-        total = qs.aggregate(t=Sum('registermoney__valor_est'))['t'] or Decimal('0.0')
-        print(f"[DEBUG] Refunds filter={rq_kwargs}: {total}")
-        return total
-
-    # ====================================================
     # Card 1: Meta Geral
-    # ====================================================
-    print("[DEBUG] Calculating Meta Geral...")
     meta_geral = RegisterMeta.objects.filter(
         categoria='GERAL',
         status=True,
         data_inicio__date__lte=hoje,
         data_fim__date__gte=hoje
     ).first()
+    
     if meta_geral:
-        si = datetime.combine(meta_geral.data_inicio.date(), time.min)
-        sf = datetime.combine(meta_geral.data_fim.date(),     time.max)
-        mv_geral = meta_geral.valor or Decimal('0.0')
-        fat_geral = RegisterMoney.objects.filter(
-            data__range=[si, sf],
+        inicio_geral = datetime.combine(meta_geral.data_inicio.date(), time.min)
+        fim_geral = datetime.combine(meta_geral.data_fim.date(), time.max)
+        valor_meta_geral = meta_geral.valor or Decimal('0.0')
+        faturamento_geral = RegisterMoney.objects.filter(
+            data__range=[inicio_geral, fim_geral],
             status=True
         ).aggregate(total=Sum('valor_est'))['total'] or Decimal('0.0')
-        ref_geral = sum_refunds(si, sf)
-        fat_geral -= ref_geral
-        print(f"[DEBUG] Meta Geral bruto={fat_geral + ref_geral}, refunds={ref_geral}, líquid o={fat_geral}")
     else:
-        fat_geral = mv_geral = Decimal('0.0')
-        print("[DEBUG] Nenhuma meta GERAL ativa")
+        faturamento_geral = valor_meta_geral = Decimal('0.0')
 
-    # ====================================================
-    # Card 2: Meta Empresa (não franquia)
-    # ====================================================
-    print("[DEBUG] Calculating Meta Empresa...")
-    meta_emp = RegisterMeta.objects.filter(
+    # Card 2: Meta Empresa
+    meta_empresa = RegisterMeta.objects.filter(
         categoria='EMPRESA',
         status=True,
         data_inicio__date__lte=hoje,
         data_fim__date__gte=hoje
     ).first()
-    if meta_emp:
-        si = datetime.combine(meta_emp.data_inicio.date(), time.min)
-        sf = datetime.combine(meta_emp.data_fim.date(),     time.max)
-        mv_emp = meta_emp.valor or Decimal('0.0')
-        fat_emp = RegisterMoney.objects.filter(
-            data__range=[si, sf],
-            status=True,
-            loja__franquia=False
-        ).aggregate(total=Sum('valor_est'))['total'] or Decimal('0.0')
-        ref_emp = sum_refunds(si, sf, loja__franquia=False)
-        fat_emp -= ref_emp
-        print(f"[DEBUG] Meta Empresa bruto={fat_emp + ref_emp}, refunds={ref_emp}, líquid o={fat_emp}")
-    else:
-        fat_emp = mv_emp = Decimal('0.0')
-        print("[DEBUG] Nenhuma meta EMPRESA ativa")
-
-    # ====================================================
-    # Card 3: Meta Setor INSS
-    # ====================================================
-    print("[DEBUG] Calculating Meta Setor INSS...")
-    if si_set and sf_set:
-        fat_set = RegisterMoney.objects.filter(
-            data__range=[si_set, sf_set],
+    
+    if meta_empresa:
+        inicio_empresa = datetime.combine(meta_empresa.data_inicio.date(), time.min)
+        fim_empresa = datetime.combine(meta_empresa.data_fim.date(), time.max)
+        valor_meta_empresa = meta_empresa.valor or Decimal('0.0')
+        
+        # Soma total e subtrai franquias
+        total_empresa = RegisterMoney.objects.filter(
+            data__range=[inicio_empresa, fim_empresa],
             status=True
-        ).exclude(loja__isnull=True).aggregate(total=Sum('valor_est'))['total'] or Decimal('0.0')
-        ref_set = sum_refunds(si_set, sf_set)  # sem filtro extra, pois setor já é INSS
-        fat_set -= ref_set
-        print(f"[DEBUG] Meta Setor INSS bruto={fat_set + ref_set}, refunds={ref_set}, líquid o={fat_set}")
+        ).aggregate(total=Sum('valor_est'))['total'] or Decimal('0.0')
+        
+        franquias = RegisterMoney.objects.filter(
+            data__range=[inicio_empresa, fim_empresa],
+            status=True,
+            loja__franquia=True
+        ).aggregate(total=Sum('valor_est'))['total'] or Decimal('0.0')
+        
+        faturamento_empresa = total_empresa - franquias
     else:
-        fat_set = Decimal('0.0')
-        ref_set = Decimal('0.0')
+        faturamento_empresa = valor_meta_empresa = Decimal('0.0')
 
-    # ====================================================
-    # Card 4: Quantidade em Loja (únicos)
-    # ====================================================
-    print("[DEBUG] Calculating Quantidade em Loja...")
-    if si_set and sf_set:
-        qtd_pres = PresencaLoja.objects.filter(
-            data_presenca__range=[si_set, sf_set]
-        ).values('cliente_agendamento__cpf').distinct().count()
-        print(f"[DEBUG] Presenças únicas: {qtd_pres}")
+    # Card 3: Meta Setor INSS
+    if inicio_periodo and fim_periodo:
+        faturamento_inss = RegisterMoney.objects.filter(
+            data__range=[inicio_periodo, fim_periodo],
+            status=True,
+            loja__isnull=False
+        ).aggregate(total=Sum('valor_est'))['total'] or Decimal('0.0')
     else:
-        qtd_pres = 0
+        faturamento_inss = Decimal('0.0')
 
-    # ====================================================
+    # Card 4: Quantidade em Loja
+    if inicio_periodo and fim_periodo:
+        qtd_loja = PresencaLoja.objects.filter(
+            data_presenca__range=[inicio_periodo, fim_periodo]
+        ).exclude(tabulacao_venda='NAO_QUIS_OUVIR').count()
+    else:
+        qtd_loja = 0
+
     # Card 5: Quantidade Confirmados
-    # ====================================================
-    print("[DEBUG] Calculating Quantidade Confirmados...")
-    if si_set and sf_set:
-        qtd_conf = Agendamento.objects.filter(
-            dia_agendado__range=[si_set, sf_set],
+    if inicio_periodo and fim_periodo:
+        qtd_confirmados = Agendamento.objects.filter(
+            dia_agendado__range=[inicio_periodo, fim_periodo],
             tabulacao_agendamento='CONFIRMADO'
         ).count()
-        print(f"[DEBUG] Confirmados: {qtd_conf}")
     else:
-        qtd_conf = 0
+        qtd_confirmados = 0
 
-    # ====================================================
-    # Montagem da resposta
-    # ====================================================
+    # Monta a resposta
     response_data = {
         'meta_geral': {
-            'valor':      fmt(fat_geral),
-            'percentual': pct(fat_geral, mv_geral),
-            'valor_meta': fmt(mv_geral)
+            'valor': fmt(faturamento_geral),
+            'percentual': pct(faturamento_geral, valor_meta_geral),
+            'valor_meta': fmt(valor_meta_geral)
         },
         'meta_empresa': {
-            'valor':      fmt(fat_emp),
-            'percentual': pct(fat_emp, mv_emp),
-            'valor_meta': fmt(mv_emp)
+            'valor': fmt(faturamento_empresa),
+            'percentual': pct(faturamento_empresa, valor_meta_empresa),
+            'valor_meta': fmt(valor_meta_empresa)
         },
         'meta_setor': {
-            'valor':      fmt(fat_set),
-            'percentual': pct(fat_set, mv_set),
-            'valor_meta': fmt(mv_set)
+            'valor': fmt(faturamento_inss),
+            'percentual': pct(faturamento_inss, valor_meta_inss),
+            'valor_meta': fmt(valor_meta_inss)
         },
         'quantidade': {
-            'valor': qtd_pres,
+            'valor': qtd_loja,
             'label': 'Presenças Únicas (Meta INSS)'
         },
         'agendamentos': {
-            'valor': qtd_conf,
+            'valor': qtd_confirmados,
             'label': 'Confirmados (Meta INSS)'
         },
         'periodo': {
-            'inicio': si_set.date().isoformat() if si_set else hoje.replace(day=1).isoformat(),
-            'fim':    sf_set.date().isoformat() if sf_set else hoje.isoformat(),
-            'tipo':   periodo
+            'inicio': inicio_periodo.date().isoformat() if inicio_periodo else hoje.replace(day=1).isoformat(),
+            'fim': fim_periodo.date().isoformat() if fim_periodo else hoje.isoformat(),
+            'tipo': periodo
         }
     }
-    print(f"[DEBUG] Response data: {response_data}")
+
     return JsonResponse(response_data)
 
 

@@ -31,5 +31,9 @@ urlpatterns = [
 
     # 7. POST: registra acessos para um usuário
     path('api/users-acessos/register/', api_post_registeracessosuser, name='api_post_registeracessosuser'),
+
+    # 8. POST: registra acessos para múltiplos usuários
+    path('api/users-acessos/register-multiple/', api_post_registeracessosusers, name='api_post_registeracessosusers'),
+
     path('api/users-info/', api_get_infouser, name='api_get_infouser'),
 ]

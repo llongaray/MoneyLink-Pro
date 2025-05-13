@@ -12,9 +12,38 @@
     <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
     {% block addcss_extra %}{% endblock %}
+    
+    <!-- Configuração global do AJAX para CSRF -->
+    <script>
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+        
+        // Configuração global do AJAX
+        $.ajaxSetup({
+            beforeSend: function(xhr, settings) {
+                if (!/^(GET|HEAD|OPTIONS|TRACE)$/i.test(settings.type) && !this.crossDomain) {
+                    xhr.setRequestHeader("X-CSRFToken", getCookie('csrftoken'));
+                }
+            }
+        });
+    </script>
+    <link rel="stylesheet" href="{% static 'css/apps/administrativo/comunicados_pop-up.css' %}">
 </head>
 
 <body>
+    {% csrf_token %}
     {% include 'partials/_menu-latera.html' %}
     <main>
         <header>
@@ -24,6 +53,22 @@
             </div>
             <div class="Logout">
                 {% if user.is_authenticated %}
+                    <div class="notificacao-container">
+                        <button id="btn-comunicados">
+                            <i class='bx bx-bell'></i>
+                            <span id="contador-comunicados">0</span>
+                        </button>
+                        <div id="modal-comunicados" class="comunicados-popup">
+                            <div class="comunicados-popup__tabs">
+                                <div class="comunicados-popup__tab comunicados-popup__tab--active" data-tab="nao-lidos">Não Lidos</div>
+                                <div class="comunicados-popup__tab" data-tab="lidos">Lidos</div>
+                            </div>
+                            <div class="comunicados-popup__content">
+                                <div id="submodal-nao-lidos" class="comunicados-popup__lista"></div>
+                                <div id="submodal-lidos" class="comunicados-popup__lista" style="display: none;"></div>
+                            </div>
+                        </div>
+                    </div>
                     <a href="{% url 'usuarios:logout' %}">
                         <i class='bx bx-log-out'></i>
                     </a>
@@ -41,6 +86,10 @@
         {% block content %}{% endblock %}
     </main>
     
+    <!-- jQuery (necessário para o funcionamento dos comunicados) -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- Script dos comunicados -->
+    <script src="{% static 'js/apps/funcionarios/comunicados_cliente.js' %}"></script>
     {% block addjs_extra %}{% endblock %}
 </body>
 </html>

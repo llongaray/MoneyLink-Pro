@@ -119,233 +119,298 @@ from django.utils import timezone
 
 @login_required
 @require_GET
-def api_get_dashboard(request):
+def api_get_dashboard_financeiro(request):
     """
-    API endpoint para retornar todos os dados do Dashboard Administrativo.
+    API endpoint para retornar dados financeiros do dashboard:
+    - Faturamento por empresa (anual e mensal)
+    - Faturamento por loja sede (anual e mensal)
+    - Faturamento por franquia (anual e mensal)
+    - Faturamento por filial (anual e mensal)
     """
     try:
         now = timezone.now()
+        print(f"[DASHBOARD FINANCEIRO] Iniciando em {now.isoformat()}")
 
         # --- Intervalos de Data ---
-        start_year  = now.replace(month=1, day=1,  hour=0, minute=0, second=0, microsecond=0)
-        end_year    = now.replace(month=12, day=31, hour=23, minute=59, second=59, microsecond=999999)
+        start_year = now.replace(month=1, day=1,  hour=0, minute=0, second=0, microsecond=0)
+        end_year = now.replace(month=12, day=31, hour=23, minute=59, second=59, microsecond=999999)
         start_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-
-        # Primeiro dia do próximo mês
         next_month = start_month.replace(month=start_month.month % 12 + 1, day=1)
         if start_month.month == 12:
             next_month = next_month.replace(year=start_month.year + 1)
-
-        # Último instante do mês atual
         end_month = next_month - timedelta(microseconds=1)
 
-        # Base para dados financeiros ativos
         registros_financeiros = RegisterMoney.objects.filter(status=True)
-
-        # Estrutura inicial de resposta
         data = {
-            'financeiro': {
-                'empresas_list': [],
-                'interno': {'faturamento_ano': Decimal(0), 'faturamento_mes': Decimal(0)},
-                'franquia': {'faturamento_ano': Decimal(0), 'faturamento_mes': Decimal(0)},
-                'filial': {'faturamento_ano': Decimal(0), 'faturamento_mes': Decimal(0)},
-            },
-            'lojas': {
-                'sede': {},
-                'filiais_list': [],
-                'franquias_list': [],
-            },
-            'rh': {
-                'geral': {'ativos': 0, 'inativos': 0},
-                'funcionarios_list': [],
-                'desempenho': {},
-            },
-            'metas': {
-                'ativas_list': [],
-                'inativadas_list': [],
-            },
+            'empresas': {},
+            'interno': {},
+            'franquia': {},
+            'filial': {},
             'timestamp': now.isoformat()
         }
 
-        # ==========================================
-        # FINANCEIRO
-        # ==========================================
-        empresas = Empresa.objects.filter(status=True).order_by('nome')
-        for emp in empresas:
+        # --- Empresas ---
+        for emp in Empresa.objects.filter(status=True).order_by('nome'):
             fat_ano = registros_financeiros.filter(
                 empresa=emp, data__range=(start_year, end_year)
-            ).aggregate(total=Coalesce(Sum('valor_est'), Decimal(0)))['total']
+            ).aggregate(total=Sum('valor_est'))['total'] or Decimal(0)
             fat_mes = registros_financeiros.filter(
                 empresa=emp, data__range=(start_month, end_month)
-            ).aggregate(total=Coalesce(Sum('valor_est'), Decimal(0)))['total']
-            data['financeiro']['empresas_list'].append({
-                'id': emp.id,
-                'nome': emp.nome,
+            ).aggregate(total=Sum('valor_est'))['total'] or Decimal(0)
+            data['empresas'][emp.nome] = {
                 'faturamento_ano': fat_ano,
                 'faturamento_mes': fat_mes
-            })
+            }
+            print(f"[DASHBOARD FINANCEIRO] Empresa '{emp.nome}': ano={fat_ano}, mes={fat_mes}")
 
-        interno_ano = registros_financeiros.filter(
-            Q(loja__isnull=True) | Q(loja__franquia=False),
-            data__range=(start_year, end_year)
-        ).aggregate(total=Coalesce(Sum('valor_est'), Decimal(0)))['total']
-        interno_mes = registros_financeiros.filter(
-            Q(loja__isnull=True) | Q(loja__franquia=False),
-            data__range=(start_month, end_month)
-        ).aggregate(total=Coalesce(Sum('valor_est'), Decimal(0)))['total']
-        data['financeiro']['interno'] = {
-            'faturamento_ano': interno_ano,
-            'faturamento_mes': interno_mes
+        # --- Lojas Sede (interno) ---
+        for loja in Loja.objects.filter(status=True, filial=False, franquia=False):
+            fat_ano = registros_financeiros.filter(
+                loja=loja, data__range=(start_year, end_year)
+            ).aggregate(total=Sum('valor_est'))['total'] or Decimal(0)
+            fat_mes = registros_financeiros.filter(
+                loja=loja, data__range=(start_month, end_month)
+            ).aggregate(total=Sum('valor_est'))['total'] or Decimal(0)
+            data['interno'][loja.nome] = {
+                'faturamento_ano': fat_ano,
+                'faturamento_mes': fat_mes
+            }
+            print(f"[DASHBOARD FINANCEIRO] Sede '{loja.nome}': ano={fat_ano}, mes={fat_mes}")
+
+        # --- Franquias ---
+        for loja in Loja.objects.filter(status=True, franquia=True):
+            fat_ano = registros_financeiros.filter(
+                loja=loja, data__range=(start_year, end_year)
+            ).aggregate(total=Sum('valor_est'))['total'] or Decimal(0)
+            fat_mes = registros_financeiros.filter(
+                loja=loja, data__range=(start_month, end_month)
+            ).aggregate(total=Sum('valor_est'))['total'] or Decimal(0)
+            data['franquia'][loja.nome] = {
+                'faturamento_ano': fat_ano,
+                'faturamento_mes': fat_mes
+            }
+            print(f"[DASHBOARD FINANCEIRO] Franquia '{loja.nome}': ano={fat_ano}, mes={fat_mes}")
+
+        # --- Filiais ---
+        for loja in Loja.objects.filter(status=True, filial=True):
+            fat_ano = registros_financeiros.filter(
+                loja=loja, data__range=(start_year, end_year)
+            ).aggregate(total=Sum('valor_est'))['total'] or Decimal(0)
+            fat_mes = registros_financeiros.filter(
+                loja=loja, data__range=(start_month, end_month)
+            ).aggregate(total=Sum('valor_est'))['total'] or Decimal(0)
+            data['filial'][loja.nome] = {
+                'faturamento_ano': fat_ano,
+                'faturamento_mes': fat_mes
+            }
+            print(f"[DASHBOARD FINANCEIRO] Filial '{loja.nome}': ano={fat_ano}, mes={fat_mes}")
+
+        return JsonResponse(data)
+
+    except Exception as e:
+        print(f"[DASHBOARD FINANCEIRO] Erro: {e}")
+        traceback.print_exc()
+        return JsonResponse({
+            'error': 'Erro interno ao processar dados financeiros do dashboard.',
+            'details': str(e)
+        }, status=500)
+
+@login_required
+@require_GET
+def api_get_dashboard_lojas(request):
+    """
+    API endpoint para retornar métricas das lojas:
+    - Métricas agregadas das lojas sede
+    - Métricas individuais por filial
+    - Métricas individuais por franquia
+    """
+    try:
+        now = timezone.now()
+        print(f"[DASHBOARD LOJAS] Iniciando em {now.isoformat()}")
+
+        # --- Intervalos de Data ---
+        start_year = now.replace(month=1, day=1,  hour=0, minute=0, second=0, microsecond=0)
+        end_year = now.replace(month=12, day=31, hour=23, minute=59, second=59, microsecond=999999)
+        start_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        next_month = start_month.replace(month=start_month.month % 12 + 1, day=1)
+        if start_month.month == 12:
+            next_month = next_month.replace(year=start_month.year + 1)
+        end_month = next_month - timedelta(microseconds=1)
+
+        registros_financeiros = RegisterMoney.objects.filter(status=True)
+        data = {
+            'sede': {},
+            'filiais_list': [],
+            'franquias_list': [],
+            'timestamp': now.isoformat()
         }
-
-        franq_ano = registros_financeiros.filter(
-            loja__franquia=True, data__range=(start_year, end_year)
-        ).aggregate(total=Coalesce(Sum('valor_est'), Decimal(0)))['total']
-        franq_mes = registros_financeiros.filter(
-            loja__franquia=True, data__range=(start_month, end_month)
-        ).aggregate(total=Coalesce(Sum('valor_est'), Decimal(0)))['total']
-        data['financeiro']['franquia'] = {
-            'faturamento_ano': franq_ano,
-            'faturamento_mes': franq_mes
-        }
-
-        filial_ano = registros_financeiros.filter(
-            loja__filial=True, data__range=(start_year, end_year)
-        ).aggregate(total=Coalesce(Sum('valor_est'), Decimal(0)))['total']
-        filial_mes = registros_financeiros.filter(
-            loja__filial=True, data__range=(start_month, end_month)
-        ).aggregate(total=Coalesce(Sum('valor_est'), Decimal(0)))['total']
-        data['financeiro']['filial'] = {
-            'faturamento_ano': filial_ano,
-            'faturamento_mes': filial_mes
-        }
-
-        # ==========================================
-        # LOJAS
-        # ==========================================
-        lojas          = Loja.objects.filter(status=True).order_by('nome')
-        sede_lojas     = lojas.filter(filial=False, franquia=False)
-        filial_lojas   = lojas.filter(filial=True)
-        franquia_lojas = lojas.filter(franquia=True)
 
         def get_loja_metrics(loja_inst):
+            """Calcula métricas para uma loja específica"""
+            print(f"[DASHBOARD LOJAS] Calculando métricas para '{loja_inst.nome}'")
             m = {
-                'faturamento_ano': Decimal(0),
-                'faturamento_mes': Decimal(0),
+                'faturamento_ano': registros_financeiros.filter(
+                    loja=loja_inst, data__range=(start_year, end_year)
+                ).aggregate(total=Sum('valor_est'))['total'] or Decimal(0),
+                'faturamento_mes': registros_financeiros.filter(
+                    loja=loja_inst, data__range=(start_month, end_month)
+                ).aggregate(total=Sum('valor_est'))['total'] or Decimal(0),
                 'taxa_comparecimento': Decimal(0),
                 'clientes_rua': 0,
                 'negocios_fechados': 0,
                 'agendamentos': 0,
                 'sem_interesse': 0
             }
-            m['faturamento_ano'] = registros_financeiros.filter(
-                loja=loja_inst, data__range=(start_year, end_year)
-            ).aggregate(total=Coalesce(Sum('valor_est'), Decimal(0)))['total']
-            m['faturamento_mes'] = registros_financeiros.filter(
-                loja=loja_inst, data__range=(start_month, end_month)
-            ).aggregate(total=Coalesce(Sum('valor_est'), Decimal(0)))['total']
 
+            # Métricas de agendamento e presença
             ag_m = INSS_Agendamento.objects.filter(
                 loja=loja_inst, dia_agendado__range=(start_month, end_month)
             ).count()
             pr_qs = INSS_PresencaLoja.objects.filter(
                 loja_comp=loja_inst, data_presenca__range=(start_month, end_month)
             )
+
             m['agendamentos'] = ag_m
-            if ag_m > 0:
-                comp = pr_qs.exclude(cliente_rua=True).count()
+            comp = pr_qs.exclude(cliente_rua=True).count()
+            if ag_m:
                 m['taxa_comparecimento'] = (Decimal(comp) / Decimal(ag_m)) * 100
-            m['clientes_rua']      = pr_qs.filter(cliente_rua=True).count()
+
+            m['clientes_rua'] = pr_qs.filter(cliente_rua=True).count()
             m['negocios_fechados'] = pr_qs.filter(
                 tabulacao_venda=INSS_PresencaLoja.TabulacaoVendaChoices.NEGOCIO_FECHADO
             ).count()
-            m['sem_interesse']     = pr_qs.filter(
+            m['sem_interesse'] = pr_qs.filter(
                 tabulacao_venda__in=[
                     INSS_PresencaLoja.TabulacaoVendaChoices.NAO_ACEITOU,
                     INSS_PresencaLoja.TabulacaoVendaChoices.NAO_QUIS_OUVIR,
                     INSS_PresencaLoja.TabulacaoVendaChoices.INELEGIVEL
                 ]
             ).count()
+
+            print(f"[DASHBOARD LOJAS] Métricas para '{loja_inst.nome}': {m}")
             return m
 
-        # Sede agregado
+        # --- Métricas Agregadas das Lojas Sede ---
+        sede_lojas = Loja.objects.filter(status=True, filial=False, franquia=False)
         sede_tot = {
-            'faturamento_ano': Decimal(0),
-            'faturamento_mes': Decimal(0),
-            'taxa_comparecimento': Decimal(0),
-            'clientes_rua': 0,
-            'negocios_fechados': 0,
-            'agendamentos': 0,
-            'sem_interesse': 0
+            'faturamento_ano': Decimal(0), 'faturamento_mes': Decimal(0),
+            'taxa_comparecimento': Decimal(0), 'clientes_rua': 0,
+            'negocios_fechados': 0, 'agendamentos': 0, 'sem_interesse': 0
         }
         sum_age = sum_comp = 0
+
         for s in sede_lojas:
             mt = get_loja_metrics(s)
             for k in sede_tot:
                 sede_tot[k] += mt[k]
-            ag_ct = INSS_Agendamento.objects.filter(
-                loja=s, dia_agendado__range=(start_month, end_month)
-            ).count()
-            cp_ct = INSS_PresencaLoja.objects.filter(
-                loja_comp=s, data_presenca__range=(start_month, end_month)
-            ).exclude(cliente_rua=True).count()
+            ag_ct = mt['agendamentos']
+            cp_ct = mt['taxa_comparecimento'] * ag_ct / 100 if ag_ct else 0
             sum_age += ag_ct
             sum_comp += cp_ct
-        sede_tot['taxa_comparecimento'] = (
-            (Decimal(sum_comp) / Decimal(sum_age) * 100) if sum_age else Decimal(0)
-        )
-        data['lojas']['sede'] = sede_tot
 
-        # Filiais e Franquias
-        for f in filial_lojas:
-            data['lojas']['filiais_list'].append({
+        if sum_age:
+            sede_tot['taxa_comparecimento'] = (Decimal(sum_comp) / Decimal(sum_age)) * 100
+
+        data['sede'] = sede_tot
+        print(f"[DASHBOARD LOJAS] Métricas agregadas sede: {sede_tot}")
+
+        # --- Métricas por Filial ---
+        for f in Loja.objects.filter(status=True, filial=True):
+            entry = {
                 'id': f.id,
                 'nome': f.nome,
                 'metrics': get_loja_metrics(f)
-            })
-        for fq in franquia_lojas:
-            data['lojas']['franquias_list'].append({
+            }
+            data['filiais_list'].append(entry)
+
+        # --- Métricas por Franquia ---
+        for fq in Loja.objects.filter(status=True, franquia=True):
+            entry = {
                 'id': fq.id,
                 'nome': fq.nome,
                 'metrics': get_loja_metrics(fq)
-            })
+            }
+            data['franquias_list'].append(entry)
 
-        # ==========================================
-        # RH
-        # ==========================================
+        return JsonResponse(data)
+
+    except Exception as e:
+        print(f"[DASHBOARD LOJAS] Erro: {e}")
+        traceback.print_exc()
+        return JsonResponse({
+            'error': 'Erro interno ao processar métricas das lojas.',
+            'details': str(e)
+        }, status=500)
+
+@login_required
+@require_GET
+def api_get_dashboard_rh(request):
+    """
+    API endpoint para retornar dados de RH:
+    - Quantidade de funcionários ativos/inativos
+    - Desempenho por funcionário (faturamento, clientes, comissões)
+    """
+    try:
+        now = timezone.now()
+        print(f"[DASHBOARD RH] Iniciando em {now.isoformat()}")
+
+        # --- Intervalos de Data ---
+        start_year = now.replace(month=1, day=1,  hour=0, minute=0, second=0, microsecond=0)
+        end_year = now.replace(month=12, day=31, hour=23, minute=59, second=59, microsecond=999999)
+        start_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        next_month = start_month.replace(month=start_month.month % 12 + 1, day=1)
+        if start_month.month == 12:
+            next_month = next_month.replace(year=start_month.year + 1)
+        end_month = next_month - timedelta(microseconds=1)
+
+        registros_financeiros = RegisterMoney.objects.filter(status=True)
+        data = {
+            'geral': {'ativos': 0, 'inativos': 0},
+            'funcionarios_list': [],
+            'desempenho': {},
+            'timestamp': now.isoformat()
+        }
+
+        # --- Contagem Geral ---
         funcs = Funcionario.objects.select_related('usuario').prefetch_related('regras_comissionamento')
-        data['rh']['geral']['ativos']   = funcs.filter(status=True).count()
-        data['rh']['geral']['inativos'] = funcs.filter(status=False).count()
+        data['geral']['ativos'] = funcs.filter(status=True).count()
+        data['geral']['inativos'] = funcs.filter(status=False).count()
+        print(f"[DASHBOARD RH] Ativos={data['geral']['ativos']}, Inativos={data['geral']['inativos']}")
 
+        # --- Desempenho por Funcionário ---
         for fn in funcs.filter(status=True).order_by('nome_completo'):
-            # Lista para selector
-            data['rh']['funcionarios_list'].append({
+            data['funcionarios_list'].append({
                 'id': fn.id,
                 'nome': fn.apelido or fn.nome_completo
             })
-            # Desempenho
+
             desempenho = {
                 'faturamento_ano': Decimal(0),
                 'faturamento_mes': Decimal(0),
                 'clientes_concluidos': 0,
                 'comissao_total_mes': Decimal(0)
             }
+
             if fn.usuario:
                 ur = registros_financeiros.filter(user=fn.usuario)
+                
+                # Faturamento
                 desempenho['faturamento_ano'] = ur.filter(
                     data__range=(start_year, end_year)
-                ).aggregate(total=Coalesce(Sum('valor_est'), Decimal(0)))['total']
+                ).aggregate(total=Sum('valor_est'))['total'] or Decimal(0)
+                
                 desempenho['faturamento_mes'] = ur.filter(
                     data__range=(start_month, end_month)
-                ).aggregate(total=Coalesce(Sum('valor_est'), Decimal(0)))['total']
+                ).aggregate(total=Sum('valor_est'))['total'] or Decimal(0)
+
+                # Clientes Concluídos
                 desempenho['clientes_concluidos'] = ur.filter(
                     data__range=(start_month, end_month)
                 ).values('cpf_cliente').distinct().count()
 
-                # Cálculo de comissão simples
+                # Cálculo de Comissão
                 total_com = Decimal(0)
-                regras = fn.regras_comissionamento.filter(status=True)
-                for rg in regras:
+                for rg in fn.regras_comissionamento.filter(status=True):
                     base = desempenho['faturamento_mes']
                     if rg.percentual is not None:
                         if ((rg.valor_de is None or base >= rg.valor_de) and
@@ -355,15 +420,44 @@ def api_get_dashboard(request):
                         if ((rg.valor_de is None or base >= rg.valor_de) and
                             (rg.valor_ate is None or base <= rg.valor_ate)):
                             total_com += rg.valor_fixo
+
                 desempenho['comissao_total_mes'] = total_com
+                print(f"[DASHBOARD RH] Funcionário '{fn.nome_completo}': {desempenho}")
 
-            data['rh']['desempenho'][fn.id] = desempenho
+            data['desempenho'][fn.id] = desempenho
 
-        # ==========================================
-        # METAS
-        # ==========================================
+        return JsonResponse(data)
+
+    except Exception as e:
+        print(f"[DASHBOARD RH] Erro: {e}")
+        traceback.print_exc()
+        return JsonResponse({
+            'error': 'Erro interno ao processar dados de RH.',
+            'details': str(e)
+        }, status=500)
+
+@login_required
+@require_GET
+def api_get_dashboard_metas(request):
+    """
+    API endpoint para retornar dados de metas:
+    - Metas ativas: valor meta, atingido, restante e status
+    - Metas inativas: valor meta, atingido, restante e status
+    """
+    try:
+        now = timezone.now()
+        print(f"[DASHBOARD METAS] Iniciando em {now.isoformat()}")
+
+        data = {
+            'ativas_list': [],
+            'inativadas_list': [],
+            'timestamp': now.isoformat()
+        }
+
         def calcular_meta_atingida(meta):
+            """Calcula o valor atingido para uma meta específica"""
             q = Q(status=True, data__range=(meta.data_inicio, meta.data_fim))
+            
             if meta.categoria == 'GERAL':
                 pass
             elif meta.categoria == 'EMPRESA':
@@ -376,22 +470,30 @@ def api_get_dashboard(request):
                 q &= Q(setor=meta.setor)
             elif meta.categoria == 'OUTROS' and meta.equipe.exists():
                 q &= Q(equipe__in=meta.equipe.all())
-            else:
-                return Decimal(0)
-            return RegisterMoney.objects.filter(q).aggregate(
-                total=Coalesce(Sum('valor_est'), Decimal(0))
-            )['total']
 
+            total = RegisterMoney.objects.filter(q).aggregate(
+                total=Sum('valor_est')
+            )['total'] or Decimal(0)
+            
+            print(f"[DASHBOARD METAS] Meta '{meta.titulo}' atingido={total}")
+            return total
+
+        # --- Metas Ativas ---
         metas_ativas = RegisterMeta.objects.filter(
-            status=True, data_inicio__lte=now, data_fim__gte=now
+            status=True,
+            data_inicio__lte=now,
+            data_fim__gte=now
         )
+
         for m in metas_ativas:
             vm = m.valor or Decimal(0)
             va = calcular_meta_atingida(m)
             restante = max(Decimal(0), vm - va)
             pct = (va / vm * 100) if vm > 0 else Decimal(100)
+            
             status = 'Concluída' if pct >= 100 else 'Quase lá' if pct >= 85 else 'Em andamento'
-            data['metas']['ativas_list'].append({
+            
+            data['ativas_list'].append({
                 'id': m.id,
                 'titulo': m.titulo,
                 'valor_meta': vm,
@@ -401,17 +503,23 @@ def api_get_dashboard(request):
                 'status': status
             })
 
+        # --- Metas Inativas ---
         metas_inativas = RegisterMeta.objects.filter(
             Q(status=False) | Q(data_fim__lt=now)
-        ).exclude(pk__in=[m['id'] for m in data['metas']['ativas_list']])[:20]
+        ).exclude(
+            pk__in=[m['id'] for m in data['ativas_list']]
+        )[:20]
+
         for m in metas_inativas:
             vm = m.valor or Decimal(0)
             va = calcular_meta_atingida(m)
             restante = max(Decimal(0), vm - va)
+            
             st = 'Concluída' if va >= vm else 'Não atingida'
             if not m.status:
                 st = 'Cancelada'
-            data['metas']['inativadas_list'].append({
+            
+            data['inativadas_list'].append({
                 'id': m.id,
                 'titulo': m.titulo,
                 'valor_meta': vm,
@@ -423,14 +531,12 @@ def api_get_dashboard(request):
         return JsonResponse(data)
 
     except Exception as e:
-        print(f"Erro geral na API do Dashboard Administrativo: {e}")
-        print(traceback.format_exc())
+        print(f"[DASHBOARD METAS] Erro: {e}")
+        traceback.print_exc()
         return JsonResponse({
-            'error': 'Erro interno ao processar dados do dashboard.',
+            'error': 'Erro interno ao processar dados de metas.',
             'details': str(e)
         }, status=500)
-
-
 
 # -------------------------------------------
 # FIM API GET/POST DASHBOARD
@@ -1144,3 +1250,332 @@ def api_post_csvfinanceiro(request):
             errors.append({'row': i, 'error': str(e)})
 
     return JsonResponse({'success': True, 'created': created, 'errors': errors})
+
+
+# ┌───────────────────────────────────────────────────────────────────────────────
+# │ Início – Controle de Campanhas (views)
+# └───────────────────────────────────────────────────────────────────────────────
+from django.views.decorators.csrf import ensure_csrf_cookie
+from .models import *
+from apps.siape.models import *
+from apps.funcionarios.models import *
+
+
+@login_required
+@require_GET
+@ensure_csrf_cookie
+@controle_acess('SCT23')
+def api_get_minhasCampanhas(request):
+    """
+    Retorna todas as campanhas ativas, com relacionamentos,
+    e fornece também as listas de opções para cada categoria.
+    """
+    # 1️⃣ campanhas
+    qs = (
+        ControleCampanha.objects
+        .filter(status=True)
+        .order_by('-data_inicio')
+        .prefetch_related('empresas', 'departamentos', 'setores', 'lojas', 'equipes', 'cargos')
+    )
+    resultado = []
+    for c in qs:
+        resultado.append({
+            'id':            c.id,
+            'titulo':        c.titulo,
+            'banner_url':    request.build_absolute_uri(c.banner.url) if c.banner else None,
+            'data_inicio':   c.data_inicio.isoformat(),
+            'hora_inicio':   c.hora_inicio.strftime('%H:%M'),
+            'data_final':    c.data_final.isoformat(),
+            'hora_final':    c.hora_final.strftime('%H:%M'),
+            'categoria':     c.categoria,
+            'empresas':      list(c.empresas.values_list('id', flat=True)),
+            'departamentos': list(c.departamentos.values_list('id', flat=True)),
+            'setores':       list(c.setores.values_list('id', flat=True)),
+            'lojas':         list(c.lojas.values_list('id', flat=True)),
+            'equipes':       list(c.equipes.values_list('id', flat=True)),
+            'cargos':        list(c.cargos.values_list('id', flat=True)),
+            'status':        c.status,
+        })
+
+    # 2️⃣ todas as opções para montar checkboxes
+    opcoes = {
+        'EMPRESA':      list(Empresa.objects.filter(status=True).values('id', 'nome')),
+        'DEPARTAMENTO': list(Departamento.objects.filter(status=True).values('id', 'nome')),
+        'SETOR':        list(Setor.objects.filter(status=True).values('id', 'nome')),
+        'LOJA':         list(Loja.objects.filter(status=True).values('id', 'nome')),
+        'EQUIPE':       list(Equipe.objects.filter(status=True).values('id', 'nome')),
+        'CARGO':        list(Cargo.objects.filter(status=True).values('id', 'nome')),
+    }
+
+    return JsonResponse({
+        'campanhas': resultado,
+        'opcoes':    opcoes
+    }, status=200)
+
+@login_required
+@require_POST
+@csrf_exempt
+@controle_acess('SCT23')
+def api_post_criarCampanha(request):
+    """
+    Cria uma nova campanha.
+    Espera multipart/form-data com:
+      - titulo, banner (file)
+      - data_inicio (YYYY-MM-DD), hora_inicio (HH:MM)
+      - data_final (YYYY-MM-DD), hora_final (HH:MM)
+      - categoria (string)
+      - empresas, departamentos, setores, lojas, equipes (listas de IDs)
+      - status ('true' ou 'false')
+    """
+    try:
+        # 1️⃣ Debug dos dados recebidos
+        print("\n=== DEBUG: Dados Recebidos na View ===")
+        print("POST data:", request.POST)
+        print("FILES:", request.FILES)
+
+        # 2️⃣ Extrai e valida campos obrigatórios
+        titulo     = request.POST.get('titulo')
+        banner     = request.FILES.get('banner')
+        di_str     = request.POST.get('data_inicio')
+        hi_str     = request.POST.get('hora_inicio')
+        df_str     = request.POST.get('data_final')
+        hf_str     = request.POST.get('hora_final')
+        categoria  = request.POST.get('categoria', 'GERAL')
+        status_bool = request.POST.get('status', 'true').lower() in ('true','1','on')
+
+        print("\n=== DEBUG: Campos Extraídos ===")
+        print(f"Título: {titulo}")
+        print(f"Banner: {banner}")
+        print(f"Data Início: {di_str}")
+        print(f"Hora Início: {hi_str}")
+        print(f"Data Final: {df_str}")
+        print(f"Hora Final: {hf_str}")
+        print(f"Categoria: {categoria}")
+        print(f"Status: {status_bool}")
+
+        if not all([titulo, banner, di_str, hi_str, df_str, hf_str]):
+            return JsonResponse({'error': 'Campos obrigatórios faltando.'}, status=400)
+
+        # 3️⃣ Parse de datas e horas
+        data_inicio = datetime.strptime(di_str, '%Y-%m-%d').date()
+        hora_inicio = datetime.strptime(hi_str, '%H:%M').time()
+        data_final  = datetime.strptime(df_str, '%Y-%m-%d').date()
+        hora_final  = datetime.strptime(hf_str, '%H:%M').time()
+
+        # 4️⃣ Cria a campanha
+        campanha = ControleCampanha.objects.create(
+            titulo      = titulo,
+            banner      = banner,
+            data_inicio = data_inicio,
+            hora_inicio = hora_inicio,
+            data_final  = data_final,
+            hora_final  = hora_final,
+            categoria   = categoria,
+            status      = status_bool
+        )
+
+        # 5️⃣ Mapeamento para ManyToMany
+        campanhas_map = {
+            'empresas':      Empresa,
+            'departamentos': Departamento,
+            'setores':       Setor,
+            'lojas':         Loja,
+            'equipes':       Equipe,
+            'cargos':        Cargo,  # Adicionando Cargo ao mapeamento
+        }
+        singular_map = {
+            'empresas':      'empresa',
+            'departamentos': 'departamento',
+            'setores':       'setor',
+            'lojas':         'loja',
+            'equipes':       'equipe',
+            'cargos':        'cargo',  # Adicionando mapeamento singular para cargo
+        }
+
+        print("\n=== DEBUG: IDs para ManyToMany ===")
+        for plural, model in campanhas_map.items():
+            singular = singular_map[plural]
+            ids = request.POST.getlist(plural) or request.POST.getlist(singular)
+            print(f"{plural}: {ids}")
+            if not ids:
+                continue
+
+            try:
+                ids = list({int(i) for i in ids})
+            except ValueError:
+                return JsonResponse({'error': f'IDs inválidos em {plural}.'}, status=400)
+
+            qs = model.objects.filter(pk__in=ids)
+            print(f"→ encontradas {qs.count()} instâncias de {model.__name__}")
+            getattr(campanha, plural).set(qs)
+
+        campanha.save()
+
+        # 6️⃣ Debug da campanha criada
+        print("\n=== DEBUG: Campanha Criada ===")
+        print(f"ID: {campanha.id}")
+        print(f"Título: {campanha.titulo}")
+        print(f"Categoria: {campanha.categoria}")
+        for field in campanhas_map:
+            print(f"- {field}: {list(getattr(campanha, field).values_list('id', flat=True))}")
+
+        # 7️⃣ Prepara resposta
+        resp = {
+            'id':           campanha.id,
+            'titulo':       campanha.titulo,
+            'banner_url':   request.build_absolute_uri(campanha.banner.url),
+            'data_inicio':  campanha.data_inicio.isoformat(),
+            'hora_inicio':  campanha.hora_inicio.strftime('%H:%M'),
+            'data_final':   campanha.data_final.isoformat(),
+            'hora_final':   campanha.hora_final.strftime('%H:%M'),
+            'categoria':    campanha.categoria,
+            'status':       campanha.status,
+        }
+        return JsonResponse({'message': 'Campanha criada com sucesso! 🎉', 'campanha': resp}, status=201)
+
+    except Exception as e:
+        print("\n=== DEBUG: Erro na View ===")
+        print("Erro:", str(e))
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+    
+from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_GET
+from django.http import JsonResponse
+from django.utils import timezone
+from .models import ControleCampanha
+from apps.funcionarios.models import Funcionario
+from urllib.parse import urlparse, urlunparse
+
+@login_required
+@require_GET
+def api_get_banners_campanhas(request):
+    """
+    Retorna JSON com banners de campanhas ativas às quais o usuário tem acesso.
+    - Superusuário vê todas.
+    - Demais usuários veem apenas campanhas cujo M2M inclui seu ID.
+    Garante que banner_url comece com https://
+    """
+    try:
+        usuario = request.user
+        print(f"DEBUG: Usuário {usuario.username} acessando banners")
+
+        # 1) Carrega campanhas ativas
+        if usuario.is_superuser:
+            print("DEBUG: Usuário é superusuário, carregando todas campanhas")
+            qs = ControleCampanha.objects.filter(status=True)
+            ids_func = {}
+        else:
+            try:
+                print(f"DEBUG: Buscando funcionário para usuário {usuario.id}")
+                funcionario = Funcionario.objects.select_related(
+                    'usuario', 'empresa', 'departamento', 'setor', 'cargo', 'horario', 'equipe'
+                ).get(usuario=usuario, status=True)
+                print(f"DEBUG: Funcionário encontrado: {funcionario.id}")
+            except Funcionario.DoesNotExist:
+                print(f"DEBUG: Funcionário não encontrado para usuário {usuario.id}")
+                return JsonResponse({'banners': []}, status=200)  # Retorna lista vazia ao invés de erro
+
+            ids_func = {
+                'empresa':      funcionario.empresa_id,
+                'departamento': funcionario.departamento_id,
+                'setor':        funcionario.setor_id,
+                'equipe':       funcionario.equipe_id,
+                'cargo':        funcionario.cargo_id,
+            }
+            qs = ControleCampanha.objects.filter(status=True)
+
+        resultados = []
+
+        for camp in qs:
+            categoria = camp.categoria
+            print(f"DEBUG: Processando campanha {camp.id} - Categoria: {categoria}")
+
+            # campanhas GERAL sempre passam
+            if categoria == 'GERAL':
+                inclui = True
+            else:
+                # pega lista de IDs do M2M correto
+                escopos = {
+                    'EMPRESA':      list(camp.empresas.values_list('id', flat=True)),
+                    'DEPARTAMENTO': list(camp.departamentos.values_list('id', flat=True)),
+                    'SETOR':        list(camp.setores.values_list('id', flat=True)),
+                    'LOJA':         list(camp.lojas.values_list('id', flat=True)),
+                    'EQUIPE':       list(camp.equipes.values_list('id', flat=True)),
+                    'CARGO':        list(camp.cargos.values_list('id', flat=True)),
+                }
+                lista_ids = escopos.get(categoria, [])
+                inclui = (not usuario.is_superuser
+                          and ids_func.get(categoria.lower()) in lista_ids)
+                print(f"DEBUG: IDs do escopo {categoria}: {lista_ids}")
+                print(f"DEBUG: ID do funcionário: {ids_func.get(categoria.lower())}")
+                print(f"DEBUG: Incluir? {inclui}")
+
+            # só continua se incluir e tiver banner
+            if not inclui or not camp.banner:
+                continue
+
+            # mantém a URL original do banner
+            banner_url = request.build_absolute_uri(camp.banner.url)
+
+            resultados.append({
+                'id':         camp.id,
+                'titulo':     camp.titulo,
+                'banner_url': banner_url,
+                'categoria':  camp.categoria,
+            })
+
+        print(f"DEBUG: Total de banners encontrados: {len(resultados)}")
+        return JsonResponse({'banners': resultados}, status=200)
+
+    except Exception as e:
+        print(f"DEBUG: Erro ao processar banners: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'error': 'Erro interno ao processar banners'}, status=500)
+
+
+@login_required
+@require_POST
+@controle_acess('SCT23')
+@csrf_exempt
+def api_post_atualizar_status_campanha(request):
+    """
+    POST: Atualiza o campo `status` (ativo/inativo) de uma campanha.
+    Espera receber:
+      - id: ID da campanha
+      - status: 'true' ou 'false'
+    Retorna JSON com mensagem e o novo status.
+    """
+    campanha_id = request.POST.get('id')
+    status_str  = request.POST.get('status')
+
+    if not campanha_id or status_str is None:
+        return JsonResponse({'error': 'Campos "id" e "status" são obrigatórios.'}, status=400)
+
+    # Busca a campanha ou 404
+    campanha = get_object_or_404(ControleCampanha, pk=campanha_id)
+
+    # Converte string para booleano
+    novo_status = status_str.lower() in ('true', '1', 'on')
+
+    # Atualiza e salva
+    campanha.status = novo_status
+    campanha.save(update_fields=['status'])
+
+    return JsonResponse({
+        'message': f'Campanha "{campanha.titulo}" agora está {"ativa" if novo_status else "inativa"}.',
+        'campanha': {
+            'id': campanha.id,
+            'status': campanha.status
+        }
+    }, status=200)
+
+# (adicione aqui todas as outras views relacionadas a ControleCampanhas)
+
+# ┌───────────────────────────────────────────────────────────────────────────────
+# │ Fim – Controle de Campanhas (views)
+# └───────────────────────────────────────────────────────────────────────────────

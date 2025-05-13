@@ -1,17 +1,17 @@
 from django.urls import path
-# Importa todas as views do módulo atual (views.py)
+# Importa todas as views do módulo atual (py)
 # Embora funcional, para clareza e evitar conflitos, importações explícitas são geralmente preferíveis.
 # Ex: from .views import render_dashboard, api_get_dashboard, ... , render_reembolso, api_get_inforeembolso, etc.
 from .views import *
+from apps.funcionarios.views import render_comunicados  # Importando a view de comunicados
 
 app_name = 'administrativo'
 
 urlpatterns = [
     # --- Dashboard ---
     # URL para renderizar a página HTML do dashboard
-    path('', render_dashboard, name='dashboard'),
+    path('dashboard/', render_dashboard, name='dashboard'),
     # URL para a API que fornece os dados do dashboard
-    path('api/dashboard/', api_get_dashboard, name='api_get_dashboard'),
 
     # --- Controle de Metas ---
     # Página HTML
@@ -42,4 +42,18 @@ urlpatterns = [
     path('api/csv/clientec2/',      api_post_csvclientec2,   name='api_post_csvclientec2'),
     path('api/csv/agendamento/',    api_post_csvagendamento, name='api_post_csvagendamento'),
     path('api/csv/financeiro/',     api_post_csvfinanceiro,  name='api_post_csvfinanceiro'),
+
+    path('api/campanhas/', api_get_minhasCampanhas, name='api_get_minhasCampanhas'),
+    path('api/campanhas/criar/', api_post_criarCampanha, name='api_post_criarCampanha'),
+    path('api/campanhas/banners/', api_get_banners_campanhas, name='api_get_bannersCampanhas'),
+    path('api/campanhas/atualizar-status/', api_post_atualizar_status_campanha, name='api_post_atualizar_status_campanha'),
+
+    # Dashboard APIs
+    path('api/dashboard/financeiro/', api_get_dashboard_financeiro, name='api_get_dashboard_financeiro'),
+    path('api/dashboard/lojas/', api_get_dashboard_lojas, name='api_get_dashboard_lojas'),
+    path('api/dashboard/rh/', api_get_dashboard_rh, name='api_get_dashboard_rh'),
+    path('api/dashboard/metas/', api_get_dashboard_metas, name='api_get_dashboard_metas'),
+
+    # --- Comunicados ---
+    path('', render_comunicados, name='render_comunicados'),  # Nova URL para comunicados
 ]

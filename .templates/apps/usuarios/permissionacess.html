@@ -85,27 +85,26 @@
     <!-- Coluna 2 -->
     <div class="col-md-6">
 
-      <!-- Card Registrar Acessos para Usuário -->
+      <!-- Card Registrar Acessos para Usuários -->
       <div class="card mb-4" id="card-controle-acesso">
         <div class="card-header bg-primary text-white">
-          <i class='bx bx-user-check me-2'></i> Registrar Acessos para Usuário
+          <i class='bx bx-user-check me-2'></i> Registrar Acessos para Usuários
         </div>
         <div class="card-body">
           <form id="form-controle-acesso" method="POST">
             {% csrf_token %}
             <input type="hidden" name="form_type" value="controle_acesso">
             <div class="mb-3">
-              <label for="controle_acesso_usuario" class="form-label"><i class='bx bx-user me-2'></i>Usuário *</label>
-              <select id="controle_acesso_usuario" name="user_id" class="form-select" required>
-                <option value="">--- Selecione o Usuário ---</option>
-                {% comment %} Opções de usuários serão carregadas via JS/API {% endcomment %}
+              <label class="form-label"><i class='bx bx-user me-2'></i>Usuários *</label>
+              <div id="controle_acesso_usuarios_container" class="acessos-checkbox-container">
+                {% comment %} Checkboxes de usuários serão carregados via JS/API {% endcomment %}
                 <p class="text-muted text-center">Carregando usuários...</p>
-              </select>
+              </div>
             </div>
             <div class="mb-3">
                 <label for="controle_acesso_metodo" class="form-label"><i class='bx bx-cog me-2'></i>Método de Seleção *</label>
                 <select id="controle_acesso_metodo" class="form-select" required>
-                  <option value="">--- Selecione o Método ---</option>  {# opção em branco #}
+                  <option value="">--- Selecione o Método ---</option>
                   <option value="manual">Manual</option>
                   <option value="favoritos">Favoritos (Grupos)</option>
                 </select>

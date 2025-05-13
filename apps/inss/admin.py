@@ -1,9 +1,12 @@
 from django.contrib import admin
-from django.utils.html import format_html
-from .models import *
 from django.utils import timezone
-import calendar
 from datetime import timedelta
+import calendar
+
+from .models import ClienteAgendamento, Agendamento, PresencaLoja
+
+
+# --- FILTROS CUSTOMIZADOS ---
 
 class DataAgendamentoFilter(admin.SimpleListFilter):
     title = 'Data do Agendamento'
@@ -16,100 +19,163 @@ class DataAgendamentoFilter(admin.SimpleListFilter):
             ('semana', 'Esta Semana'),
             ('mes', 'Este Mês'),
             ('mes_anterior', 'Mês Anterior'),
+            ('proxima_semana', 'Próxima Semana'),
+            ('proximo_mes', 'Próximo Mês'),
+            ('ultimos_7_dias', 'Últimos 7 Dias'),
+            ('ultimos_30_dias', 'Últimos 30 Dias'),
         )
 
     def queryset(self, request, queryset):
         today = timezone.now().date()
-        if self.value() == 'hoje':
+        val = self.value()
+        if val == 'hoje':
             return queryset.filter(dia_agendado__date=today)
-        elif self.value() == 'ontem':
-            yesterday = today - timedelta(days=1)
-            return queryset.filter(dia_agendado__date=yesterday)
-        elif self.value() == 'semana':
-            start_week = today - timedelta(days=today.weekday())
-            end_week = start_week + timedelta(days=6)
-            return queryset.filter(dia_agendado__date__range=(start_week, end_week))
-        elif self.value() == 'mes':
-            start_month = today.replace(day=1)
-            last_day = calendar.monthrange(today.year, today.month)[1]
-            end_month = today.replace(day=last_day)
-            return queryset.filter(dia_agendado__date__range=(start_month, end_month))
-        elif self.value() == 'mes_anterior':
-            if today.month == 1:
-                previous_month = 12
-                year = today.year - 1
-            else:
-                previous_month = today.month - 1
-                year = today.year
-            start_previous = today.replace(year=year, month=previous_month, day=1)
-            last_day_previous = calendar.monthrange(year, previous_month)[1]
-            end_previous = today.replace(year=year, month=previous_month, day=last_day_previous)
-            return queryset.filter(dia_agendado__date__range=(start_previous, end_previous))
+        if val == 'ontem':
+            return queryset.filter(dia_agendado__date=today - timedelta(days=1))
+        if val == 'semana':
+            start = today - timedelta(days=today.weekday())
+            end = start + timedelta(days=6)
+            return queryset.filter(dia_agendado__date__range=(start, end))
+        if val == 'mes':
+            start = today.replace(day=1)
+            last = calendar.monthrange(today.year, today.month)[1]
+            end = today.replace(day=last)
+            return queryset.filter(dia_agendado__date__range=(start, end))
+        if val == 'mes_anterior':
+            year, month = (today.year - 1, 12) if today.month == 1 else (today.year, today.month - 1)
+            start = today.replace(year=year, month=month, day=1)
+            last = calendar.monthrange(year, month)[1]
+            end = today.replace(year=year, month=month, day=last)
+            return queryset.filter(dia_agendado__date__range=(start, end))
+        if val == 'proxima_semana':
+            start = today + timedelta(days=(7 - today.weekday()))
+            end = start + timedelta(days=6)
+            return queryset.filter(dia_agendado__date__range=(start, end))
+        if val == 'proximo_mes':
+            year, month = (today.year + 1, 1) if today.month == 12 else (today.year, today.month + 1)
+            start = today.replace(year=year, month=month, day=1)
+            last = calendar.monthrange(year, month)[1]
+            end = today.replace(year=year, month=month, day=last)
+            return queryset.filter(dia_agendado__date__range=(start, end))
+        if val == 'ultimos_7_dias':
+            return queryset.filter(dia_agendado__date__gte=today - timedelta(days=7))
+        if val == 'ultimos_30_dias':
+            return queryset.filter(dia_agendado__date__gte=today - timedelta(days=30))
         return queryset
+
+
+class TabulacaoAgendamentoFilter(admin.SimpleListFilter):
+    title = 'Tabulação do Agendamento'
+    parameter_name = 'tabulacao_agendamento'
+
+    def lookups(self, request, model_admin):
+        qs = model_admin.get_queryset(request)
+        raw = qs.values_list('tabulacao_agendamento', flat=True)
+        unique = sorted({v.strip() for v in raw if v and v.strip()})
+        return [(u, u) for u in unique]
+
+    def queryset(self, request, queryset):
+        if self.value():
+            return queryset.filter(tabulacao_agendamento=self.value())
+        return queryset
+
 
 class DataPresencaFilter(admin.SimpleListFilter):
     title = 'Data da Presença'
     parameter_name = 'data_presenca_range'
 
+    # Reuse same lookups as DataAgendamentoFilter
     def lookups(self, request, model_admin):
-        return (
-            ('hoje', 'Hoje'),
-            ('ontem', 'Ontem'),
-            ('semana', 'Esta Semana'),
-            ('mes', 'Este Mês'),
-            ('mes_anterior', 'Mês Anterior'),
-        )
+        return DataAgendamentoFilter.lookups(self, request, model_admin)
 
     def queryset(self, request, queryset):
         today = timezone.now().date()
-        if self.value() == 'hoje':
-            return queryset.filter(data_presenca__date=today)
-        elif self.value() == 'ontem':
-            yesterday = today - timedelta(days=1)
-            return queryset.filter(data_presenca__date=yesterday)
-        elif self.value() == 'semana':
-            start_week = today - timedelta(days=today.weekday())
-            end_week = start_week + timedelta(days=6)
-            return queryset.filter(data_presenca__date__range=(start_week, end_week))
-        elif self.value() == 'mes':
-            start_month = today.replace(day=1)
-            last_day = calendar.monthrange(today.year, today.month)[1]
-            end_month = today.replace(day=last_day)
-            return queryset.filter(data_presenca__date__range=(start_month, end_month))
-        elif self.value() == 'mes_anterior':
-            if today.month == 1:
-                previous_month = 12
-                year = today.year - 1
-            else:
-                previous_month = today.month - 1
-                year = today.year
-            start_previous = today.replace(year=year, month=previous_month, day=1)
-            last_day_previous = calendar.monthrange(year, previous_month)[1]
-            end_previous = today.replace(year=year, month=previous_month, day=last_day_previous)
-            return queryset.filter(data_presenca__date__range=(start_previous, end_previous))
+        val = self.value()
+        field = 'data_presenca__date'
+        if val == 'hoje':
+            return queryset.filter(**{field: today})
+        if val == 'ontem':
+            return queryset.filter(**{field: today - timedelta(days=1)})
+        if val == 'semana':
+            start = today - timedelta(days=today.weekday()); end = start + timedelta(days=6)
+            return queryset.filter(**{f"{field}__range": (start, end)})
+        if val == 'mes':
+            start = today.replace(day=1); last = calendar.monthrange(today.year, today.month)[1]
+            end = today.replace(day=last)
+            return queryset.filter(**{f"{field}__range": (start, end)})
+        if val == 'mes_anterior':
+            year, month = (today.year - 1, 12) if today.month == 1 else (today.year, today.month - 1)
+            start = today.replace(year=year, month=month, day=1)
+            last = calendar.monthrange(year, month)[1]; end = today.replace(year=year, month=month, day=last)
+            return queryset.filter(**{f"{field}__range": (start, end)})
+        if val == 'proxima_semana':
+            start = today + timedelta(days=(7 - today.weekday())); end = start + timedelta(days=6)
+            return queryset.filter(**{f"{field}__range": (start, end)})
+        if val == 'proximo_mes':
+            year, month = (today.year + 1, 1) if today.month == 12 else (today.year, today.month + 1)
+            start = today.replace(year=year, month=month, day=1)
+            last = calendar.monthrange(year, month)[1]; end = today.replace(year=year, month=month, day=last)
+            return queryset.filter(**{f"{field}__range": (start, end)})
+        if val == 'ultimos_7_dias':
+            return queryset.filter(**{f"{field}__gte": today - timedelta(days=7)})
+        if val == 'ultimos_30_dias':
+            return queryset.filter(**{f"{field}__gte": today - timedelta(days=30)})
         return queryset
+
+
+class TabulacaoVendaFilter(admin.SimpleListFilter):
+    title = 'Tabulação da Venda'
+    parameter_name = 'tabulacao_venda'
+
+    def lookups(self, request, model_admin):
+        qs = model_admin.get_queryset(request)
+        raw = qs.values_list('tabulacao_venda', flat=True)
+        unique = sorted({v.strip() for v in raw if v and v.strip()})
+        return [(u, u) for u in unique]
+
+    def queryset(self, request, queryset):
+        if self.value():
+            return queryset.filter(tabulacao_venda=self.value())
+        return queryset
+
+
+# --- REGISTROS NO ADMIN ---
 
 @admin.register(ClienteAgendamento)
 class ClienteAgendamentoAdmin(admin.ModelAdmin):
     list_display = ('nome_completo', 'cpf', 'numero', 'flg_whatsapp', 'status')
     list_filter = ('status', 'flg_whatsapp')
     search_fields = ('nome_completo', 'cpf', 'numero')
-    list_editable = ('status',)
+    list_editable = ('status', 'flg_whatsapp')
+    list_per_page = 50
+    actions = ['ativar_clientes', 'desativar_clientes']
+
+    def ativar_clientes(self, request, queryset):
+        updated = queryset.update(status=True)
+        self.message_user(request, f'{updated} clientes ativados com sucesso.')
+    ativar_clientes.short_description = 'Ativar clientes selecionados'
+
+    def desativar_clientes(self, request, queryset):
+        updated = queryset.update(status=False)
+        self.message_user(request, f'{updated} clientes desativados com sucesso.')
+    desativar_clientes.short_description = 'Desativar clientes selecionados'
+
 
 @admin.register(Agendamento)
 class AgendamentoAdmin(admin.ModelAdmin):
     list_display = (
-        'id', 'get_cliente_nome', 'get_cliente_cpf', 'dia_agendado', 
+        'id', 'get_cliente_nome', 'get_cliente_cpf', 'dia_agendado',
         'loja', 'get_atendente_username', 'tabulacao_agendamento',
         'data_criacao'
     )
     list_filter = (
         DataAgendamentoFilter,
+        TabulacaoAgendamentoFilter,
         'loja',
         'atendente_agendou',
     )
     search_fields = (
-        'cliente_agendamento__nome_completo', 
+        'cliente_agendamento__nome_completo',
         'cliente_agendamento__cpf',
         'loja__nome',
         'atendente_agendou__username',
@@ -119,20 +185,12 @@ class AgendamentoAdmin(admin.ModelAdmin):
     date_hierarchy = 'dia_agendado'
     autocomplete_fields = ('cliente_agendamento', 'loja', 'atendente_agendou')
     ordering = ('-dia_agendado',)
-    
-    fieldsets = (
-        ('Cliente e Agendamento', {
-            'fields': ('cliente_agendamento', 'dia_agendado', 'loja', 'atendente_agendou')
-        }),
-        ('Detalhes', {
-            'fields': ('tabulacao_agendamento', 'data_criacao')
-        }),
-    )
     readonly_fields = ('data_criacao',)
 
     def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        return qs.select_related('cliente_agendamento', 'loja', 'atendente_agendou')
+        return super().get_queryset(request).select_related(
+            'cliente_agendamento', 'loja', 'atendente_agendou'
+        )
 
     @admin.display(description='Cliente', ordering='cliente_agendamento__nome_completo')
     def get_cliente_nome(self, obj):
@@ -146,16 +204,17 @@ class AgendamentoAdmin(admin.ModelAdmin):
     def get_atendente_username(self, obj):
         return obj.atendente_agendou.username if obj.atendente_agendou else '-'
 
+
 @admin.register(PresencaLoja)
 class PresencaLojaAdmin(admin.ModelAdmin):
     list_display = (
-        'get_cliente_info', 'get_agendamento_info', 'loja_comp', 'vendedor', 
-        'tabulacao_venda', 'status_pagamento', 'valor_tac', 
+        'get_cliente_info', 'get_agendamento_info', 'loja_comp', 'vendedor',
+        'tabulacao_venda', 'status_pagamento', 'valor_tac',
         'cliente_rua', 'data_presenca'
     )
     list_filter = (
-        'tabulacao_venda', 
-        'status_pagamento', 
+        TabulacaoVendaFilter,
+        'status_pagamento',
         'cliente_rua',
         'loja_comp',
         'vendedor',
@@ -166,7 +225,7 @@ class PresencaLojaAdmin(admin.ModelAdmin):
         'aumento'
     )
     search_fields = (
-        'agendamento__cliente_agendamento__nome_completo', 
+        'agendamento__cliente_agendamento__nome_completo',
         'agendamento__cliente_agendamento__cpf',
         'cliente_agendamento__nome_completo',
         'cliente_agendamento__cpf',
@@ -176,29 +235,12 @@ class PresencaLojaAdmin(admin.ModelAdmin):
     )
     autocomplete_fields = ('agendamento', 'cliente_agendamento', 'loja_comp', 'vendedor')
     ordering = ('-data_presenca',)
-    
-    fieldsets = (
-        ('Associação', {
-            'fields': ('agendamento', 'cliente_agendamento', 'cliente_rua', 'loja_comp')
-        }),
-        ('Atendimento', {
-            'fields': ('vendedor', 'tabulacao_venda', 'data_presenca')
-        }),
-        ('Detalhes da Negociação (se aplicável)', {
-            'classes': ('collapse',),
-            'fields': ('tipo_negociacao', 'banco', 'subsidio', 'valor_tac', 'acao', 'associacao', 'aumento')
-        }),
-        ('Pagamento TAC', {
-            'fields': ('status_pagamento', 'data_pagamento')
-        }),
-    )
     readonly_fields = ('data_presenca', 'data_pagamento')
 
     def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        return qs.select_related(
-            'agendamento__cliente_agendamento', 
-            'cliente_agendamento', 
+        return super().get_queryset(request).select_related(
+            'agendamento__cliente_agendamento',
+            'cliente_agendamento',
             'loja_comp',
             'vendedor'
         )
@@ -207,7 +249,7 @@ class PresencaLojaAdmin(admin.ModelAdmin):
     def get_cliente_info(self, obj):
         if obj.agendamento and obj.agendamento.cliente_agendamento:
             return obj.agendamento.cliente_agendamento
-        elif obj.cliente_agendamento:
+        if obj.cliente_agendamento:
             return obj.cliente_agendamento
         return '-'
 

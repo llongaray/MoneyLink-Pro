@@ -13,6 +13,7 @@ $(document).ready(function() {
     const $filtroApelido = $('#filtro_apelido');
     const $filtroNome = $('#filtro_nome');
     const $filtroFuncao = $('#filtro_funcao');
+    const $filtroSetor = $('#filtro_setor');
     const $filtroStatus = $('#filtro_status');
     const $btnFiltrar = $('#btn-filtrar');
     const $tabelaResultadosBody = $('#tabelaResultadosBody');
@@ -108,26 +109,53 @@ $(document).ready(function() {
     }
 
     // Função genérica para popular um select
-    function popularSelect($select, data, valueField, textField, defaultOptionText, selectedValue = null) {
-        $select.empty().append(`<option value="">${defaultOptionText}</option>`);
-        let hasOptions = false;
-        // Converte selectedValue para string para comparação consistente, se não for nulo
-        const selectedValueStr = selectedValue !== null ? String(selectedValue) : null;
+    function popularSelect($select, data, selectedValue = null) {
+        if (!$select || !($select instanceof jQuery)) {
+            console.error('Seletor inválido fornecido para popularSelect:', $select);
+            return;
+        }
 
-        data.forEach(item => {
-            const value = item[valueField];
-            // Obtém o texto. Se textField for uma função, chama-a.
-            const text = typeof textField === 'function' ? textField(item) : item[textField];
-            const $option = $('<option></option>').val(value).text(text);
+        const selectId = $select.attr('id');
+        console.log(`📝 Popularizando select: ${selectId}`);
+        console.log('Dados recebidos:', data);
+        console.log('Valor selecionado:', selectedValue);
 
-            // Compara os valores como strings (ou ambos null)
-            if (selectedValueStr !== null && String(value) === selectedValueStr) {
-                $option.prop('selected', true);
+        $select.empty();
+        
+        // Adiciona a opção padrão
+        $select.append(new Option('--- Selecione ---', ''));
+        
+        // Verifica se data é um array ou um objeto com choices
+        const items = Array.isArray(data) ? data : (data.choices || []);
+        
+        if (items && items.length > 0) {
+            items.forEach(item => {
+                // Garante que temos os campos necessários
+                const value = item.value || item.id;
+                // Usa nome_com_hierarquia se disponível, senão usa nome ou text
+                let text = item.nome_com_hierarquia || item.display || item.nome || item.text;
+                console.log(`Item sendo adicionado ao select ${selectId}:`, { value, text, item });
+                
+                if (value && text) {
+                    const option = new Option(text, value);
+                    $select.append(option);
+                } else {
+                    console.warn(`Item inválido encontrado no select ${selectId}:`, item);
+                }
+            });
+            
+            // Se houver um valor selecionado, tenta selecioná-lo
+            if (selectedValue) {
+                console.log(`Tentando selecionar valor ${selectedValue} no select ${selectId}`);
+                $select.val(selectedValue);
+                // Verifica se o valor foi realmente selecionado
+                if ($select.val() !== selectedValue) {
+                    console.warn(`Valor ${selectedValue} não encontrado nas opções do select ${selectId}`);
+                }
             }
-            $select.append($option);
-            hasOptions = true;
-        });
-        $select.prop('disabled', !hasOptions);
+        } else {
+            console.warn(`Nenhum item encontrado para popular o select ${selectId}`);
+        }
     }
 
     // Formato de tamanho de arquivo legível
@@ -216,17 +244,17 @@ $(document).ready(function() {
     // --- Funções de Carregamento e Filtragem ---
 
     function carregarDadosIniciais() {
-        console.log("Carregando dados iniciais...");
-        $tabelaResultadosBody.html('<tr><td colspan="6" class="text-center"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Carregando dados...</td></tr>');
+        console.log("🚀 Carregando dados iniciais...");
+        $tabelaResultadosBody.html('<tr><td colspan="7" class="text-center"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Carregando dados...</td></tr>');
 
         Promise.all([
             $.getJSON(apiUrlGeral),
             $.getJSON(apiUrlFuncionarios),
-            $.getJSON(apiUrlGetComissao) // Adiciona a chamada para buscar regras de comissão
+            $.getJSON(apiUrlGetComissao)
         ]).then(([dataGeral, dataFuncionarios, dataComissao]) => {
-            console.log("Dados gerais carregados:", dataGeral);
-            console.log("Funcionários carregados:", dataFuncionarios);
-            console.log("Regras de comissão carregadas:", dataComissao);
+            console.log("✅ Dados gerais carregados:", dataGeral);
+            console.log("✅ Funcionários carregados:", dataFuncionarios);
+            console.log("✅ Regras de comissão carregadas:", dataComissao);
 
             // Armazena dados gerais em cache
             todosEmpresas = dataGeral.empresas || [];
@@ -236,60 +264,109 @@ $(document).ready(function() {
             todosCargos = dataGeral.cargos || [];
             todosHorarios = dataGeral.horarios || [];
             todasEquipes = dataGeral.equipes || [];
-            todasRegrasComissao = dataComissao.regras_comissionamento || []; // Armazena regras no cache
+            todasRegrasComissao = dataComissao.regras_comissionamento || [];
+
+            // Popula os selects de filtro
+            console.log("📝 Populando selects de filtro...");
+            popularSelect($('#filtro_empresa'), todosEmpresas, 'id', 'nome', 'Todas as Empresas', false);
+            popularSelect($('#filtro_departamento'), todosDepartamentos, 'id', 'nome', 'Todos os Departamentos', false);
+            popularSelect($('#filtro_setor'), todosSetores, 'id', 'nome', 'Todos os Setores', false);
+            popularSelect($('#filtro_funcao'), todosCargos, 'id', 'nome_com_hierarquia', 'Todas as Funções', false);
 
             // Armazena funcionários em cache
-            todosFuncionarios = dataFuncionarios || [];
+            todosFuncionarios = dataFuncionarios;
 
-            // Popula selects estáticos no formulário de edição (exceto comissão)
-            popularSelect($editEmpresaSelect, todosEmpresas, 'id', 'nome', '--- Selecione ---');
-            popularSelect($editHorarioSelect, todosHorarios, 'id', 'display_text', '--- Selecione ---');
-            popularSelect($editEquipeSelect, todasEquipes, 'id', 'nome', '--- Nenhuma ---');
+            // Atualiza a tabela com todos os funcionários
+            console.log("📊 Atualizando tabela com todos os funcionários...");
+            popularTabelaResultados(todosFuncionarios);
 
-            // Popula o select de filtro de Cargo (Função no HTML)
-            popularSelect($filtroFuncao, todosCargos, 'id', 'nome_com_hierarquia', 'Todas');
+            // Mostra o card de resultados
+            $cardResultados.slideDown(400);
 
-            // Popula a tabela inicial (sem filtros)
-            filtrarEAtualizarTabela();
-
-            $cardResultados.show();
-
+            console.log("✅ Carregamento inicial concluído!");
         }).catch(error => {
-            console.error("Erro ao carregar dados iniciais:", error);
-            showMessage('error', 'Erro ao carregar dados necessários. Tente recarregar a página.');
-            $tabelaResultadosBody.html('<tr><td colspan="6" class="text-center text-danger">Falha ao carregar dados.</td></tr>');
+            console.error("❌ Erro ao carregar dados iniciais:", error);
+            showMessage('danger', 'Erro ao carregar dados iniciais: ' + error);
         });
     }
 
     function filtrarEAtualizarTabela() {
-        const filtroApelidoVal = $filtroApelido.val().trim().toLowerCase();
-        const filtroNomeVal = $filtroNome.val().trim().toLowerCase();
-        const filtroCargoId = $filtroFuncao.val();
-        const filtroStatusVal = $filtroStatus.val();
+        console.log("🚀 Iniciando filtragem em tempo real...");
+        
+        const filtros = {
+            apelido: $filtroApelido.val().toLowerCase(),
+            nome: $filtroNome.val().toLowerCase(),
+            empresa: $('#filtro_empresa').val(),
+            departamento: $('#filtro_departamento').val(),
+            setor: $('#filtro_setor').val(),
+            funcao: $('#filtro_funcao').val(),
+            status: $('#filtro_status').val()
+        };
+        
+        console.log("📋 Filtros aplicados:", filtros);
 
-        const funcionariosFiltrados = todosFuncionarios.filter(f => {
-            const apelidoMatch = !filtroApelidoVal || (f.apelido && f.apelido.toLowerCase().includes(filtroApelidoVal));
-            const nomeMatch = !filtroNomeVal || (f.nome_completo && f.nome_completo.toLowerCase().includes(filtroNomeVal));
-            const cargoMatch = !filtroCargoId || (f.cargo_id && f.cargo_id == filtroCargoId);
-            const statusMatch = !filtroStatusVal || (filtroStatusVal === '1' && f.status) || (filtroStatusVal === '0' && !f.status);
-
-            return apelidoMatch && nomeMatch && cargoMatch && statusMatch;
+        // Filtra os funcionários usando os dados em cache
+        let funcionariosFiltrados = todosFuncionarios.filter(f => {
+            // Filtro por apelido
+            if (filtros.apelido && (!f.apelido || !f.apelido.toLowerCase().includes(filtros.apelido))) {
+                return false;
+            }
+            
+            // Filtro por nome
+            if (filtros.nome && (!f.nome_completo || !f.nome_completo.toLowerCase().includes(filtros.nome))) {
+                return false;
+            }
+            
+            // Filtro por empresa
+            if (filtros.empresa && f.empresa_id != filtros.empresa) {
+                return false;
+            }
+            
+            // Filtro por departamento
+            if (filtros.departamento && f.departamento_id != filtros.departamento) {
+                return false;
+            }
+            
+            // Filtro por setor
+            if (filtros.setor && f.setor_id != filtros.setor) {
+                return false;
+            }
+            
+            // Filtro por função
+            if (filtros.funcao && f.cargo_id != filtros.funcao) {
+                return false;
+            }
+            
+            // Filtro por status
+            if (filtros.status !== '' && f.status != (filtros.status === 'true')) {
+                return false;
+            }
+            
+            return true;
         });
-
+        
+        console.log("📊 Funcionários após filtragem:", funcionariosFiltrados);
+        
+        // Atualiza a tabela com os resultados filtrados
         popularTabelaResultados(funcionariosFiltrados);
+        
+        // Mostra o card de resultados
+        $cardResultados.slideDown(400);
     }
 
     function popularTabelaResultados(funcionarios) {
+        console.log("📝 Populando tabela de resultados...");
         $tabelaResultadosBody.empty(); // Limpa a tabela
 
         if (funcionarios.length === 0) {
-            $tabelaResultadosBody.html('<tr><td colspan="6" class="text-center text-muted">Nenhum funcionário encontrado com os filtros aplicados.</td></tr>');
+            $tabelaResultadosBody.html('<tr><td colspan="7" class="text-center text-muted">Nenhum funcionário encontrado com os filtros aplicados.</td></tr>');
             return;
         }
 
         const csrfToken = getCsrfToken(); // Obter o token CSRF uma vez para reutilizar
 
         funcionarios.forEach(f => {
+            console.log("📋 Processando funcionário:", f);
             const statusBadge = f.status ? '<span class="badge bg-success">Ativo</span>' : '<span class="badge bg-danger">Inativo</span>';
             const row = `
                 <tr>
@@ -297,6 +374,7 @@ $(document).ready(function() {
                     <td>${f.nome_completo}</td>
                     <td>${f.cpf || '-'}</td>
                     <td>${f.cargo_nome || '-'} (${f.departamento_nome || '-'})</td>
+                    <td>${f.setor_nome || '-'}</td>
                     <td>${statusBadge}</td>
                     <td>
                         <button class="btn btn-sm btn-info btn-editar" data-id="${f.id}" title="Editar">
@@ -307,6 +385,8 @@ $(document).ready(function() {
             `;
             $tabelaResultadosBody.append(row);
         });
+        
+        console.log("✅ Tabela populada com sucesso!");
     }
 
     // --- Funções de Edição ---
@@ -314,258 +394,468 @@ $(document).ready(function() {
     function handleEditarClick(funcionarioId) {
         console.log(`Editando funcionário ID: ${funcionarioId}`);
         showMessage('info', 'Carregando dados do funcionário...'); // Feedback visual
-        $cardEdicao.hide(); // Esconde enquanto carrega
+        
+        // Esconde a tabela de resultados e mostra o card de edição
+        $('#card-resultados').hide();
+        $('#card-edicao').show();
 
         $.getJSON(`${apiUrlGetFuncionario}${funcionarioId}/`)
             .done(function(data) {
                 console.log("Dados do funcionário recebidos:", data);
                 popularFormEdicao(data);
                 $messageContainer.empty(); // Limpa msg de carregamento
-                $('html, body').animate({ // Rola a página até o card de edição
-                    scrollTop: $cardEdicao.offset().top - 20 // -20 para um pequeno espaço acima
+                
+                // Rola a página até o card de edição
+                $('html, body').animate({
+                    scrollTop: $('#card-edicao').offset().top - 20
                 }, 500);
             })
             .fail(function(jqXHR, textStatus, errorThrown) {
                 console.error("Erro ao buscar dados do funcionário:", textStatus, errorThrown, jqXHR.responseText);
                 showMessage('error', `Erro ao buscar dados do funcionário: ${jqXHR.responseJSON?.error || errorThrown}`);
+                // Em caso de erro, volta a mostrar a tabela
+                $('#card-edicao').hide();
+                $('#card-resultados').show();
             });
     }
 
-    function popularFormEdicao(data) {
-        $formEdicao[0].reset(); // Limpa o form antes de popular
-        $formEdicao.find('.is-invalid').removeClass('is-invalid'); // Limpa validação anterior
-        $formEdicao.find('.is-valid').removeClass('is-valid');
+    function popularFormEdicao(funcionario) {
+        console.log('📋 Populando formulário com dados:', funcionario);
 
-        // Popula campos simples
-        $('#edit_funcionario_id').val(data.id);
-        $nomeFuncionarioEdicao.text(data.nome_completo || data.apelido || 'ID: ' + data.id);
-        $('#edit_apelido').val(data.apelido);
-        $('#edit_nome_completo').val(data.nome_completo);
-        $('#edit_cpf').val(data.cpf);
-        $('#edit_data_nascimento').val(data.data_nascimento); // Formato YYYY-MM-DD
-        $('#edit_genero').val(data.genero);
-        $('#edit_estado_civil').val(data.estado_civil);
-        $('#edit_cep').val(data.cep);
-        $('#edit_endereco').val(data.endereco);
-        $('#edit_bairro').val(data.bairro);
-        $('#edit_cidade').val(data.cidade);
-        $('#edit_estado').val(data.estado);
-        $('#edit_celular1').val(data.celular1);
-        $('#edit_celular2').val(data.celular2);
-        $('#edit_matricula').val(data.matricula);
-        $('#edit_pis').val(data.pis);
-        $('#edit_data_admissao').val(data.data_admissao); // Formato YYYY-MM-DD
-        $('#edit_data_demissao').val(data.data_demissao); // Formato YYYY-MM-DD
-        $('#edit_nome_mae').val(data.nome_mae);
-        $('#edit_nome_pai').val(data.nome_pai);
-        $('#edit_nacionalidade').val(data.nacionalidade);
-        $('#edit_naturalidade').val(data.naturalidade);
-        $('#edit_status').prop('checked', data.status);
+        // ID e dados básicos
+        $('#edit_funcionario_id').val(funcionario.id || '');
+        $('#edit_apelido').val(funcionario.apelido || '');
+        $('#edit_nome_completo').val(funcionario.nome_completo || '');
+        $('#edit_cpf').val(funcionario.cpf || '');
+        $('#edit_matricula').val(funcionario.matricula || '');
+        $('#edit_pis').val(funcionario.pis || '');
+        
+        // Dados pessoais
+        $('#edit_data_nascimento').val(funcionario.data_nascimento || '');
+        $('#edit_genero').val(funcionario.genero || '');
+        $('#edit_estado_civil').val(funcionario.estado_civil || '');
+        $('#edit_nome_mae').val(funcionario.nome_mae || '');
+        $('#edit_nome_pai').val(funcionario.nome_pai || '');
+        $('#edit_nacionalidade').val(funcionario.nacionalidade || '');
+        $('#edit_naturalidade').val(funcionario.naturalidade || '');
+        
+        // Contato
+        $('#edit_celular1').val(funcionario.celular1 || '');
+        $('#edit_celular2').val(funcionario.celular2 || '');
+        
+        // Endereço
+        $('#edit_cep').val(funcionario.cep || '');
+        $('#edit_endereco').val(funcionario.endereco || '');
+        $('#edit_bairro').val(funcionario.bairro || '');
+        $('#edit_cidade').val(funcionario.cidade || '');
+        $('#edit_estado').val(funcionario.estado || '');
 
-        // Popula selects estáticos
-        $editHorarioSelect.val(data.horario_id || '');
-        $editEquipeSelect.val(data.equipe_id || '');
-
-        // Popula e marca os checkboxes de regras de comissionamento
-        popularCheckboxes($editRegrasComissionamentoContainer, todasRegrasComissao, 'comissionamento_ids[]', 'id', 'titulo', data.regras_comissionamento_ids || []);
-
-        // Popula a foto
-        $editFotoInput.val(''); // Limpa seleção de arquivo anterior
-        if (data.foto_url) {
-            $fotoAtualPreview.attr('src', data.foto_url);
-            $fotoAtualNome.text(data.foto_nome || 'Arquivo existente');
+        // Foto
+        if (funcionario.foto_url) {
+            $('#foto-atual-preview').attr('src', funcionario.foto_url).show();
         } else {
-            $fotoAtualPreview.attr('src', placeholderImg);
-            $fotoAtualNome.text('Nenhuma foto cadastrada');
+            $('#foto-atual-preview').hide();
         }
 
-        // 1. Define valor da Empresa
-        $editEmpresaSelect.val(data.empresa_id || '');
+        // Primeiro popula o select de empresa
+        console.log('🏢 Populando empresa:', funcionario.empresa_id);
+        popularSelect($('#edit_empresa'), todosEmpresas, funcionario.empresa_id);
 
-        // 2. Trigger para carregar dependentes da Empresa
-        $editEmpresaSelect.trigger('editFormEmpresaChange');
+        // Aguarda o carregamento da empresa para continuar
+        setTimeout(function() {
+            // Popula departamentos e cargos
+            console.log('⏳ Carregando departamentos e cargos...');
+            popularEditDepartamentosCargos(
+                funcionario.empresa_id,
+                funcionario.departamento_id,
+                funcionario.cargo_id
+            );
 
-        // 3. Espera e define valores dos dependentes
-        setTimeout(() => {
-            $editLojaSelect.val(data.loja_id || '');
-            $editDepartamentoSelect.val(data.departamento_id || '');
-            $editCargoSelect.val(data.cargo_id || '');
+            // Popula horário e equipe
+            console.log('⏰ Selecionando horário:', funcionario.horario_id);
+            $('#edit_horario').val(funcionario.horario_id || '');
+            console.log('👥 Selecionando equipe:', funcionario.equipe_id);
+            $('#edit_equipe').val(funcionario.equipe_id || '');
 
-            if ($editDepartamentoSelect.val()) {
-                $editDepartamentoSelect.trigger('editFormDepartamentoChange');
-                setTimeout(() => {
-                    $editSetorSelect.val(data.setor_id || '');
-                    $cardEdicao.slideDown();
-                }, 100);
-            } else {
-                 $cardEdicao.slideDown();
-            }
-        }, 250);
+            // Aguarda o carregamento dos departamentos para carregar setores
+            setTimeout(function() {
+                console.log('🏢 Carregando setores para departamento:', funcionario.departamento_id);
+                popularEditSetores(funcionario.departamento_id, funcionario.setor_id);
+            }, 300);
+        }, 300);
 
-        // Carrega arquivos do funcionário
-        if (data.arquivos && Array.isArray(data.arquivos)) {
-            carregarArquivosExistentes(data.arquivos);
+        // Lojas (checkboxes)
+        console.log('🏪 Carregando lojas...');
+        const lojasIds = (funcionario.lojas || []).map(l => l.id);
+        popularEditLojas(funcionario.empresa_id, lojasIds);
+
+        // Regras de comissionamento
+        console.log('💰 Carregando regras de comissionamento...');
+        const regrasIds = (funcionario.regras_comissionamento || []).map(r => r.id);
+        popularCheckboxes(
+            $('#edit_regras_comissionamento_container'),
+            todasRegrasComissao,
+            'regras_comissionamento',
+            'id',
+            'titulo',
+            regrasIds
+        );
+
+        // Datas
+        $('#edit_data_admissao').val(funcionario.data_admissao || '');
+        $('#edit_data_demissao').val(funcionario.data_demissao || '');
+
+        // Atualiza o nome no cabeçalho
+        $('#nome-funcionario-edicao').text(funcionario.nome_completo || 'Funcionário');
+
+        // Status (checkbox)
+        $('#edit_status').prop('checked', !!funcionario.status);
+
+        // Carrega arquivos existentes
+        if (funcionario.arquivos) {
+            carregarArquivosExistentes(funcionario.arquivos);
         } else {
             carregarArquivosExistentes([]);
         }
 
-        // Limpa novos arquivos
-        $containerNovosArquivos.empty();
-        arquivosParaEnviar = [];
-    }
+        // Exibe o formulário
+        $('#form-edicao').show();
+        $('#card-edicao').show();
+        $('#card-resultados').hide();
 
-    // Popula Lojas no form de edição
-    function popularEditLojas(empresaId, selectedLojaId = null) {
-        resetSelect($editLojaSelect, '--- Carregando Lojas ---', false);
-        if (!empresaId) {
-            resetSelect($editLojaSelect, '--- Selecione a Empresa Primeiro ---', true);
-            return;
-        }
-        const lojasFiltradas = todasLojas.filter(l => l.empresa_id == empresaId);
-        popularSelect($editLojaSelect, lojasFiltradas, 'id', 'nome', '--- Selecione a Loja (Opcional) ---', selectedLojaId);
+        // Log de verificação
+        console.log('✅ Formulário populado com sucesso');
+        console.log('📝 Campos preenchidos:', {
+            id: $('#edit_funcionario_id').val(),
+            apelido: $('#edit_apelido').val(),
+            nome_completo: $('#edit_nome_completo').val(),
+            cpf: $('#edit_cpf').val(),
+            matricula: $('#edit_matricula').val(),
+            pis: $('#edit_pis').val(),
+            data_nascimento: $('#edit_data_nascimento').val(),
+            genero: $('#edit_genero').val(),
+            estado_civil: $('#edit_estado_civil').val(),
+            nome_mae: $('#edit_nome_mae').val(),
+            nome_pai: $('#edit_nome_pai').val(),
+            nacionalidade: $('#edit_nacionalidade').val(),
+            naturalidade: $('#edit_naturalidade').val(),
+            celular1: $('#edit_celular1').val(),
+            celular2: $('#edit_celular2').val(),
+            cep: $('#edit_cep').val(),
+            endereco: $('#edit_endereco').val(),
+            bairro: $('#edit_bairro').val(),
+            cidade: $('#edit_cidade').val(),
+            estado: $('#edit_estado').val(),
+            empresa: $('#edit_empresa').val(),
+            departamento: $('#edit_departamento').val(),
+            setor: $('#edit_setor').val(),
+            cargo: $('#edit_cargo').val(),
+            horario: $('#edit_horario').val(),
+            equipe: $('#edit_equipe').val(),
+            data_admissao: $('#edit_data_admissao').val(),
+            data_demissao: $('#edit_data_demissao').val(),
+            status: $('#edit_status').prop('checked')
+        });
     }
 
     // Popula Departamentos e Cargos no form de edição
     function popularEditDepartamentosCargos(empresaId, selectedDepartamentoId = null, selectedCargoId = null) {
+        console.log('🏢 Popularizando departamentos e cargos para empresa:', empresaId);
+        console.log('📋 Departamento selecionado:', selectedDepartamentoId);
+        console.log('👔 Cargo selecionado:', selectedCargoId);
+        
         resetSelect($editDepartamentoSelect, '--- Carregando Departamentos ---', false);
         resetSelect($editCargoSelect, '--- Carregando Cargos ---', false);
         resetSelect($editSetorSelect, '--- Selecione o Departamento ---', true);
 
         if (!empresaId) {
+            console.warn('⚠️ Nenhuma empresa selecionada');
             resetSelect($editDepartamentoSelect, '--- Selecione a Empresa ---', true);
             resetSelect($editCargoSelect, '--- Selecione a Empresa ---', true);
             return;
         }
 
+        // Filtra departamentos da empresa
         const deptsFiltrados = todosDepartamentos.filter(d => d.empresa_id == empresaId);
-        popularSelect($editDepartamentoSelect, deptsFiltrados, 'id', 'nome', '--- Selecione o Departamento ---', selectedDepartamentoId);
+        console.log('📋 Departamentos filtrados:', deptsFiltrados);
+        
+        if (deptsFiltrados.length === 0) {
+            console.warn('⚠️ Nenhum departamento encontrado para a empresa:', empresaId);
+            resetSelect($editDepartamentoSelect, '--- Nenhum Departamento Encontrado ---', true);
+        } else {
+            popularSelect($editDepartamentoSelect, deptsFiltrados, selectedDepartamentoId);
+        }
 
+        // Filtra cargos da empresa
         const cargosFiltrados = todosCargos.filter(c => c.empresa_id == empresaId);
-        popularSelect($editCargoSelect, cargosFiltrados, 'id', 'nome_com_hierarquia', '--- Selecione o Cargo ---', selectedCargoId);
+        console.log('👔 Cargos filtrados:', cargosFiltrados);
+        
+        if (cargosFiltrados.length === 0) {
+            console.warn('⚠️ Nenhum cargo encontrado para a empresa:', empresaId);
+            resetSelect($editCargoSelect, '--- Nenhum Cargo Encontrado ---', true);
+        } else {
+            popularSelect($editCargoSelect, cargosFiltrados, selectedCargoId);
+        }
 
         // Se um departamento foi pré-selecionado, dispara o change dele também para carregar setores
-         // O setor será pré-selecionado pelo trigger que é disparado em popularFormEdicao
-         if (selectedDepartamentoId) {
-             setTimeout(() => {
-                 $editDepartamentoSelect.trigger('editFormDepartamentoChange');
-             }, 50); // Delay menor, pois depende apenas do cache
-         }
+        if (selectedDepartamentoId) {
+            setTimeout(() => {
+                console.log('🔄 Disparando change do departamento para carregar setores');
+                $editDepartamentoSelect.trigger('editFormDepartamentoChange');
+            }, 50);
+        }
+
+        // Log de verificação
+        console.log('✅ Departamentos e cargos populados:', {
+            departamento_selecionado: $editDepartamentoSelect.val(),
+            cargo_selecionado: $editCargoSelect.val(),
+            departamentos_disponiveis: deptsFiltrados.length,
+            cargos_disponiveis: cargosFiltrados.length
+        });
     }
 
     // Popula Setores no form de edição
     function popularEditSetores(departamentoId, selectedSetorId = null) {
+        console.log('🏢 Popularizando setores para departamento:', departamentoId);
+        console.log('📋 Setor selecionado:', selectedSetorId);
+        
         resetSelect($editSetorSelect, '--- Carregando Setores ---', false);
+
         if (!departamentoId) {
+            console.warn('⚠️ Nenhum departamento selecionado');
             resetSelect($editSetorSelect, '--- Selecione o Departamento ---', true);
             return;
         }
+
+        // Filtra setores do departamento
         const setoresFiltrados = todosSetores.filter(s => s.departamento_id == departamentoId);
-        popularSelect($editSetorSelect, setoresFiltrados, 'id', 'nome', '--- Selecione o Setor ---', selectedSetorId);
+        console.log('📋 Setores filtrados:', setoresFiltrados);
+        
+        if (setoresFiltrados.length === 0) {
+            console.warn('⚠️ Nenhum setor encontrado para o departamento:', departamentoId);
+            resetSelect($editSetorSelect, '--- Nenhum Setor Encontrado ---', true);
+        } else {
+            popularSelect($editSetorSelect, setoresFiltrados, selectedSetorId);
+        }
+
+        // Log de verificação
+        console.log('✅ Setores populados:', {
+            setor_selecionado: $editSetorSelect.val(),
+            setores_disponiveis: setoresFiltrados.length
+        });
     }
 
-    // Submete o formulário de edição
-    function submeterFormEdicao(event) {
-        event.preventDefault();
-        const $submitButton = $formEdicao.find('button[type="submit"]');
-        const submitButtonText = $submitButton.html();
+    // Popula Lojas no form de edição
+    function popularEditLojas(empresaId, selectedLojasIds = []) {
+        console.log('🏪 Popularizando lojas para empresa:', empresaId);
+        console.log('📋 Lojas selecionadas:', selectedLojasIds);
+        
+        const $container = $('#edit_lojas_container');
+        $container.empty();
 
-        // Validação HTML5 básica
-        if (!$formEdicao[0].checkValidity()) {
-            $formEdicao[0].reportValidity();
+        if (!empresaId) {
+            console.warn('⚠️ Nenhuma empresa selecionada');
+            $container.html('<div class="alert alert-warning">Selecione uma empresa primeiro</div>');
             return;
         }
 
-        // Criar FormData com o formulário completo
-        const formData = new FormData($formEdicao[0]);
-
-        // Limpa quaisquer valores antigos de comissionamento do FormData
-        formData.delete('comissionamento_ids[]');
-
-        // Adiciona os IDs dos checkboxes de comissionamento marcados
-        $editRegrasComissionamentoContainer.find('input[type="checkbox"]:checked').each(function() {
-            formData.append('comissionamento_ids[]', $(this).val());
-        });
-
-        // Se o input de file estiver vazio, remove a chave 'foto' para não sobrescrever com vazio
-        if ($editFotoInput[0].files.length === 0) {
-            formData.delete('foto');
+        // Filtra lojas da empresa
+        const lojasFiltradas = todasLojas.filter(l => l.empresa_id == empresaId);
+        console.log('📋 Lojas filtradas:', lojasFiltradas);
+        
+        if (lojasFiltradas.length === 0) {
+            console.warn('⚠️ Nenhuma loja encontrada para a empresa:', empresaId);
+            $container.html('<div class="alert alert-warning">Nenhuma loja encontrada para esta empresa</div>');
+            return;
         }
 
-        // Validação dos campos de arquivo
-        let camposDeArquivoValidos = true;
-        $containerNovosArquivos.find('.arquivo-form').each(function(index) {
-            const $form = $(this);
-            const temTitulo = $form.find('.input-arquivo-titulo').val().trim() !== '';
-            const temArquivo = $form.find('.input-arquivo-file')[0].files.length > 0;
-            if ((temTitulo && !temArquivo) || (!temTitulo && temArquivo)) {
-                camposDeArquivoValidos = false;
-                if (!temTitulo) $form.find('.input-arquivo-titulo').addClass('is-invalid');
-                if (!temArquivo) $form.find('.input-arquivo-file').addClass('is-invalid');
+        // Cria os checkboxes
+        lojasFiltradas.forEach(loja => {
+            const $div = $('<div class="form-check">');
+            const $input = $('<input>', {
+                type: 'checkbox',
+                class: 'form-check-input loja-checkbox',
+                id: `edit_loja_${loja.id}`,
+                name: 'edit_lojas',
+                value: loja.id,
+                checked: selectedLojasIds.includes(loja.id)
+            });
+            const $label = $('<label>', {
+                class: 'form-check-label',
+                for: `edit_loja_${loja.id}`,
+                text: loja.nome
+            });
+            
+            $div.append($input, $label);
+            $container.append($div);
+        });
+
+        // Log de verificação
+        console.log('✅ Lojas populadas:', {
+            lojas_selecionadas: selectedLojasIds,
+            lojas_disponiveis: lojasFiltradas.length,
+            checkboxes_criados: $container.find('.loja-checkbox').length
+        });
+    }
+
+    // Função para enviar o formulário de edição
+    function enviarFormularioEdicao() {
+        console.log('[EDITFUNC] Iniciando envio do formulário de edição');
+        const formData = new FormData();
+        
+        // Adiciona o ID do funcionário primeiro
+        const funcionarioId = $('#edit_funcionario_id').val();
+        if (!funcionarioId) {
+            console.error('[EDITFUNC] Erro: ID do funcionário não encontrado');
+            showMessage('error', 'Erro: ID do funcionário não encontrado.');
+            return;
+        }
+        formData.append('funcionario_id', funcionarioId);
+        console.log('[EDITFUNC] ID do funcionário adicionado:', funcionarioId);
+        
+        // Adiciona todos os campos do formulário
+        $('#form-edicao').serializeArray().forEach(item => {
+            formData.append(item.name, item.value);
+        });
+        console.log('[EDITFUNC] Campos do formulário adicionados');
+        
+        // Adiciona as lojas selecionadas
+        const lojasSelecionadas = [];
+        $('.loja-checkbox:checked').each(function() {
+            lojasSelecionadas.push($(this).val());
+        });
+        lojasSelecionadas.forEach(lojaId => {
+            formData.append('edit_lojas', lojaId);
+        });
+        console.log('[EDITFUNC] Lojas selecionadas:', lojasSelecionadas);
+        
+        // Adiciona a foto se houver
+        const fotoInput = $('#edit_foto')[0];
+        if (fotoInput && fotoInput.files.length > 0) {
+            formData.append('foto', fotoInput.files[0]);
+            console.log('[EDITFUNC] Nova foto adicionada');
+        }
+        
+        // Adiciona os arquivos
+        $('.arquivo-form').each(function(index) {
+            const titulo = $(this).find('.input-arquivo-titulo').val();
+            const descricao = $(this).find('.input-arquivo-descricao').val();
+            const arquivo = $(this).find('.input-arquivo-file')[0].files[0];
+            
+            if (titulo && arquivo) {
+                formData.append('arquivo_titulos[]', titulo);
+                formData.append('arquivo_descricoes[]', descricao || '');
+                formData.append('arquivo_files[]', arquivo);
+                console.log(`[EDITFUNC] Arquivo ${index} adicionado:`, titulo);
             }
         });
-        if (!camposDeArquivoValidos) {
-            showMessage('error', 'Preencha todos os campos obrigatórios dos arquivos ou remova os formulários incompletos.');
-            return;
-        }
 
-        console.log("Enviando dados de edição...");
-        for (let [key, value] of formData.entries()) {
-            console.log(`${key}: ${value}`);
-        }
+        // Adiciona o status manualmente (checkbox)
+        formData.append('status', $('#edit_status').is(':checked') ? 'on' : 'off');
 
-        $submitButton.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Salvando...');
+        // Log para debug
+        console.log('[EDITFUNC] Dados do funcionário preparados:', {
+            funcionario_id: funcionarioId,
+            lojas_selecionadas: lojasSelecionadas
+        });
 
+        // Envia o formulário
+        console.log('[EDITFUNC] Iniciando requisição AJAX');
         $.ajax({
-            url: apiUrlEditFuncionario,
+            url: '/rh/api/edit/funcionario/',
             type: 'POST',
             data: formData,
             processData: false,
             contentType: false,
             headers: {
-                'X-CSRFToken': getCsrfToken()
+                'X-CSRFToken': $('input[name="csrfmiddlewaretoken"]').val()
             },
             success: function(response) {
-                console.log("Edição bem-sucedida:", response);
-                showMessage('success', response.message || 'Funcionário atualizado com sucesso!');
-                $cardEdicao.slideUp();
-                carregarDadosIniciais();
+                console.log('[EDITFUNC] Funcionário atualizado com sucesso');
+                showMessage('success', 'Funcionário atualizado com sucesso!');
+                setTimeout(() => {
+                    console.log('[EDITFUNC] Recarregando página');
+                    location.reload();
+                }, 2000);
             },
-            error: function(jqXHR, textStatus, errorThrown) {
-                console.error("Erro ao editar funcionário:", textStatus, errorThrown, jqXHR.responseText);
-                let errorMessage = 'Erro ao salvar alterações.';
-                if (jqXHR.responseJSON && jqXHR.responseJSON.error) {
-                    errorMessage = jqXHR.responseJSON.error;
-                    if (jqXHR.responseJSON.details) {
-                         let details = Object.entries(jqXHR.responseJSON.details)
-                             .map(([field, errors]) => `<li>${field}: ${errors.join(', ')}</li>`)
-                             .join('');
-                         errorMessage += `<br><ul class="text-start small mt-2">${details}</ul>`;
-                    }
-                } else {
-                    errorMessage += ` (${errorThrown || textStatus})`;
-                }
-                showMessage('error', errorMessage);
-            },
-            complete: function() {
-                $submitButton.prop('disabled', false).html(submitButtonText);
+            error: function(xhr) {
+                console.error('[EDITFUNC] Erro ao atualizar funcionário:', xhr);
+                const error = xhr.responseJSON?.error || 'Erro ao atualizar funcionário';
+                showMessage('error', error);
             }
         });
     }
 
     function handleCancelarClick() {
-        $cardEdicao.slideUp();
+        console.log('[EDITFUNC] Cancelando edição');
+        $cardEdicao.slideUp(400, function() {
+            // Atualiza a tabela antes de mostrar
+            filtrarEAtualizarTabela();
+            // Mostra a tabela com animação
+            $cardResultados.slideDown(400);
+            // Rola a página até a tabela de resultados
+            $('html, body').animate({
+                scrollTop: $cardResultados.offset().top - 20
+            }, 500);
+        });
+    }
+
+    // Função para atualizar a tabela de resultados
+    function atualizarTabelaResultados() {
+        console.log('[EDITFUNC] Atualizando tabela de resultados');
+        filtrarEAtualizarTabela();
+        $cardResultados.show();
     }
 
     // --- Event Listeners ---
 
     // Filtragem em tempo real nos inputs de texto
-    $filtroApelido.on('keyup input', filtrarEAtualizarTabela);
-    $filtroNome.on('keyup input', filtrarEAtualizarTabela);
+    $filtroApelido.on('input', filtrarEAtualizarTabela);
+    $filtroNome.on('input', filtrarEAtualizarTabela);
 
-    // Filtragem ao mudar selects ou clicar no botão
-    $filtroFuncao.on('change', filtrarEAtualizarTabela);
-    $filtroStatus.on('change', filtrarEAtualizarTabela);
-    $btnFiltrar.on('click', filtrarEAtualizarTabela);
+    // Filtragem em tempo real nos selects
+    $('#filtro_empresa').on('change', function() {
+        const empresaId = $(this).val();
+        console.log("🏢 Empresa selecionada:", empresaId);
+        
+        // Filtra departamentos e setores pela empresa selecionada
+        const departamentosFiltrados = todosDepartamentos.filter(d => d.empresa_id == empresaId);
+        const setoresFiltrados = todosSetores.filter(s => s.empresa_id == empresaId);
+        
+        console.log("📋 Departamentos filtrados:", departamentosFiltrados);
+        console.log("📋 Setores filtrados:", setoresFiltrados);
+        
+        // Atualiza os selects
+        popularSelect($('#filtro_departamento'), departamentosFiltrados, 'id', 'nome', 'Todos os Departamentos', false);
+        popularSelect($('#filtro_setor'), setoresFiltrados, 'id', 'nome', 'Todos os Setores', false);
+        
+        // Reseta os selects dependentes
+        $('#filtro_funcao').val('');
+        
+        // Atualiza a tabela
+        filtrarEAtualizarTabela();
+    });
+
+    $('#filtro_departamento').on('change', function() {
+        const departamentoId = $(this).val();
+        console.log("🏢 Departamento selecionado:", departamentoId);
+        
+        // Filtra setores pelo departamento selecionado
+        const setoresFiltrados = todosSetores.filter(s => s.departamento_id == departamentoId);
+        
+        console.log("📋 Setores filtrados:", setoresFiltrados);
+        
+        // Atualiza o select de setores
+        popularSelect($('#filtro_setor'), setoresFiltrados, 'id', 'nome', 'Todos os Setores', false);
+        
+        // Atualiza a tabela
+        filtrarEAtualizarTabela();
+    });
+
+    // Filtragem em tempo real nos outros selects
+    $('#filtro_setor').on('change', filtrarEAtualizarTabela);
+    $('#filtro_funcao').on('change', filtrarEAtualizarTabela);
+    $('#filtro_status').on('change', filtrarEAtualizarTabela);
 
     // Prevenir submit do form de filtros (ele só atualiza a tabela via JS)
     $formFiltros.submit(function(e) { e.preventDefault(); });
@@ -593,7 +883,7 @@ $(document).ready(function() {
     });
 
     // Submissão do formulário de edição
-    $formEdicao.submit(submeterFormEdicao);
+    $formEdicao.submit(enviarFormularioEdicao);
 
     // Botão Cancelar Edição
     $btnCancelarEdicao.click(handleCancelarClick);
@@ -721,5 +1011,56 @@ $(document).ready(function() {
         
         // Dar foco ao campo de título do novo formulário
         $novoFormulario.find('.input-arquivo-titulo').focus();
+    }
+
+    // Função para carregar dados do funcionário
+    function carregarDadosFuncionario(funcionarioId) {
+        console.log('🔄 Carregando dados do funcionário:', funcionarioId);
+        
+        $.ajax({
+            url: `/rh/api/get/funcionario/${funcionarioId}/`,
+            method: 'GET',
+            success: function(response) {
+                console.log('✅ Dados recebidos da API:', response);
+                
+                // Verifica se todos os campos necessários estão presentes
+                const camposObrigatorios = [
+                    'id', 'nome_completo', 'apelido', 'cpf', 'matricula', 'pis',
+                    'data_nascimento', 'genero', 'estado_civil',
+                    'celular1', 'celular2',
+                    'cep', 'endereco', 'bairro', 'cidade', 'estado',
+                    'nome_mae', 'nome_pai', 'nacionalidade', 'naturalidade',
+                    'empresa_id', 'departamento_id', 'setor_id', 'cargo_id',
+                    'horario_id', 'equipe_id', 'status',
+                    'data_admissao', 'data_demissao'
+                ];
+                
+                const camposFaltantes = camposObrigatorios.filter(campo => !(campo in response));
+                if (camposFaltantes.length > 0) {
+                    console.warn('⚠️ Campos faltando na resposta:', camposFaltantes);
+                }
+                
+                // Popula o formulário com os dados
+                popularFormEdicao(response);
+                
+                // Exibe o modal de edição
+                $('#modalEditarFuncionario').modal('show');
+            },
+            error: function(xhr, status, error) {
+                console.error('❌ Erro ao carregar dados do funcionário:', {
+                    status: status,
+                    error: error,
+                    response: xhr.responseText
+                });
+                
+                // Exibe mensagem de erro para o usuário
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Erro ao carregar dados',
+                    text: 'Não foi possível carregar os dados do funcionário. Por favor, tente novamente.',
+                    confirmButtonText: 'OK'
+                });
+            }
+        });
     }
 });

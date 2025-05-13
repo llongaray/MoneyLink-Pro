@@ -443,12 +443,117 @@ def api_post_newacesse(request):
 @require_POST
 @csrf_exempt
 def api_post_registeracessosuser(request):
-    payload = json.loads(request.body)
-    user_id = payload.get('user_id')
-    acessos_ids = payload.get('acessos', [])
-    user = get_object_or_404(User, pk=user_id)
-    controle, created = ControleAcessos.objects.get_or_create(user=user)
-    controle.acessos.set(acessos_ids)
-    controle.status = True
-    controle.save()
-    return JsonResponse({'status': 'success', 'user_id': user.id})
+    try:
+        payload = json.loads(request.body)
+        user_id = payload.get('user_id')
+        acessos_ids = payload.get('acessos', [])
+        
+        # Validação básica
+        if not user_id or not acessos_ids:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'ID do usuário e lista de acessos são obrigatórios'
+            }, status=400)
+
+        # Busca o usuário
+        try:
+            user = User.objects.get(pk=user_id)
+        except User.DoesNotExist:
+            return JsonResponse({
+                'status': 'error',
+                'message': f'Usuário com ID {user_id} não encontrado'
+            }, status=404)
+
+        # Cria ou atualiza o controle de acesso
+        controle, created = ControleAcessos.objects.get_or_create(user=user)
+        controle.acessos.set(acessos_ids)
+        controle.status = True
+        controle.save()
+
+        return JsonResponse({
+            'status': 'success',
+            'user_id': user.id,
+            'message': 'Acessos registrados com sucesso'
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'JSON inválido no corpo da requisição'
+        }, status=400)
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Erro ao processar requisição: {str(e)}'
+        }, status=500)
+
+# 8. API: registra acessos para múltiplos usuários
+@require_POST
+@csrf_exempt
+def api_post_registeracessosusers(request):
+    try:
+        payload = json.loads(request.body)
+        user_ids = payload.get('user_ids', [])
+        acessos_ids = payload.get('acessos', [])
+        status = payload.get('status', True)
+
+        # Validação básica
+        if not user_ids or not acessos_ids:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Lista de usuários e lista de acessos são obrigatórios'
+            }, status=400)
+
+        # Busca todos os usuários de uma vez
+        users = User.objects.filter(id__in=user_ids)
+        if not users.exists():
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Nenhum usuário encontrado com os IDs fornecidos'
+            }, status=404)
+
+        # Lista para armazenar resultados
+        results = []
+        errors = []
+
+        # Processa cada usuário
+        for user in users:
+            try:
+                # Cria ou atualiza o controle de acesso
+                controle, created = ControleAcessos.objects.get_or_create(user=user)
+                controle.acessos.set(acessos_ids)
+                controle.status = status
+                controle.save()
+
+                results.append({
+                    'user_id': user.id,
+                    'status': 'success',
+                    'message': 'Acessos registrados com sucesso'
+                })
+            except Exception as e:
+                errors.append({
+                    'user_id': user.id,
+                    'status': 'error',
+                    'message': str(e)
+                })
+
+        # Retorna o resultado consolidado
+        return JsonResponse({
+            'status': 'success',
+            'total_processed': len(user_ids),
+            'successful': len(results),
+            'failed': len(errors),
+            'results': results,
+            'errors': errors
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'JSON inválido no corpo da requisição'
+        }, status=400)
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Erro ao processar requisição: {str(e)}'
+        }, status=500)

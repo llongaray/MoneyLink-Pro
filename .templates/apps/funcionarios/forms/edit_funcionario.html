@@ -12,7 +12,7 @@ Editar Funcionário<span class="produto-text"></span>
 
 {% block content %}
 <div class="container my-4">
-
+    {% csrf_token %}
   <!-- Card de Filtros -->
   <div class="card mb-4" id="card-filtros">
     <div class="card-header bg-primary text-white">
@@ -45,6 +45,14 @@ Editar Funcionário<span class="produto-text"></span>
             </select>
           </div>
           <div class="col-md-3">
+            <label for="filtro_setor" class="form-label">
+              <i class='bx bx-hive me-2'></i>Setor
+            </label>
+            <select id="filtro_setor" name="setor" class="form-control">
+              <option value="">Todos</option>
+            </select>
+          </div>
+          <div class="col-md-3">
             <label for="filtro_status" class="form-label">
               <i class='bx bx-check-circle me-2'></i>Status
             </label>
@@ -73,13 +81,14 @@ Editar Funcionário<span class="produto-text"></span>
               <th>Nome Completo</th>
               <th>CPF</th>
               <th>Cargo</th>
+              <th>Setor</th>
               <th>Status</th>
               <th>Ação</th>
             </tr>
           </thead>
           <tbody id="tabelaResultadosBody">
             <!-- Linhas serão adicionadas via JS -->
-             <tr><td colspan="6" class="text-center text-muted">Nenhum funcionário encontrado ou pesquisa não realizada.</td></tr>
+             <tr><td colspan="7" class="text-center text-muted">Nenhum funcionário encontrado ou pesquisa não realizada.</td></tr>
           </tbody>
         </table>
       </div>
@@ -87,7 +96,7 @@ Editar Funcionário<span class="produto-text"></span>
   </div>
 
   <!-- Card de Edição (inicialmente oculto) -->
-  <div class="card mb-4" id="card-edicao">
+  <div class="card mb-4" id="card-edicao" style="display: none;">
     <div class="card-header bg-info text-white">
       <i class='bx bx-edit me-2'></i> Editar Funcionário: <span id="nome-funcionario-edicao"></span>
     </div>
@@ -199,11 +208,12 @@ Editar Funcionário<span class="produto-text"></span>
                     <option value="">--- Selecione ---</option>
                 </select>
             </div>
-             <div class="mb-3">
-                <label for="edit_loja" class="form-label"><i class='bx bx-store me-2'></i>Loja</label>
-                <select id="edit_loja" name="loja" class="form-select">
-                    <option value="">--- Selecione a Empresa Primeiro ---</option>
-                </select>
+            <div class="mb-3">
+                <label class="form-label">Lojas *</label>
+                <div class="lojas-container" id="edit_lojas_container">
+                    <!-- Os checkboxes serão adicionados aqui via JavaScript -->
+                </div>
+                <div class="form-text">Selecione as lojas em que o funcionário atuará.</div>
             </div>
             <div class="mb-3">
                 <label for="edit_departamento" class="form-label"><i class='bx bx-buildings me-2'></i>Departamento *</label>
@@ -279,34 +289,13 @@ Editar Funcionário<span class="produto-text"></span>
                 <h6 class="header-arquivos-section"><i class='bx bx-upload me-2'></i>Adicionar Novos Arquivos:</h6>
                 
                 <div id="container-novos-arquivos">
-                  <!-- O primeiro formulário de arquivo já vem por padrão -->
-                  <div class="arquivo-form mb-3">
-                    <div class="row g-3">
-                      <div class="col-md-4">
-                        <label class="form-label">Título do Arquivo *</label>
-                        <input type="text" class="form-control input-arquivo-titulo" name="arquivo_titulos[]" placeholder="Título do arquivo (obrigatório)" required>
-                      </div>
-                      <div class="col-md-4">
-                        <label class="form-label">Descrição</label>
-                        <input type="text" class="form-control input-arquivo-descricao" name="arquivo_descricoes[]" placeholder="Descrição (opcional)">
-                      </div>
-                      <div class="col-md-4">
-                        <label class="form-label">Arquivo *</label>
-                        <div class="input-group">
-                          <input type="file" class="form-control input-arquivo-file" name="arquivo_files[]" required>
-                          <button type="button" class="btn btn-danger btn-remover-arquivo" disabled>
-                            <i class='bx bx-trash'></i>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <!-- Container vazio - formulários serão adicionados via JS -->
                 </div>
                 
                 <!-- Botão para adicionar mais arquivos -->
                 <div class="text-center mb-3">
                   <button type="button" id="btn-adicionar-mais-arquivos" class="btn btn-outline-primary">
-                    <i class='bx bx-plus-circle me-2'></i> Adicionar mais um arquivo
+                    <i class='bx bx-plus-circle me-2'></i> Adicionar arquivo
                   </button>
                 </div>
               </div>
@@ -331,6 +320,7 @@ Editar Funcionário<span class="produto-text"></span>
 
 {% block addjs_extra %}
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.mask/1.14.16/jquery.mask.min.js"></script>
 <script src="{% static 'js/apps/funcionarios/edit_funcionario.js' %}"></script>
 {% endblock %}

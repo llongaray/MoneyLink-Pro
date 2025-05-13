@@ -11,6 +11,7 @@ urlpatterns = [
     path('editar/', render_editfuncionario, name='render_editfuncionario'),
    
     path('api/get/infogeral/', api_get_infogeral, name='api_get_infogeral'),
+    path('api/get/infogeralemp/', api_get_infogeralemp, name='api_get_infogeralemp'),
     path('api/get/infofuncionarios/', api_get_infofuncionarios, name='api_get_infofuncionarios'),
     path('api/get/funcionario/<int:funcionario_id>/', api_get_funcionario, name='api_get_funcionario'),
     path('api/download/arquivo/<int:arquivo_id>/', download_arquivo_funcionario, name='api_download_arquivo'),
@@ -33,4 +34,14 @@ urlpatterns = [
     # Rotas para o Dashboard de Funcionários
     path('dashboard/', render_dashboard, name='render_dashboard'),
     path('api/get/dashboard/', api_get_dashboard, name='api_get_dashboard'),
+
+    # Rotas para Comunicados
+    path('comunicados/form/', render_formscomunicados, name='render_formscomunicados'),
+    path('comunicados/visualizar/', render_comunicados_visualizacao, name='render_comunicados_visualizacao'),
+    path('api/comunicados/add/', api_post_addcomunicados, name='api_post_addcomunicados'),
+    path('api/comunicados/list/', api_get_comunicados, name='api_get_comunicados'),
+    path('api/comunicados/<int:comunicado_id>/marcar-lido/', api_post_marcarcomolido_comunicado, name='api_post_marcarcomolido_comunicado'),
+    path('api/comunicados/download/<int:arquivo_id>/', download_arquivo_comunicado, name='api_download_arquivo_comunicado'),
+    path('api/get/destinatarios/', api_get_destinatarios, name='api_get_destinatarios'),
+    path('api/get/infosgerais/', api_get_infosgerais, name='api_get_infosgerais'),
 ]

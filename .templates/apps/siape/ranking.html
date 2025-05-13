@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="{% static 'ranking_data.css' %}">
 <link rel="stylesheet" href="{% static 'celebration.css' %}">
 <link rel="stylesheet" href="{% static 'darkmode.css' %}">
+<link rel="stylesheet" href="{% static 'css/campanhas.css' %}">
 <link href="https://fonts.googleapis.com/css2?family=Russo+One&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -64,6 +65,22 @@
     </div>
 </div>
 
+<!-- HTML aprimorado -->
+<div class="banner-container">
+    <div class="banner-slider" id="ranking-banner-wrapper">
+      <!-- botão de fechar -->
+      <button type="button" class="banner-close-btn" aria-label="Fechar">&times;</button>
+  
+      <div class="banner-track">
+        <!-- Imagem inicial estática, será substituída pelo JS -->
+        <img 
+          src="{% static 'img/inss_banner.jpg' %}" 
+          alt="Banner Ranking INSS" 
+          class="banner-item">
+      </div>
+    </div>
+  </div>
+  
 <section>
     <div class="container__ranking">
         <div class="container__top3 container">
@@ -156,4 +173,5 @@
 <script src="{% static 'conjunto/initialConfig.js' %}"></script> 
 <script src="{% static 'conjunto/ranking_data.js' %}"></script>
 <script src="{% static 'siape/ranking.js' %}"></script>
+<script src="{% static 'js/campanhas.js' %}"></script>
 {% endblock %}

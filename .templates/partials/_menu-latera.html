@@ -58,6 +58,16 @@
             </a>
           </li>
           {% endif %}
+
+          {% has_access user "SCT53" as can_adm_comunicados %}
+          {% if can_adm_comunicados %}
+          <li>
+            <a href="{% url 'administrativo:render_comunicados' %}">
+              <i class="bx bx-message-square-detail"></i>
+              <span class="menu-label">Comunicados</span>
+            </a>
+          </li>
+          {% endif %}
         </ul>
       </li>
       {% endif %}
@@ -109,6 +119,16 @@
             <a href="{% url 'funcionarios:render_administrativo' %}">
               <i class="bx bx-cog"></i>
               <span class="menu-label">Administrativo RH</span>
+            </a>
+          </li>
+          {% endif %}
+
+          {% has_access user "SCT54" as can_rh_comunicados %}
+          {% if can_rh_comunicados %}
+          <li>
+            <a href="{% url 'funcionarios:render_formscomunicados' %}">
+              <i class="bx bx-message-square-add"></i>
+              <span class="menu-label">ADD Comunicados</span>
             </a>
           </li>
           {% endif %}

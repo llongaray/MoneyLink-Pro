@@ -1,5 +1,7 @@
 from django.contrib import admin
 from .models import *
+import os
+from django.utils.safestring import mark_safe
 
 @admin.register(Empresa)
 class EmpresaAdmin(admin.ModelAdmin):
@@ -190,45 +192,49 @@ class RegraComissionamentoAdmin(admin.ModelAdmin):
 
 @admin.register(Funcionario)
 class FuncionarioAdmin(admin.ModelAdmin):
-    list_display = (
-        'get_display_name', 'cpf_formatado', 'matricula', 'empresa', 'loja', 'departamento', 'setor', 'cargo', 'status'
-    )
-    search_fields = (
-        'nome_completo', 'apelido', 'cpf', 'matricula', 'celular1', 'usuario__username',
-        'empresa__nome', 'loja__nome', 'departamento__nome', 'setor__nome', 'cargo__nome' # Adicionado busca por campos relacionados
-    )
-    list_filter = (
-        'status',
-        ('empresa', admin.RelatedOnlyFieldListFilter),
-        ('loja', admin.RelatedOnlyFieldListFilter),
-        ('departamento', admin.RelatedOnlyFieldListFilter),
-        ('setor', admin.RelatedOnlyFieldListFilter),
-        ('cargo', admin.RelatedOnlyFieldListFilter),
-        'genero', 'estado_civil'
-    )
-    list_editable = ('status',)
-    ordering = ('empresa__nome', 'nome_completo')
+    list_display = ('get_display_name', 'cpf_formatado', 'matricula', 'empresa', 'get_lojas', 'departamento', 'cargo', 'status')
+    list_filter = ('empresa', 'departamento', 'cargo', 'status', 'lojas')
+    search_fields = ('nome_completo', 'apelido', 'cpf', 'matricula', 'celular1', 'lojas__nome')
     list_per_page = 25
-    filter_horizontal = ('regras_comissionamento',)
+    autocomplete_fields = ['empresa', 'departamento', 'cargo', 'horario', 'equipe']
+    filter_horizontal = ['lojas', 'regras_comissionamento']
+    readonly_fields = ('get_foto_preview', 'data_admissao', 'data_demissao')
+
+    def get_lojas(self, obj):
+        return ", ".join([loja.nome for loja in obj.lojas.all()])
+    get_lojas.short_description = 'Lojas'
 
     fieldsets = (
-        (None, { # Campo sem título explícito para o vínculo principal
+        (None, {
             'fields': ('usuario',)
         }),
         ('Informações Pessoais', {
-            'fields': (('nome_completo', 'apelido'), ('foto', 'get_foto_preview'), ('cpf', 'data_nascimento'), ('genero', 'estado_civil'))
+            'fields': (
+                ('nome_completo', 'apelido'),
+                ('foto', 'get_foto_preview'),
+                ('cpf', 'data_nascimento'),
+                ('genero', 'estado_civil')
+            )
         }),
         ('Contato', {
-            'fields': (('celular1', 'celular2'), 'cep', 'endereco', ('bairro', 'cidade', 'estado'))
+            'fields': (
+                ('celular1', 'celular2'),
+                'cep',
+                'endereco',
+                ('bairro', 'cidade', 'estado')
+            )
         }),
         ('Filiação e Origem', {
-            'classes': ('collapse',), # Mantém colapsado por padrão
-            'fields': (('nome_mae', 'nome_pai'), ('nacionalidade', 'naturalidade'))
+            'classes': ('collapse',),
+            'fields': (
+                ('nome_mae', 'nome_pai'),
+                ('nacionalidade', 'naturalidade')
+            )
         }),
         ('Profissional', {
             'fields': (
                 ('matricula', 'pis'),
-                ('empresa', 'loja'),
+                ('empresa', 'lojas'),
                 ('departamento', 'setor'),
                 ('cargo', 'horario'),
                 'equipe',
@@ -236,39 +242,172 @@ class FuncionarioAdmin(admin.ModelAdmin):
             )
         }),
         ('Comissionamento', {
-             'classes': ('collapse',), # Pode começar colapsado se preferir
-             'fields': ('regras_comissionamento',)
+            'classes': ('collapse',),
+            'fields': ('regras_comissionamento',)
         })
     )
-    autocomplete_fields = ('usuario', 'empresa', 'loja', 'departamento', 'setor', 'cargo', 'horario', 'equipe')
-    readonly_fields = ('get_foto_preview',) # Adiciona preview da foto se houver
 
-    # Adiciona um preview da foto no admin
     def get_foto_preview(self, obj):
-        from django.utils.html import format_html
         if obj.foto:
-            return format_html('<img src="{}" style="max-height: 100px; max-width: 100px;" />', obj.foto.url)
-        return "(Sem foto)"
+            return mark_safe(f'<img src="{obj.foto.url}" width="150" height="150" style="object-fit: cover; border-radius: 50%;" />')
+        return "Sem foto"
     get_foto_preview.short_description = 'Preview da Foto'
 
-    # Inclui o preview no fieldset de Informações Pessoais
-    fieldsets[1][1]['fields'] = (('nome_completo', 'apelido'), ('foto', 'get_foto_preview'), ('cpf', 'data_nascimento'), ('genero', 'estado_civil'))
-
-
     def get_queryset(self, request):
-        # Otimiza a consulta buscando todos os relacionamentos ForeignKey de uma vez
         return super().get_queryset(request).select_related(
-            'usuario', 'empresa', 'loja', 'departamento', 'setor', 'cargo', 'horario'
-        ).prefetch_related('equipe', 'regras_comissionamento') # Adicionado prefetch_related para o M2M
+            'empresa', 'departamento', 'setor', 'cargo', 'horario', 'equipe'
+        ).prefetch_related('lojas', 'regras_comissionamento')
 
     @admin.display(description='Nome', ordering='nome_completo')
     def get_display_name(self, obj):
-        # Usa apelido se existir, senão nome completo
         return obj.apelido or obj.nome_completo
 
     @admin.display(description='CPF', ordering='cpf')
     def cpf_formatado(self, obj):
-        # Exemplo de formatação simples (pode ser melhorada)
-        if obj.cpf and len(obj.cpf) == 11:
+        if obj.cpf:
             return f"{obj.cpf[:3]}.{obj.cpf[3:6]}.{obj.cpf[6:9]}-{obj.cpf[9:]}"
-        return obj.cpf
+        return "-"
+
+@admin.register(Comunicado)
+class ComunicadoAdmin(admin.ModelAdmin):
+    list_display = (
+        'assunto', 'criado_por', 'data_criacao', 'status', 'get_destinatarios_count',
+        'get_arquivos_count'
+    )
+    list_filter = (
+        'status', 'data_criacao',
+        ('criado_por', admin.RelatedOnlyFieldListFilter),
+    )
+    search_fields = (
+        'assunto', 'texto', 'criado_por__username',
+        'criado_por__first_name', 'criado_por__last_name'
+    )
+    list_editable = ('status',)
+    filter_horizontal = ('destinatarios',)
+    readonly_fields = ('data_criacao', 'get_preview_banner')
+    ordering = ('-data_criacao',)
+    list_per_page = 20
+
+    fieldsets = (
+        ('Informações Básicas', {
+            'fields': ('assunto', 'status', 'criado_por')
+        }),
+        ('Conteúdo', {
+            'description': "O comunicado deve ter texto OU banner, não ambos.",
+            'fields': ('texto', ('banner', 'get_preview_banner'))
+        }),
+        ('Destinatários', {
+            'fields': ('destinatarios',)
+        }),
+        ('Metadados', {
+            'fields': ('data_criacao',),
+            'classes': ('collapse',)
+        }),
+    )
+
+    @admin.display(description='Destinatários', ordering='destinatarios')
+    def get_destinatarios_count(self, obj):
+        return obj.destinatarios.count()
+    get_destinatarios_count.short_description = 'Nº de Destinatários'
+
+    @admin.display(description='Arquivos', ordering='arquivos')
+    def get_arquivos_count(self, obj):
+        return obj.arquivos.count()
+    get_arquivos_count.short_description = 'Nº de Arquivos'
+
+    @admin.display(description='Preview do Banner')
+    def get_preview_banner(self, obj):
+        from django.utils.html import format_html
+        if obj.banner:
+            return format_html(
+                '<img src="{}" style="max-height: 200px; max-width: 200px;" />',
+                obj.banner.url
+            )
+        return "(Sem banner)"
+    get_preview_banner.short_description = 'Preview'
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('criado_por').prefetch_related(
+            'destinatarios', 'arquivos'
+        )
+
+@admin.register(ControleComunicado)
+class ControleComunicadoAdmin(admin.ModelAdmin):
+    list_display = (
+        'comunicado', 'usuario', 'lido', 'data_leitura'
+    )
+    list_filter = (
+        'lido', 'data_leitura',
+        ('comunicado', admin.RelatedOnlyFieldListFilter),
+        ('usuario', admin.RelatedOnlyFieldListFilter),
+    )
+    search_fields = (
+        'comunicado__assunto', 'usuario__username',
+        'usuario__first_name', 'usuario__last_name'
+    )
+    list_editable = ('lido',)
+    readonly_fields = ('data_leitura',)
+    ordering = ('-data_leitura',)
+    list_per_page = 25
+
+    fieldsets = (
+        ('Informações do Controle', {
+            'fields': ('comunicado', 'usuario', 'lido', 'data_leitura')
+        }),
+    )
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('comunicado', 'usuario')
+
+@admin.register(ArquivoComunicado)
+class ArquivoComunicadoAdmin(admin.ModelAdmin):
+    list_display = (
+        'get_nome_arquivo', 'comunicado', 'get_tamanho_arquivo',
+        'data_criacao', 'status'
+    )
+    list_filter = (
+        'status', 'data_criacao',
+        ('comunicado', admin.RelatedOnlyFieldListFilter),
+    )
+    search_fields = (
+        'arquivo', 'comunicado__assunto'
+    )
+    list_editable = ('status',)
+    readonly_fields = ('data_criacao', 'get_tamanho_arquivo')
+    ordering = ('-data_criacao',)
+    list_per_page = 25
+
+    fieldsets = (
+        ('Informações do Arquivo', {
+            'fields': ('arquivo', 'status')
+        }),
+        ('Vinculação', {
+            'fields': ('comunicado',)
+        }),
+        ('Metadados', {
+            'fields': ('data_criacao', 'get_tamanho_arquivo'),
+            'classes': ('collapse',)
+        }),
+    )
+
+    @admin.display(description='Arquivo', ordering='arquivo')
+    def get_nome_arquivo(self, obj):
+        return os.path.basename(obj.arquivo.name)
+    get_nome_arquivo.short_description = 'Nome do Arquivo'
+
+    @admin.display(description='Tamanho', ordering='arquivo')
+    def get_tamanho_arquivo(self, obj):
+        try:
+            tamanho = obj.arquivo.size
+            if tamanho < 1024:
+                return f"{tamanho} bytes"
+            elif tamanho < 1024 * 1024:
+                return f"{tamanho/1024:.1f} KB"
+            else:
+                return f"{tamanho/(1024*1024):.1f} MB"
+        except:
+            return "N/A"
+    get_tamanho_arquivo.short_description = 'Tamanho'
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('comunicado')

@@ -11,70 +11,67 @@ $(document).ready(function() {
         return cpf; // Retorna o original se não tiver 11 dígitos após limpar
     }
 
-    // Função auxiliar para formatar Data (YYYY-MM-DD -> DD/MM/YYYY)
+    // Função auxiliar para formatar Data (YYYY-MM-DD HH:mm -> DD/MM/YYYY HH:mm)
     function formatarData(data) {
-        if (!data || data.length !== 10) return 'N/A'; // Verifica se a data existe e tem o formato esperado
-        const partes = data.split('-');
-        if (partes.length === 3) {
-            return `${partes[2]}/${partes[1]}/${partes[0]}`;
-        }
-        return data; // Retorna a data original se não estiver no formato esperado
+        if (!data) return 'N/A';
+        
+        // Verifica se a data tem o formato esperado (YYYY-MM-DD HH:mm)
+        const partes = data.split(' ');
+        if (partes.length !== 2) return 'N/A';
+        
+        const [dataPart, horaPart] = partes;
+        const dataPartes = dataPart.split('-');
+        if (dataPartes.length !== 3) return 'N/A';
+        
+        return `${dataPartes[2]}/${dataPartes[1]}/${dataPartes[0]} ${horaPart}`;
     }
 
     // Função para carregar e popular a tabela de Clientes em Loja
     function carregarClientesEmLoja() {
         const tabelaBody = $('#tabelaClientesEmLojaBody');
         const nenhumResultadoDiv = $('#nenhumResultadoEmLoja');
-        const urlApi = '/inss/api/get/emloja/'; // Certifique-se que a URL está correta
+        const urlApi = '/inss/api/get/emloja/';
 
-        console.log("Chamando carregarClientesEmLoja..."); // Log 2
+        console.log("Chamando carregarClientesEmLoja...");
 
         $.ajax({
             url: urlApi,
             type: 'GET',
             dataType: 'json',
             success: function(response) {
-                console.log("AJAX Success! Dados recebidos:", response); // Log 3
-                tabelaBody.empty(); // Limpa a tabela antes de popular
-                nenhumResultadoDiv.hide(); // Esconde a mensagem de 'nenhum resultado'
+                console.log("AJAX Success! Dados recebidos:", response);
+                tabelaBody.empty();
+                nenhumResultadoDiv.hide();
 
-                if (response.clientes_em_loja && response.clientes_em_loja.length > 0) {
-                    console.log("Clientes encontrados:", response.clientes_em_loja.length); // Log 4
-                    response.clientes_em_loja.forEach(function(cliente, index) {
-                        console.log(`Processando cliente ${index + 1}:`, cliente); // Log 5
-                        const cpfFormatado = formatarCPF(cliente.cpf_cliente);
-                        const dataFormatada = formatarData(cliente.dia_agendado);
-                        const nomeClienteUpper = cliente.nome_cliente ? cliente.nome_cliente.toUpperCase() : 'N/A'; // Formata para caixa alta
+                if (response.agendamentos && response.agendamentos.length > 0) {
+                    console.log("Clientes encontrados:", response.agendamentos.length);
+                    response.agendamentos.forEach(function(cliente, index) {
+                        console.log(`Processando cliente ${index + 1}:`, cliente);
+                        const cpfFormatado = formatarCPF(cliente.cpf);
+                        const dataFormatada = formatarData(cliente.data_presenca);
+                        const nomeClienteUpper = cliente.nome ? cliente.nome.toUpperCase() : 'N/A';
                         const linha = `
                             <tr>
                                 <td class="text-center">${nomeClienteUpper}</td>
                                 <td class="text-center">${cpfFormatado}</td>
-                                <td class="text-center">${cliente.loja_agendada || 'N/A'}</td>
+                                <td class="text-center">${cliente.loja || 'N/A'}</td>
                                 <td class="text-center">${dataFormatada}</td>
-                                <td class="text-center"><span class="badge bg-info">${cliente.tabulacao_vendedor || 'N/A'}</span></td>
+                                <td class="text-center"><span class="badge bg-info">${cliente.tabulacao || 'N/A'}</span></td>
                             </tr>
                         `;
-                        console.log("Adicionando linha:", linha); // Log 6
+                        console.log("Adicionando linha:", linha);
                         tabelaBody.append(linha);
                     });
                 } else {
-                    console.log("Nenhum cliente em loja encontrado na resposta."); // Log 7
-                    // Se não houver clientes, mostra a mensagem
+                    console.log("Nenhum cliente em loja encontrado na resposta.");
                     nenhumResultadoDiv.text("Nenhum cliente encontrado em loja.").show();
-                     // Opcional: adicionar uma linha vazia com a mensagem
-                    // const linhaVazia = `<tr><td colspan="5" class="text-center">Nenhum cliente encontrado em loja.</td></tr>`;
-                    // tabelaBody.append(linhaVazia);
                 }
-                console.log("População da tabela (clientes em loja) concluída."); // Log 8
+                console.log("População da tabela (clientes em loja) concluída.");
             },
             error: function(xhr, status, error) {
-                console.error("AJAX Error! Status:", status, "Erro:", error, "XHR:", xhr); // Log 9
-                tabelaBody.empty(); // Limpa a tabela em caso de erro
-                // Mostra mensagem de erro na div
+                console.error("AJAX Error! Status:", status, "Erro:", error, "XHR:", xhr);
+                tabelaBody.empty();
                 nenhumResultadoDiv.text(`Erro ao carregar dados (${status}): ${error}`).show();
-                 // Opcional: adicionar uma linha vazia com a mensagem de erro
-                // const linhaErro = `<tr><td colspan="5" class="text-center text-danger">Erro ao carregar dados. Tente novamente mais tarde.</td></tr>`;
-                // tabelaBody.append(linhaErro);
             }
         });
     }
@@ -112,18 +109,18 @@ $(document).ready(function() {
                     console.log("Agendamentos Atrasados encontrados:", response.agendamentos.length); // Log
                     response.agendamentos.forEach(function(agendamento, index) {
                         console.log(`Processando agendamento atrasado ${index + 1}:`, agendamento); // Log
-                        const nomeClienteUpper = agendamento.nome_cliente ? agendamento.nome_cliente.toUpperCase() : 'N/A';
-                        const cpfFormatado = formatarCPF(agendamento.cpf_cliente);
+                        const nomeClienteUpper = agendamento.nome ? agendamento.nome.toUpperCase() : 'N/A';
+                        const cpfFormatado = formatarCPF(agendamento.cpf);
                         const dataFormatada = formatarData(agendamento.dia_agendado);
 
                         const linha = `
-                            <tr data-id="${agendamento.id}" data-cliente-id="${agendamento.cliente_agendamento_id}">
+                            <tr data-id="${agendamento.id}">
                                 <td class="text-center">${nomeClienteUpper}</td>
                                 <td class="text-center">${cpfFormatado}</td>
-                                <td class="text-center">${agendamento.numero_cliente || 'N/A'}</td>
+                                <td class="text-center">${agendamento.numero || 'N/A'}</td>
                                 <td class="text-center">${dataFormatada}</td>
-                                <td class="text-center">${agendamento.atendente_agendou || 'N/A'}</td>
-                                <td class="text-center">${agendamento.loja_agendada || 'N/A'}</td>
+                                <td class="text-center">${agendamento.atendente || 'N/A'}</td>
+                                <td class="text-center">${agendamento.loja || 'N/A'}</td>
                             </tr>
                         `;
                         console.log("Adicionando linha (atrasados):", linha); // Log
