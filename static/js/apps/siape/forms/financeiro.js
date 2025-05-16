@@ -271,7 +271,7 @@ $(document).ready(function() {
             alert('Por favor, selecione a data de pagamento.');
             return;
         }
-         if (!userId) {
+        if (!userId) {
             alert('Por favor, selecione o analista/consultor.');
             return;
         }
@@ -284,6 +284,11 @@ $(document).ready(function() {
             user_id: userId
         };
 
+        // Desabilita o botão de submit e mostra indicador de carregamento
+        const submitButton = $(this).find('button[type="submit"]');
+        const originalButtonText = submitButton.html();
+        submitButton.prop('disabled', true).html('<i class="bx bx-loader-alt bx-spin"></i> Processando...');
+
         // Envia os dados para a API via POST
         $.ajax({
             url: '/siape/api/post/novo-tac/', // URL da API
@@ -292,38 +297,63 @@ $(document).ready(function() {
             data: JSON.stringify(formData), // Converte o objeto JS em string JSON
             dataType: 'json', // Espera uma resposta JSON
             success: function(response) {
-                alert(response.message || 'Registro TAC criado com sucesso!'); // Exibe mensagem de sucesso
-                $('#formAdicionarTAC')[0].reset(); // Limpa o formulário
-                $('#nomeCliente').val('').attr('placeholder', 'Será preenchido após digitar o CPF'); // Reseta campo e placeholder
+                // Exibe mensagem de sucesso em um modal ou toast mais amigável
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Sucesso!',
+                    text: response.message || 'Registro TAC criado com sucesso!',
+                    confirmButtonText: 'OK'
+                });
+
+                // Limpa o formulário
+                $('#formAdicionarTAC')[0].reset();
+                $('#nomeCliente').val('').attr('placeholder', 'Será preenchido após digitar o CPF');
+
+                // Recarrega os dados
                 applyFilters(); // Recarrega a tabela (já aplicando filtros se houver)
                 loadCardsData(); // Recarrega os cards
             },
             error: function(xhr, status, error) {
                 console.error("Erro ao criar registro TAC:", status, error, xhr.responseText);
                 let errorMessage = 'Ocorreu um erro ao salvar o registro.';
+                
                 try {
                     const errorData = JSON.parse(xhr.responseText);
                     if (typeof errorData === 'object' && errorData !== null) {
-                        let detailedErrors = [];
-                        for (const key in errorData) {
-                            if (Array.isArray(errorData[key])) {
-                                detailedErrors.push(`${key}: ${errorData[key].join(', ')}`);
-                            } else {
-                                detailedErrors.push(`${key}: ${errorData[key]}`);
-                            }
-                        }
-                        if (detailedErrors.length > 0) {
-                            errorMessage = detailedErrors.join('\n');
+                        if (errorData.error) {
+                            errorMessage = errorData.error;
                         } else if (errorData.detail) {
-                             errorMessage = errorData.detail;
-                        } else if (errorData.error) {
-                             errorMessage = errorData.error;
+                            errorMessage = errorData.detail;
+                        } else {
+                            // Tenta extrair mensagens de erro específicas
+                            const detailedErrors = [];
+                            for (const key in errorData) {
+                                if (Array.isArray(errorData[key])) {
+                                    detailedErrors.push(`${key}: ${errorData[key].join(', ')}`);
+                                } else {
+                                    detailedErrors.push(`${key}: ${errorData[key]}`);
+                                }
+                            }
+                            if (detailedErrors.length > 0) {
+                                errorMessage = detailedErrors.join('\n');
+                            }
                         }
                     }
                 } catch (e) {
                     console.error("Não foi possível parsear a resposta de erro JSON:", e);
                 }
-                alert(`Erro:\n${errorMessage}`); // Exibe mensagem de erro
+
+                // Exibe mensagem de erro em um modal mais amigável
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Erro!',
+                    text: errorMessage,
+                    confirmButtonText: 'OK'
+                });
+            },
+            complete: function() {
+                // Reabilita o botão de submit e restaura o texto original
+                submitButton.prop('disabled', false).html(originalButtonText);
             }
         });
     });

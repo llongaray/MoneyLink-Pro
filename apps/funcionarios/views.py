@@ -1421,7 +1421,7 @@ def api_get_dashboard(request):
 # SUB CATEGORIA: COMUNICADOS - INICIO
 
 @login_required
-@controle_acess('SCT16')   # 16 – RECURSOS HUMANOS | COMUNICADOS
+@controle_acess('SCT54')   # 54 – RECURSOS HUMANOS | COMUNICADOS
 def render_formscomunicados(request):
     """Renderiza o formulário para criar novos comunicados."""
     return render(request, 'funcionarios/forms/formscomunicados.html')

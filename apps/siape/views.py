@@ -1335,9 +1335,6 @@ def api_post_novotac(request):
         try:
             # API agora espera YYYY-MM-DD do input type="date"
             data_pago = datetime.strptime(data_pago_str, '%Y-%m-%d').date()
-            # Combinar com a hora atual para criar um datetime, se o campo 'data' for DateTimeField
-            # Se 'data' for DateField, usar apenas data_pago
-            # data_registro = timezone.make_aware(datetime.combine(data_pago, datetime.now().time()))
             data_registro = data_pago # Assumindo que o campo 'data' no modelo é DateField ou pode aceitar Date
         except ValueError:
              logger.error(f"Erro ao converter data_pago '{data_pago_str}': Formato inválido.")
@@ -1348,7 +1345,7 @@ def api_post_novotac(request):
             user = User.objects.get(pk=user_id)
             produto = Produto.objects.get(pk=produto_id, ativo=True) # Garante que o produto está ativo
 
-            # Busca o funcionário e suas associações organizacionais de forma otimizada
+            # Busca o funcionário e suas associações organizacionais
             funcionario = None
             loja = None
             empresa = None
@@ -1357,36 +1354,31 @@ def api_post_novotac(request):
             equipe = None
 
             try:
-                # Otimiza a busca buscando todos os relacionamentos necessários de uma vez
+                # Busca o funcionário e suas associações organizacionais
                 funcionario = Funcionario.objects.select_related(
-                    'loja', 'empresa', 'departamento', 'setor', 'equipe'
-                ).get(usuario=user)
+                    'empresa', 'departamento', 'setor', 'equipe'
+                ).filter(
+                    usuario=user,
+                    status=True  # Garante que o funcionário está ativo
+                ).first()
+
+                if not funcionario:
+                    logger.warning(f"Usuário {user.username} (ID: {user_id}) não encontrado no cadastro de funcionários ativos.")
+                    return JsonResponse({'error': 'Usuário não encontrado no cadastro de funcionários ativos.'}, status=404)
 
                 # Extrai os dados organizacionais do funcionário
-                loja = funcionario.loja
                 empresa = funcionario.empresa
                 departamento = funcionario.departamento
                 setor = funcionario.setor
-                equipe = funcionario.equipe # Assumindo que equipe é ForeignKey, se for M2M, precisa ajustar
+                equipe = funcionario.equipe
 
                 # Log para verificar os dados encontrados
-                logger.info(f"Funcionário {user.username} encontrado. Loja: {loja}, Empresa: {empresa}, Depto: {departamento}, Setor: {setor}, Equipe: {equipe}")
+                logger.info(f"Funcionário {user.username} encontrado. Empresa: {empresa}, Depto: {departamento}, Setor: {setor}, Equipe: {equipe}")
 
-                # Avisos caso alguma informação organizacional esteja faltando (opcional)
-                if not loja: logger.warning(f"Aviso: Funcionário {user.username} não possui loja associada.")
-                if not empresa: logger.warning(f"Aviso: Funcionário {user.username} não possui empresa associada.")
-                if not departamento: logger.warning(f"Aviso: Funcionário {user.username} não possui departamento associado.")
-                if not setor: logger.warning(f"Aviso: Funcionário {user.username} não possui setor associado.")
-                # if not equipe: logger.warning(f"Aviso: Funcionário {user.username} não possui equipe associada.") # Descomentar se equipe for FK
-
-            except Funcionario.DoesNotExist:
-                 # Log ou aviso: Usuário não é um funcionário registrado no sistema.
-                 logger.warning(f"Aviso: Usuário {user.username} (ID: {user_id}) não encontrado no cadastro de funcionários. O registro será criado sem informações organizacionais.")
-                 # Continua com os valores organizacionais como None
-            except AttributeError as attr_err:
-                 # Caso o modelo Funcionario não tenha algum dos campos esperados
-                 logger.warning(f"Aviso: Modelo Funcionario parece não ter um dos campos organizacionais esperados: {attr_err}")
-                 # Continua com os valores organizacionais como None
+            except Exception as func_error:
+                logger.error(f"Erro ao buscar dados do funcionário: {type(func_error).__name__} - {func_error}")
+                logger.exception("Detalhes do erro na busca de dados do funcionário:")
+                return JsonResponse({'error': 'Erro ao buscar dados do funcionário.'}, status=500)
 
         except User.DoesNotExist:
             logger.error(f"Usuário com ID {user_id} não encontrado.")
@@ -1394,8 +1386,8 @@ def api_post_novotac(request):
         except Produto.DoesNotExist:
             logger.error(f"Produto com ID {produto_id} não encontrado ou inativo.")
             return JsonResponse({'error': f'Produto com ID {produto_id} não encontrado ou inativo.'}, status=404)
-        except Exception as lookup_error: # Captura outros erros na busca
-            logger.error(f"Erro ao buscar User/Produto/Funcionário: {type(lookup_error).__name__} - {lookup_error}")
+        except Exception as lookup_error:
+            logger.error(f"Erro ao buscar User/Produto: {type(lookup_error).__name__} - {lookup_error}")
             logger.exception("Detalhes do erro na busca de objetos relacionados:")
             return JsonResponse({'error': 'Erro ao buscar dados relacionados.'}, status=500)
 
@@ -1403,18 +1395,17 @@ def api_post_novotac(request):
         try:
             novo_registro = RegisterMoney.objects.create(
                 user=user,
-                loja=loja, # Associa a loja encontrada (pode ser None)
-                empresa=empresa, # Associa a empresa encontrada (pode ser None)
-                departamento=departamento, # Associa o departamento encontrado (pode ser None)
-                setor=setor, # Associa o setor encontrado (pode ser None)
-                equipe=equipe, # Associa a equipe encontrada (pode ser None)
-                cpf_cliente=cpf_cliente_cleaned, # Salva o CPF limpo
+                empresa=empresa,
+                departamento=departamento,
+                setor=setor,
+                equipe=equipe,
+                cpf_cliente=cpf_cliente_cleaned,
                 produto=produto,
-                valor_est=valor_tac, # Mapeia valor_tac para valor_est
-                data=data_registro, # Usa a data convertida
-                status=True # Define como ativo explicitamente ou confia no default do modelo
+                valor_est=valor_tac,
+                data=data_registro,
+                status=True
             )
-            logger.info(f"Registro TAC criado com sucesso: ID {novo_registro.id} para User {user.username} com dados organizacionais.")
+            logger.info(f"Registro TAC criado com sucesso: ID {novo_registro.id} para User {user.username}")
 
             return JsonResponse({
                 'success': True,
@@ -1431,7 +1422,6 @@ def api_post_novotac(request):
         logger.error("Erro ao decodificar JSON da requisição.")
         return JsonResponse({'error': 'Formato JSON inválido no corpo da requisição.'}, status=400)
     except Exception as e:
-        # É crucial logar o erro em produção para diagnóstico
         logger.error(f"Erro inesperado em api_post_novotac: {type(e).__name__} - {e}")
         logger.exception("Detalhes do erro inesperado em api_post_novotac:")
         return JsonResponse({'error': 'Ocorreu um erro interno no servidor ao processar a solicitação.'}, status=500)

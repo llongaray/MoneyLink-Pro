@@ -171,22 +171,32 @@ $(document).ready(function() {
 });
 
 function formatarDataBR(dataString) {
-    // 1) Se vier no formato ISO (YYYY-MM-DD ou YYYY-MM-DDTHH:mm:ss)
-    if (/^\d{4}-\d{2}-\d{2}/.test(dataString)) {
-        const [ano, mes, dia] = dataString.split('T')[0].split('-');
-        return `${dia}/${mes}/${ano}`;  // transforma em DD/MM/YYYY
+    if (!dataString) return 'Data não disponível';
+    
+    // Se já estiver no formato DD/MM/YYYY, retorna como está
+    if (/^\d{2}\/\d{2}\/\d{4}/.test(dataString)) {
+        return dataString;
     }
-
-    // 2) Se vier no formato já brasileiro (DD/MM/YYYY)
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(dataString)) {
-        return dataString;  // não altera
+    
+    try {
+        // Tenta converter a string para data
+        const data = new Date(dataString);
+        
+        // Verifica se a data é válida
+        if (isNaN(data.getTime())) {
+            console.error('Data inválida:', dataString);
+            return 'Data inválida';
+        }
+        
+        // Formata para DD/MM/YYYY
+        const dia = String(data.getDate()).padStart(2, '0');
+        const mes = String(data.getMonth() + 1).padStart(2, '0');
+        const ano = data.getFullYear();
+        
+        return `${dia}/${mes}/${ano}`;
+    } catch (error) {
+        console.error('Erro ao formatar data:', error);
+        return 'Data inválida';
     }
-
-    // 3) Fallback genérico para outros formatos
-    const data = new Date(dataString);
-    const dia = String(data.getDate()).padStart(2, '0');
-    const mes = String(data.getMonth() + 1).padStart(2, '0');
-    const ano = data.getFullYear();
-    return `${dia}/${mes}/${ano}`;
 }
 

@@ -154,7 +154,8 @@ function atualizarModalComunicados(comunicados) {
 // Função para criar o HTML de um comunicado
 function criarHTMLComunicado(comunicado) {
     console.log(`Criando HTML para comunicado ID: ${comunicado.id}`);
-    const data = new Date(comunicado.data_criacao).toLocaleDateString('pt-BR');
+    // Formata a data corretamente
+    const data = formatarDataBR(comunicado.data_criacao);
     console.log(`Data do comunicado: ${data}`);
     
     return `
@@ -167,6 +168,37 @@ function criarHTMLComunicado(comunicado) {
             </a>
         </div>
     `;
+}
+
+// Adiciona função formatarDataBR
+function formatarDataBR(dataString) {
+    if (!dataString) return 'Data não disponível';
+    
+    // Se já estiver no formato DD/MM/YYYY, retorna como está
+    if (/^\d{2}\/\d{2}\/\d{4}/.test(dataString)) {
+        return dataString;
+    }
+    
+    try {
+        // Tenta converter a string para data
+        const data = new Date(dataString);
+        
+        // Verifica se a data é válida
+        if (isNaN(data.getTime())) {
+            console.error('Data inválida:', dataString);
+            return 'Data inválida';
+        }
+        
+        // Formata para DD/MM/YYYY
+        const dia = String(data.getDate()).padStart(2, '0');
+        const mes = String(data.getMonth() + 1).padStart(2, '0');
+        const ano = data.getFullYear();
+        
+        return `${dia}/${mes}/${ano}`;
+    } catch (error) {
+        console.error('Erro ao formatar data:', error);
+        return 'Data inválida';
+    }
 }
 
 // Função para obter o token CSRF do cookie
