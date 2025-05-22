@@ -136,6 +136,13 @@ def to_decimal(value):
 
 @csrf_exempt
 def api_upload_csv_clientes(request):
+    """
+    Processa upload de arquivo CSV com clientes.
+    Suporta SIAPE, INSS e FGTS.
+    """
+    logger = logging.getLogger(__name__)
+    logger.info("Iniciando processamento de upload CSV")
+    
     if request.method != "POST":
         return JsonResponse({"error": "Método não permitido"}, status=405)
 
@@ -154,222 +161,256 @@ def api_upload_csv_clientes(request):
     csv_file = request.FILES.get("arquivo")
     if not csv_file:
         return JsonResponse({"error": "Nenhum arquivo enviado."}, status=400)
+
+    logger.info(f"Arquivo recebido: {csv_file.name} ({csv_file.size} bytes)")
+    
     try:
-        data = csv_file.read().decode("utf-8")
+        # Lê o arquivo em chunks para evitar problemas de memória
+        chunks = []
+        for chunk in csv_file.chunks():
+            chunks.append(chunk)
+        data = b''.join(chunks).decode("utf-8")
+        logger.info("Arquivo decodificado com sucesso")
     except Exception as e:
+        logger.error(f"Erro ao ler o arquivo: {e}")
         return JsonResponse({"error": f"Erro ao ler o arquivo: {e}"}, status=400)
 
     reader = csv.DictReader(io.StringIO(data), delimiter=';')
     clientes_importados = debitos_importados = invalid_rows = 0
     valid_fields = {f.name for f in DBCliente._meta.get_fields()}
+    
+    logger.info(f"Processando {sum(1 for _ in reader)} linhas")
+    reader = csv.DictReader(io.StringIO(data), delimiter=';')  # Reset reader
 
+    # Processa em lotes
+    batch_size = 100
+    clientes_batch = []
+    debitos_batch = []
+    
     for original_row in reader:
-        # normaliza chaves do CSV para lowercase
-        row = {k.strip().lower(): (v or "").strip() for k, v in original_row.items()}
+        try:
+            # normaliza chaves do CSV para lowercase
+            row = {k.strip().lower(): (v or "").strip() for k, v in original_row.items()}
 
-        def safe_get(f):
-            return row.get(f, "")
-        def safe_bool(f):
-            v = row.get(f, "").strip().lower()
-            return v in ('1', 'true', 'sim')
-        def safe_decimal(f):
-            return to_decimal(row.get(f))
+            def safe_get(f):
+                return row.get(f, "")
+            def safe_bool(f):
+                v = row.get(f, "").strip().lower()
+                return v in ('1', 'true', 'sim')
+            def safe_decimal(f):
+                return to_decimal(row.get(f))
 
-        cpf = safe_get("cpf")
-        nome = safe_get("nome") or safe_get("nome_completo")
-        cel1 = safe_get("cel1") or safe_get("celular_1")
-        if not cpf or not nome or not cel1:
-            print(f"⚠️ Ignorando linha, faltam campos: CPF={cpf}, Nome={nome}, Cel1={cel1}")
-            invalid_rows += 1
-            continue
-
-        # data de nascimento
-        date_field = "data_de_nascimento" if produto == "FGTS" else "data_nasc"
-        data_nasc = None
-        if safe_get(date_field):
-            try:
-                data_nasc = datetime.strptime(safe_get(date_field), "%d/%m/%Y").date()
-            except:
-                data_nasc = None
-
-        # Processamento FGTS
-        if produto == "FGTS":
-            print(f"🔄 Processando FGTS para CPF: {cpf}")
-            if data_nasc is None:
-                print(f"⚠️ Linha ignorada: sem data de nascimento para CPF={cpf}")
+            cpf = safe_get("cpf")
+            nome = safe_get("nome") or safe_get("nome_completo")
+            cel1 = safe_get("cel1") or safe_get("celular_1")
+            if not cpf or not nome or not cel1:
+                logger.warning(f"⚠️ Ignorando linha, faltam campos: CPF={cpf}, Nome={nome}, Cel1={cel1}")
                 invalid_rows += 1
                 continue
 
-            # Monta dados FGTS com base no template de cabeçalho
-            tipo = safe_get("tipo")
-            logradouro = safe_get("logradouro")
-            numero = safe_get("numero") or None
-            complemento = safe_get("complemento") or None
-            bairro = safe_get("bairro")
-            cidade = safe_get("cidade")
-            uf = safe_get("uf")
-            cep = safe_get("cep")
-            salario = safe_decimal("salario")
-            saldo_aproximado = safe_decimal("saldo_aproximado")
-
-            # data de admissão pode vir em Excel ou dd/mm/YYYY
-            adm = safe_get("data_de_admissao")
-            data_admissao = None
-            if adm:
+            # data de nascimento
+            date_field = "data_de_nascimento" if produto == "FGTS" else "data_nasc"
+            data_nasc = None
+            if safe_get(date_field):
                 try:
-                    if adm.isdigit():
-                        data_admissao = (datetime(1899, 12, 30) + timedelta(days=int(adm))).date()
-                    else:
-                        data_admissao = datetime.strptime(adm, "%d/%m/%Y").date()
-                except Exception as e:
-                    print(f"❌ Erro converter data_admissao: {e}")
+                    data_nasc = datetime.strptime(safe_get(date_field), "%d/%m/%Y").date()
+                except:
+                    data_nasc = None
 
-            razao_social = safe_get("razao_social")
-            # usa chave do template: tempo_de_contribuicao
-            tempo_contrib = safe_get("tempo_de_contribuicao")
-            demografica = safe_get("demografica") or None
-            possivel_prof = safe_get("possivel_profissao") or None
-            score = safe_get("score") or None
+            # Processamento FGTS
+            if produto == "FGTS":
+                logger.info(f"🔄 Processando FGTS para CPF: {cpf}")
+                if data_nasc is None:
+                    logger.warning(f"⚠️ Linha ignorada: sem data de nascimento para CPF={cpf}")
+                    invalid_rows += 1
+                    continue
 
-            # booleans interpretando 0/1
-            flag_fgts = safe_bool("flag_fgts")
-            procon1 = safe_bool("proconcel1")
-            wts1 = safe_bool("flwhatsappcel1")
-            cel2 = safe_get("cel2") or None
-            procon2 = safe_bool("proconcel2")
-            wts2 = safe_bool("flwhatsappcel2")
-            email1 = safe_get("email1") or None
+                # Monta dados FGTS com base no template de cabeçalho
+                tipo = safe_get("tipo")
+                logradouro = safe_get("logradouro")
+                numero = safe_get("numero") or None
+                complemento = safe_get("complemento") or None
+                bairro = safe_get("bairro")
+                cidade = safe_get("cidade")
+                uf = safe_get("uf")
+                cep = safe_get("cep")
+                salario = safe_decimal("salario")
+                saldo_aproximado = safe_decimal("saldo_aproximado")
 
-            fgts_data = {
-                "cpf": cpf,
-                "nome": nome,
-                "data_nascimento": data_nasc,
-                "idade": safe_get("idade") or None,
-                "tipo": tipo,
-                "campanha": campanha_obj,
-                "logradouro": logradouro,
-                "numero": numero,
-                "complemento": complemento,
-                "bairro": bairro,
-                "cidade": cidade,
-                "uf": uf,
-                "cep": cep,
-                "salario": salario,
-                "saldo_aproximado": saldo_aproximado,
-                "data_admissao": data_admissao,
-                "razao_social": razao_social,
-                "tempo_contribuicao": tempo_contrib,
-                "demografica": demografica,
-                "possivel_profissao": possivel_prof,
-                "score": score,
-                "flag_fgts": flag_fgts,
-                "cel1": cel1,
-                "procon_cel1": procon1,
-                "fl_whatsapp_cel1": wts1,
-                "cel2": cel2,
-                "procon_cel2": procon2,
-                "fl_whatsapp_cel2": wts2,
-                "email1": email1,
-            }
+                # data de admissão pode vir em Excel ou dd/mm/YYYY
+                adm = safe_get("data_de_admissao")
+                data_admissao = None
+                if adm:
+                    try:
+                        if adm.isdigit():
+                            data_admissao = (datetime(1899, 12, 30) + timedelta(days=int(adm))).date()
+                        else:
+                            data_admissao = datetime.strptime(adm, "%d/%m/%Y").date()
+                    except Exception as e:
+                        logger.error(f"❌ Erro converter data_admissao: {e}")
 
-            # isolando cada create em um atomic
-            with transaction.atomic():
-                try:
-                    FGTSCliente.objects.create(**fgts_data)
-                    print(f"✅ FGTSCliente criado CPF={cpf}")
-                    clientes_importados += 1
-                except Exception as e:
-                    print(f"❌ Falha ao criar FGTSCliente CPF={cpf}: {e}")
-            continue
+                razao_social = safe_get("razao_social")
+                tempo_contrib = safe_get("tempo_de_contribuicao")
+                demografica = safe_get("demografica") or None
+                possivel_prof = safe_get("possivel_profissao") or None
+                score = safe_get("score") or None
 
-        # Processamento SIAPE / INSS
-        defaults = {
-            "nome_completo": nome,
-            "cpf": cpf,
-            "data_nasc": data_nasc,
-            "idade": safe_get("idade") or None,
-            "campanha": campanha_obj,
-        }
-        if produto == "SIAPE":
-            defaults.update({
-                "rjur": safe_get("rjur"),
-                "situacao_funcional": safe_get("situacao_funcional"),
-                "margem_disponivel_geral": safe_decimal("margem_disponivel_geral"),
-                "celular_1": cel1,
-                "flg_wts_1": safe_bool("flg_wts_1"),
-                "celular_2": safe_get("celular_2"),
-                "flg_wts_2": safe_bool("flg_wts_2"),
-                "celular_3": safe_get("celular_3"),
-                "flg_wts_3": safe_bool("flg_wts_3"),
-                "rmc_bruta": safe_decimal("rmc_bruta"),
-                "rmc_util": safe_decimal("rmc_util"),
-                "rcc_bruta": safe_decimal("rcc_bruta"),
-                "rcc_util": safe_decimal("rcc_util"),
-                "trinta_cinco_bruta": safe_decimal("trinta_cinco_bruta"),
-                "trinta_cinco_util": safe_decimal("trinta_cinco_util"),
-                "trinta_cinco_saldo": safe_decimal("trinta_cinco_saldo"),
-            })
-        else:  # INSS
-            defaults.update({
-                "rg": safe_get("rg"),
-                "nome_mae": safe_get("nome_mae"),
-                "qtd_emprestimos": safe_get("qtd_emprestimos") or None,
-                "possui_representante": safe_bool("possui_representante"),
-                "cep": safe_get("cep"),
-                "uf": safe_get("uf"),
-                "cidade": safe_get("cidade"),
-                "bairro": safe_get("bairro"),
-                "endereco": safe_get("endereco"),
-                "celular_1": cel1,
-                "flg_wts_1": safe_bool("flg_wts_1"),
-                "celular_2": safe_get("celular_2"),
-                "flg_wts_2": safe_bool("flg_wts_2"),
-                "celular_3": safe_get("celular_3"),
-                "flg_wts_3": safe_bool("flg_wts_3"),
-                "liberacao_emprestimo": safe_bool("liberacao_emprestimo"),
-                "desconto": safe_bool("desconto"),
-                "taxa_associativa": safe_get("taxa_associativa"),
-                "valor_parcela_associacao": safe_decimal("valor_parcela_associacao"),
-                "rmc_saldo": safe_decimal("rmc_saldo"),
-                "rcc_saldo": safe_decimal("rcc_saldo"),
-            })
+                # booleans interpretando 0/1
+                flag_fgts = safe_bool("flag_fgts")
+                procon1 = safe_bool("proconcel1")
+                wts1 = safe_bool("flwhatsappcel1")
+                cel2 = safe_get("cel2") or None
+                procon2 = safe_bool("proconcel2")
+                wts2 = safe_bool("flwhatsappcel2")
+                email1 = safe_get("email1") or None
 
-        filtered = {k: v for k, v in defaults.items() if k in valid_fields}
+                fgts_data = {
+                    "cpf": cpf,
+                    "nome": nome,
+                    "data_nascimento": data_nasc,
+                    "idade": safe_get("idade") or None,
+                    "tipo": tipo,
+                    "campanha": campanha_obj,
+                    "logradouro": logradouro,
+                    "numero": numero,
+                    "complemento": complemento,
+                    "bairro": bairro,
+                    "cidade": cidade,
+                    "uf": uf,
+                    "cep": cep,
+                    "salario": salario,
+                    "saldo_aproximado": saldo_aproximado,
+                    "data_admissao": data_admissao,
+                    "razao_social": razao_social,
+                    "tempo_contribuicao": tempo_contrib,
+                    "demografica": demografica,
+                    "possivel_profissao": possivel_prof,
+                    "score": score,
+                    "flag_fgts": flag_fgts,
+                    "cel1": cel1,
+                    "procon_cel1": procon1,
+                    "fl_whatsapp_cel1": wts1,
+                    "cel2": cel2,
+                    "procon_cel2": procon2,
+                    "fl_whatsapp_cel2": wts2,
+                    "email1": email1,
+                }
 
-        # atomic para criação de DBCliente
-        with transaction.atomic():
-            try:
-                cliente, created = DBCliente.objects.get_or_create(
-                    cpf=cpf, produto=produto, defaults=filtered
-                )
-                if created:
-                    print(f"✅ DBCliente criado CPF={cpf}")
-                    clientes_importados += 1
-                else:
-                    print(f"ℹ️ DBCliente já existia CPF={cpf}")
-            except Exception as e:
-                print(f"❌ Erro DBCliente CPF={cpf}: {e}")
+                # Adiciona ao lote
+                clientes_batch.append(FGTSCliente(**fgts_data))
+                if len(clientes_batch) >= batch_size:
+                    with transaction.atomic():
+                        FGTSCliente.objects.bulk_create(clientes_batch)
+                        clientes_importados += len(clientes_batch)
+                        clientes_batch = []
                 continue
 
-        # Processa débitos
-        if produto == "SIAPE":
-            try:
-                if process_siape_debito(row, cliente, campanha_obj):
-                    print(f"✅ Débito SIAPE salvo CPF={cpf}")
-                    debitos_importados += 1
-                else:
-                    print(f"⚠️ Sem débitos SIAPE CPF={cpf}")
-            except Exception as e:
-                print(f"❌ Erro débito SIAPE CPF={cpf}: {e}")
-        else:
-            try:
-                if process_inss_debito(row, cliente, campanha_obj):
-                    print(f"✅ Débito INSS salvo CPF={cpf}")
-                    debitos_importados += 1
-                else:
-                    print(f"⚠️ Sem débitos INSS CPF={cpf}")
-            except Exception as e:
-                print(f"❌ Erro débito INSS CPF={cpf}: {e}")
+            # Processamento SIAPE / INSS
+            defaults = {
+                "nome_completo": nome,
+                "cpf": cpf,
+                "data_nasc": data_nasc,
+                "idade": safe_get("idade") or None,
+                "campanha": campanha_obj,
+            }
+            if produto == "SIAPE":
+                defaults.update({
+                    "rjur": safe_get("rjur"),
+                    "situacao_funcional": safe_get("situacao_funcional"),
+                    "margem_disponivel_geral": safe_decimal("saldo5_bruta"),
+                    "celular_1": cel1,
+                    "flg_wts_1": safe_bool("flg_wts_1"),
+                    "celular_2": safe_get("celular_2"),
+                    "flg_wts_2": safe_bool("flg_wts_2"),
+                    "celular_3": safe_get("celular_3"),
+                    "flg_wts_3": safe_bool("flg_wts_3"),
+                    "rmc_bruta": safe_decimal("saldo5_bruta"),
+                    "rmc_util": safe_decimal("saldo5_util"),
+                    "rmc_saldo": safe_decimal("saldo5_saldo"),
+                    "rcc_bruta": safe_decimal("benf_bruta"),
+                    "rcc_util": safe_decimal("benf_util"),
+                    "rcc_saldo": safe_decimal("benf_saldo"),
+                    "trinta_cinco_bruta": safe_decimal("trinta_cinco_bruta"),
+                    "trinta_cinco_util": safe_decimal("trinta_cinco_util"),
+                    "trinta_cinco_saldo": safe_decimal("trinta_cinco_saldo"),
+                })
+            else:  # INSS
+                defaults.update({
+                    "rg": safe_get("rg"),
+                    "nome_mae": safe_get("nome_mae"),
+                    "qtd_emprestimos": safe_get("qtd_emprestimos") or None,
+                    "possui_representante": safe_bool("possui_representante"),
+                    "cep": safe_get("cep"),
+                    "uf": safe_get("uf"),
+                    "cidade": safe_get("cidade"),
+                    "bairro": safe_get("bairro"),
+                    "endereco": safe_get("endereco"),
+                    "celular_1": cel1,
+                    "flg_wts_1": safe_bool("flg_wts_1"),
+                    "celular_2": safe_get("celular_2"),
+                    "flg_wts_2": safe_bool("flg_wts_2"),
+                    "celular_3": safe_get("celular_3"),
+                    "flg_wts_3": safe_bool("flg_wts_3"),
+                    "liberacao_emprestimo": safe_bool("liberacao_emprestimo"),
+                    "desconto": safe_bool("desconto"),
+                    "taxa_associativa": safe_get("taxa_associativa"),
+                    "valor_parcela_associacao": safe_decimal("valor_parcela_associacao"),
+                    "rmc_saldo": safe_decimal("rmc_saldo"),
+                    "rcc_saldo": safe_decimal("rcc_saldo"),
+                })
+
+            filtered = {k: v for k, v in defaults.items() if k in valid_fields}
+
+            # Adiciona ao lote
+            clientes_batch.append(DBCliente(**filtered))
+            if len(clientes_batch) >= batch_size:
+                with transaction.atomic():
+                    DBCliente.objects.bulk_create(clientes_batch)
+                    clientes_importados += len(clientes_batch)
+                    clientes_batch = []
+
+            # Processa débitos
+            if produto == "SIAPE":
+                try:
+                    debito = process_siape_debito(row, None, campanha_obj)
+                    if debito:
+                        debitos_batch.append(debito)
+                        if len(debitos_batch) >= batch_size:
+                            with transaction.atomic():
+                                DBDebito.objects.bulk_create(debitos_batch)
+                                debitos_importados += len(debitos_batch)
+                                debitos_batch = []
+                except Exception as e:
+                    logger.error(f"❌ Erro débito SIAPE CPF={cpf}: {e}")
+            else:
+                try:
+                    debito = process_inss_debito(row, None, campanha_obj)
+                    if debito:
+                        debitos_batch.append(debito)
+                        if len(debitos_batch) >= batch_size:
+                            with transaction.atomic():
+                                DBDebito.objects.bulk_create(debitos_batch)
+                                debitos_importados += len(debitos_batch)
+                                debitos_batch = []
+                except Exception as e:
+                    logger.error(f"❌ Erro débito INSS CPF={cpf}: {e}")
+
+        except Exception as e:
+            logger.error(f"Erro processando linha: {e}")
+            continue
+
+    # Processa lotes restantes
+    if clientes_batch:
+        with transaction.atomic():
+            DBCliente.objects.bulk_create(clientes_batch)
+            clientes_importados += len(clientes_batch)
+    
+    if debitos_batch:
+        with transaction.atomic():
+            DBDebito.objects.bulk_create(debitos_batch)
+            debitos_importados += len(debitos_batch)
+
+    logger.info(f"Processamento concluído. Clientes: {clientes_importados}, Débitos: {debitos_importados}, Inválidos: {invalid_rows}")
 
     return JsonResponse({
         "message": "Upload processado com sucesso",

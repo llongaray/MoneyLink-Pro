@@ -14,14 +14,14 @@ function getCsvTemplate(product) {
       // Informações pessoais: nome_completo, cpf, data_nasc, idade, rjur;
       // Dados complementares: celular_1, flg_wts_1, celular_2, flg_wts_2, celular_3, flg_wts_3;
       // Situação Financeira: situacao_funcional, margem_disponivel_geral;
-      // Margens Cartões: rmc_bruta, rmc_util, rmc_saldo, rcc_bruta, rcc_util, rcc_saldo;
+      // Margens Cartões: saldo5_bruta, saldo5_util, saldo5_saldo, benf_bruta, benf_util, benf_saldo;
       // Margem 35%: trinta_cinco_bruta, trinta_cinco_util, trinta_cinco_saldo;
       // Empréstimos: matricula, banco, orgao, upag, valor_parcela, prazo;
       var template = 
         "nome_completo;cpf;data_nasc;idade;rjur;" +
         "celular_1;flg_wts_1;celular_2;flg_wts_2;celular_3;flg_wts_3;" +
         "situacao_funcional;margem_disponivel_geral;" +
-        "rmc_bruta;rmc_util;rmc_saldo;rcc_bruta;rcc_util;rcc_saldo;" +
+        "saldo5_bruta;saldo5_util;saldo5_saldo;benf_bruta;benf_util;benf_saldo;" +
         "trinta_cinco_bruta;trinta_cinco_util;trinta_cinco_saldo;" +
         "matricula;banco;orgao;upag;valor_parcela;prazo";
       console.log(">>> Template SIAPE gerado:", template);

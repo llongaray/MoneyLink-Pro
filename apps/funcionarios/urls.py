@@ -12,6 +12,7 @@ urlpatterns = [
    
     path('api/get/infogeral/', api_get_infogeral, name='api_get_infogeral'),
     path('api/get/infogeralemp/', api_get_infogeralemp, name='api_get_infogeralemp'),
+    path('api/get/horarios/', api_get_horarios, name='api_get_horarios'),
     path('api/get/infofuncionarios/', api_get_infofuncionarios, name='api_get_infofuncionarios'),
     path('api/get/funcionario/<int:funcionario_id>/', api_get_funcionario, name='api_get_funcionario'),
     path('api/download/arquivo/<int:arquivo_id>/', download_arquivo_funcionario, name='api_download_arquivo'),

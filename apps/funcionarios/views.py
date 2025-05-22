@@ -135,6 +135,7 @@ def api_get_infogeral(request):
         print(f"Erro em api_get_infogeral: {e}")
         return JsonResponse({'error': f'Erro ao buscar informações gerais: {e}'}, status=500)
 
+
 @require_GET
 def api_get_infogeralemp(request):
     """
@@ -179,8 +180,11 @@ def api_get_infogeralemp(request):
                 empresa_data['departamentos'].append(dept_data)
             
             # Busca lojas da empresa
+            print(f"Buscando lojas para empresa {empresa.id} - {empresa.nome}")
             lojas = Loja.objects.filter(empresa=empresa, status=True).order_by('nome')
+            print(f"Lojas encontradas: {lojas.count()}")
             for loja in lojas:
+                print(f"Adicionando loja: {loja.id} - {loja.nome}")
                 empresa_data['lojas'].append({
                     'id': loja.id,
                     'nome': loja.nome,
@@ -325,7 +329,7 @@ def api_get_funcionario(request, funcionario_id):
     try:
         funcionario = get_object_or_404(Funcionario.objects.select_related(
             'empresa', 'departamento', 'setor', 'cargo', 'horario', 'equipe', 'usuario'
-        ).prefetch_related('lojas'), pk=funcionario_id)
+        ).prefetch_related('lojas', 'arquivos', 'regras_comissionamento'), pk=funcionario_id)
         
         data = {
             'id': funcionario.id,
@@ -367,6 +371,26 @@ def api_get_funcionario(request, funcionario_id):
             'foto_url': funcionario.foto.url if funcionario.foto else None,
             'usuario_id': funcionario.usuario.id if funcionario.usuario else None,
             'usuario_username': funcionario.usuario.username if funcionario.usuario else None,
+            # Adiciona os arquivos do funcionário
+            'arquivos': [
+                {
+                    'id': arquivo.id,
+                    'titulo': arquivo.titulo,
+                    'descricao': arquivo.descricao or '',
+                    'nome_arquivo': arquivo.arquivo.name.split('/')[-1] if arquivo.arquivo else '',
+                    'download_url': arquivo.arquivo.url if arquivo.arquivo else None,
+                    'data_upload': arquivo.data_upload.strftime('%Y-%m-%d %H:%M:%S') if arquivo.data_upload else None,
+                }
+                for arquivo in funcionario.arquivos.filter(status=True)
+            ],
+            # Adiciona as regras de comissionamento
+            'regras_comissionamento': [
+                {
+                    'id': regra.id,
+                    'titulo': regra.titulo
+                }
+                for regra in funcionario.regras_comissionamento.filter(status=True)
+            ],
         }
         print("Dados do funcionário serializados:", data)
         return JsonResponse(data)

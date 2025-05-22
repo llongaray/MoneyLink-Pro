@@ -46,13 +46,13 @@ $(document).ready(function() {
             // Atualiza Meta SIAPE
             $('.card.meta-siape .info__valores .valor').text(data.meta_siape.valor_total);
             $('.card.meta-siape .info__valores .percentual .porcentagem').text(data.meta_siape.percentual + '%');
-            console.log("Meta atualizada 😊");
+            // console.log("Meta atualizada 😊");
         });
     }
 
     // Função modificada para colocar a tag BLACK em um box junto com o nome
     function checkForBlackStatus(element, valor) {
-        console.log('Iniciando checkForBlackStatus');
+        // console.log('Iniciando checkForBlackStatus');
         
         // Remove tag anterior se existir
         element.find('.black-tag').remove();
@@ -67,7 +67,7 @@ $(document).ready(function() {
         
         // Verifica se o valor é maior ou igual a 50000
         if (valorNumerico >= 50000) {
-            console.log('Adicionando tag BLACK');
+            // console.log('Adicionando tag BLACK');
             
             // Obter o nome atual
             const nomeAtual = element.find('.bar .nome').text();
@@ -80,10 +80,10 @@ $(document).ready(function() {
                 </div>
             `);
             
-            console.log('Tag BLACK adicionada com sucesso');
+            // console.log('Tag BLACK adicionada com sucesso');
         }
         
-        console.log('Finalizando checkForBlackStatus');
+        // console.log('Finalizando checkForBlackStatus');
     }
 
     // Função para atualizar os dados do pódium
@@ -168,7 +168,7 @@ $(document).ready(function() {
                 // Verifica se atingiu status Black
                 checkForBlackStatus($('.top5.box__ranking'), top5.total_fechamentos);
             }
-            console.log("Pódium atualizado 🚀");
+            // console.log("Pódium atualizado 🚀");
         });
     }
 

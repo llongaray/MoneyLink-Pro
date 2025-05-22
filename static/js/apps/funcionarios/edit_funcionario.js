@@ -6,6 +6,7 @@ $(document).ready(function() {
     const apiUrlEditFuncionario = '/rh/api/edit/funcionario/'; // Corrigido prefixo /rh/
     const apiUrlDeactivateFuncionario = '/rh/api/deactivate/funcionario/'; // Nova API
     const apiUrlGetComissao = '/rh/api/get/comissao/'; // API para buscar regras de comissão
+    const apiUrlInfoGeralEmp = '/rh/api/get/infogeralemp/'; // API para buscar dados gerais (empresas, equipes, horários)
     const placeholderImg = '/static/img/profile_placeholder.png'; // Corrigido caminho da imagem
 
     // --- Elementos do DOM ---
@@ -137,7 +138,8 @@ $(document).ready(function() {
                 console.log(`Item sendo adicionado ao select ${selectId}:`, { value, text, item });
                 
                 if (value && text) {
-                    const option = new Option(text, value);
+                    // Converte o valor para string para garantir compatibilidade na comparação
+                    const option = new Option(text, String(value));
                     $select.append(option);
                 } else {
                     console.warn(`Item inválido encontrado no select ${selectId}:`, item);
@@ -146,11 +148,25 @@ $(document).ready(function() {
             
             // Se houver um valor selecionado, tenta selecioná-lo
             if (selectedValue) {
-                console.log(`Tentando selecionar valor ${selectedValue} no select ${selectId}`);
-                $select.val(selectedValue);
+                // Converte para string para garantir compatibilidade
+                const strSelectedValue = String(selectedValue);
+                console.log(`Tentando selecionar valor ${strSelectedValue} no select ${selectId}`);
+                $select.val(strSelectedValue);
+                
                 // Verifica se o valor foi realmente selecionado
-                if ($select.val() !== selectedValue) {
-                    console.warn(`Valor ${selectedValue} não encontrado nas opções do select ${selectId}`);
+                if ($select.val() !== strSelectedValue) {
+                    console.warn(`Valor ${strSelectedValue} não encontrado nas opções do select ${selectId}`);
+                    // Verifica se existe alguma opção com o valor numérico
+                    const numValue = parseInt(strSelectedValue, 10);
+                    if (!isNaN(numValue)) {
+                        $select.find('option').each(function() {
+                            if (parseInt($(this).val(), 10) === numValue) {
+                                $(this).prop('selected', true);
+                                console.log(`Valor ${numValue} encontrado e selecionado como número no select ${selectId}`);
+                                return false; // break
+                            }
+                        });
+                    }
                 }
             }
         } else {
@@ -247,51 +263,152 @@ $(document).ready(function() {
         console.log("🚀 Carregando dados iniciais...");
         $tabelaResultadosBody.html('<tr><td colspan="7" class="text-center"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Carregando dados...</td></tr>');
 
-        Promise.all([
-            $.getJSON(apiUrlGeral),
-            $.getJSON(apiUrlFuncionarios),
-            $.getJSON(apiUrlGetComissao)
-        ]).then(([dataGeral, dataFuncionarios, dataComissao]) => {
-            console.log("✅ Dados gerais carregados:", dataGeral);
-            console.log("✅ Funcionários carregados:", dataFuncionarios);
-            console.log("✅ Regras de comissão carregadas:", dataComissao);
+        // Carrega dados gerais (empresas, departamentos, setores, cargos)
+        $.getJSON(apiUrlGeral)
+            .done(function(data) {
+                console.log("Dados gerais recebidos:", data);
+                // Armazena os dados em cache
+                todosEmpresas = data.empresas || [];
+                todosDepartamentos = data.departamentos || [];
+                todosSetores = data.setores || [];
+                todosCargos = data.cargos || [];
+                
+                // Extrai todas as lojas de todas as empresas
+                todasLojas = [];
+                if (data.empresas && data.empresas.length > 0) {
+                    console.log('Processando lojas de', data.empresas.length, 'empresas');
+                    data.empresas.forEach(empresa => {
+                        console.log('Verificando lojas da empresa:', empresa.id, empresa.nome);
+                        console.log('Lojas na empresa:', empresa.lojas ? empresa.lojas.length : 0);
+                        
+                        if (empresa.lojas && empresa.lojas.length > 0) {
+                            console.log('Lojas encontradas para empresa', empresa.id, ':', empresa.lojas);
+                            // Adiciona o ID da empresa a cada loja para facilitar o filtro
+                            const lojasComEmpresa = empresa.lojas.map(loja => {
+                                console.log('Processando loja:', loja.id, loja.nome);
+                                return {
+                                    ...loja,
+                                    empresa_id: empresa.id
+                                };
+                            });
+                            todasLojas = [...todasLojas, ...lojasComEmpresa];
+                        } else {
+                            console.log('Nenhuma loja encontrada para empresa', empresa.id);
+                        }
+                    });
+                }
+                console.log('Total de lojas carregadas:', todasLojas.length);
+                console.log('Lojas carregadas:', todasLojas);
+                
+                // Popula os selects de edição com os dados recebidos
+                popularSelect($editEmpresaSelect, todosEmpresas);
+                
+                // Popula os selects de filtro
+                const $filtroEmpresa = $('#filtro_empresa');
+                const $filtroDepartamento = $('#filtro_departamento');
+                const $filtroSetor = $('#filtro_setor');
+                const $filtroFuncao = $('#filtro_funcao');
+                
+                console.log("Populando selects de filtro...");
+                if ($filtroEmpresa.length) {
+                    console.log("Populando filtro de empresas");
+                    popularSelect($filtroEmpresa, todosEmpresas);
+                }
+                if ($filtroDepartamento.length) {
+                    console.log("Populando filtro de departamentos");
+                    popularSelect($filtroDepartamento, todosDepartamentos);
+                }
+                if ($filtroSetor.length) {
+                    console.log("Populando filtro de setores");
+                    popularSelect($filtroSetor, todosSetores);
+                }
+                if ($filtroFuncao.length) {
+                    console.log("Populando filtro de funções/cargos");
+                    popularSelect($filtroFuncao, todosCargos);
+                }
+                
+                // Carrega equipes e horários
+                $.getJSON(apiUrlInfoGeralEmp)
+                    .done(function(dataGeral) {
+                        console.log("Dados gerais recebidos:", dataGeral);
+                        
+                        // Processa equipes
+                        todasEquipes = dataGeral.equipes || [];
+                        popularSelect($editEquipeSelect, todasEquipes);
+                        console.log("Select de equipes populado com sucesso.");
+                        
+                        // Processa horários (extrai de todas as empresas)
+                        todosHorarios = [];
+                        if (dataGeral.empresas && dataGeral.empresas.length > 0) {
+                            // Extrai horários de todas as empresas e remove duplicados
+                            const horarioIds = new Set();
+                            dataGeral.empresas.forEach(empresa => {
+                                if (empresa.horarios && empresa.horarios.length > 0) {
+                                    empresa.horarios.forEach(horario => {
+                                        if (!horarioIds.has(horario.id)) {
+                                            horarioIds.add(horario.id);
+                                            // Adiciona campo display para o select
+                                            horario.display = `${horario.nome} (${horario.entrada || 'N/A'} - ${horario.saida || 'N/A'})`;
+                                            todosHorarios.push(horario);
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                        
+                        // Popula o select de horários
+                        popularSelect($editHorarioSelect, todosHorarios);
+                        console.log("Select de horários populado com sucesso.");
+                    })
+                    .fail(function(jqXHR, textStatus, errorThrown) {
+                        console.error("Erro ao carregar dados gerais (equipes e horários):", textStatus, errorThrown);
+                    });
+                
+                // Carrega regras de comissionamento
+                carregarRegrasComissionamento();
+                
+                console.log("Dados iniciais carregados e selects populados");
+            })
+            .fail(function(jqXHR, textStatus, errorThrown) {
+                console.error("Erro ao carregar dados gerais:", textStatus, errorThrown);
+                showMessage('error', 'Falha ao carregar dados necessários. Verifique a conexão ou contate o suporte.');
+            });
 
-            // Armazena dados gerais em cache
-            todosEmpresas = dataGeral.empresas || [];
-            todasLojas = dataGeral.lojas || [];
-            todosDepartamentos = dataGeral.departamentos || [];
-            todosSetores = dataGeral.setores || [];
-            todosCargos = dataGeral.cargos || [];
-            todosHorarios = dataGeral.horarios || [];
-            todasEquipes = dataGeral.equipes || [];
-            todasRegrasComissao = dataComissao.regras_comissionamento || [];
+        // Carrega dados para os cards
+        carregarDadosCards();
 
-            // Popula os selects de filtro
-            console.log("📝 Populando selects de filtro...");
-            popularSelect($('#filtro_empresa'), todosEmpresas, 'id', 'nome', 'Todas as Empresas', false);
-            popularSelect($('#filtro_departamento'), todosDepartamentos, 'id', 'nome', 'Todos os Departamentos', false);
-            popularSelect($('#filtro_setor'), todosSetores, 'id', 'nome', 'Todos os Setores', false);
-            popularSelect($('#filtro_funcao'), todosCargos, 'id', 'nome_com_hierarquia', 'Todas as Funções', false);
+        // Carrega lista de funcionários
+        $.getJSON(apiUrlFuncionarios)
+            .done(function(data) {
+                console.log("Dados de funcionários recebidos:", data);
+                // A API retorna um array diretamente, não um objeto com propriedade 'funcionarios'
+                todosFuncionarios = Array.isArray(data) ? data : [];
+                filtrarEAtualizarTabela();
+            })
+            .fail(function(jqXHR, textStatus, errorThrown) {
+                console.error("Erro ao carregar funcionários:", textStatus, errorThrown);
+                showMessage('error', 'Falha ao carregar lista de funcionários. Verifique a conexão ou contate o suporte.');
+            });
+    }
 
-            // Armazena funcionários em cache
-            todosFuncionarios = dataFuncionarios;
-
-            // Atualiza a tabela com todos os funcionários
-            console.log("📊 Atualizando tabela com todos os funcionários...");
-            popularTabelaResultados(todosFuncionarios);
-
-            // Mostra o card de resultados
-            $cardResultados.slideDown(400);
-
-            console.log("✅ Carregamento inicial concluído!");
-        }).catch(error => {
-            console.error("❌ Erro ao carregar dados iniciais:", error);
-            showMessage('danger', 'Erro ao carregar dados iniciais: ' + error);
-        });
+    // Função para carregar regras de comissionamento
+    function carregarRegrasComissionamento() {
+        console.log("Carregando regras de comissionamento...");
+        $.getJSON(apiUrlGetComissao)
+            .done(function(data) {
+                console.log("Regras de comissionamento recebidas:", data);
+                todasRegrasComissao = data.regras || [];
+                
+                console.log("Regras de comissionamento carregadas com sucesso.");
+            })
+            .fail(function(jqXHR, textStatus, errorThrown) {
+                console.error("Erro ao carregar regras de comissionamento:", textStatus, errorThrown);
+                showMessage('error', 'Falha ao carregar regras de comissionamento. Verifique a conexão ou contate o suporte.');
+            });
     }
 
     function filtrarEAtualizarTabela() {
-        console.log("🚀 Iniciando filtragem em tempo real...");
+        console.log("Filtrando e atualizando tabela...");
         
         const filtros = {
             apelido: $filtroApelido.val().toLowerCase(),
@@ -303,7 +420,7 @@ $(document).ready(function() {
             status: $('#filtro_status').val()
         };
         
-        console.log("📋 Filtros aplicados:", filtros);
+        console.log("Filtros aplicados:", filtros);
 
         // Filtra os funcionários usando os dados em cache
         let funcionariosFiltrados = todosFuncionarios.filter(f => {
@@ -345,7 +462,7 @@ $(document).ready(function() {
             return true;
         });
         
-        console.log("📊 Funcionários após filtragem:", funcionariosFiltrados);
+        console.log("Funcionários após filtragem:", funcionariosFiltrados);
         
         // Atualiza a tabela com os resultados filtrados
         popularTabelaResultados(funcionariosFiltrados);
@@ -355,7 +472,7 @@ $(document).ready(function() {
     }
 
     function popularTabelaResultados(funcionarios) {
-        console.log("📝 Populando tabela de resultados...");
+        console.log("Populando tabela de resultados...");
         $tabelaResultadosBody.empty(); // Limpa a tabela
 
         if (funcionarios.length === 0) {
@@ -366,7 +483,7 @@ $(document).ready(function() {
         const csrfToken = getCsrfToken(); // Obter o token CSRF uma vez para reutilizar
 
         funcionarios.forEach(f => {
-            console.log("📋 Processando funcionário:", f);
+            console.log("Processando funcionário:", f);
             const statusBadge = f.status ? '<span class="badge bg-success">Ativo</span>' : '<span class="badge bg-danger">Inativo</span>';
             const row = `
                 <tr>
@@ -386,7 +503,7 @@ $(document).ready(function() {
             $tabelaResultadosBody.append(row);
         });
         
-        console.log("✅ Tabela populada com sucesso!");
+        console.log("Tabela populada com sucesso!");
     }
 
     // --- Funções de Edição ---
@@ -420,7 +537,7 @@ $(document).ready(function() {
     }
 
     function popularFormEdicao(funcionario) {
-        console.log('📋 Populando formulário com dados:', funcionario);
+        console.log('Populando formulário com dados:', funcionario);
 
         // ID e dados básicos
         $('#edit_funcionario_id').val(funcionario.id || '');
@@ -458,13 +575,13 @@ $(document).ready(function() {
         }
 
         // Primeiro popula o select de empresa
-        console.log('🏢 Populando empresa:', funcionario.empresa_id);
+        console.log('Populando empresa:', funcionario.empresa_id);
         popularSelect($('#edit_empresa'), todosEmpresas, funcionario.empresa_id);
 
         // Aguarda o carregamento da empresa para continuar
         setTimeout(function() {
             // Popula departamentos e cargos
-            console.log('⏳ Carregando departamentos e cargos...');
+            console.log('Carregando departamentos e cargos...');
             popularEditDepartamentosCargos(
                 funcionario.empresa_id,
                 funcionario.departamento_id,
@@ -472,25 +589,25 @@ $(document).ready(function() {
             );
 
             // Popula horário e equipe
-            console.log('⏰ Selecionando horário:', funcionario.horario_id);
+            console.log('Selecionando horário:', funcionario.horario_id);
             $('#edit_horario').val(funcionario.horario_id || '');
-            console.log('👥 Selecionando equipe:', funcionario.equipe_id);
+            console.log('Selecionando equipe:', funcionario.equipe_id);
             $('#edit_equipe').val(funcionario.equipe_id || '');
 
             // Aguarda o carregamento dos departamentos para carregar setores
             setTimeout(function() {
-                console.log('🏢 Carregando setores para departamento:', funcionario.departamento_id);
+                console.log('Carregando setores para departamento:', funcionario.departamento_id);
                 popularEditSetores(funcionario.departamento_id, funcionario.setor_id);
             }, 300);
         }, 300);
 
         // Lojas (checkboxes)
-        console.log('🏪 Carregando lojas...');
+        console.log('Carregando lojas...');
         const lojasIds = (funcionario.lojas || []).map(l => l.id);
         popularEditLojas(funcionario.empresa_id, lojasIds);
 
         // Regras de comissionamento
-        console.log('💰 Carregando regras de comissionamento...');
+        console.log('Carregando regras de comissionamento...');
         const regrasIds = (funcionario.regras_comissionamento || []).map(r => r.id);
         popularCheckboxes(
             $('#edit_regras_comissionamento_container'),
@@ -524,8 +641,8 @@ $(document).ready(function() {
         $('#card-resultados').hide();
 
         // Log de verificação
-        console.log('✅ Formulário populado com sucesso');
-        console.log('📝 Campos preenchidos:', {
+        console.log('Formulário populado com sucesso');
+        console.log('Campos preenchidos:', {
             id: $('#edit_funcionario_id').val(),
             apelido: $('#edit_apelido').val(),
             nome_completo: $('#edit_nome_completo').val(),
@@ -560,16 +677,16 @@ $(document).ready(function() {
 
     // Popula Departamentos e Cargos no form de edição
     function popularEditDepartamentosCargos(empresaId, selectedDepartamentoId = null, selectedCargoId = null) {
-        console.log('🏢 Popularizando departamentos e cargos para empresa:', empresaId);
-        console.log('📋 Departamento selecionado:', selectedDepartamentoId);
-        console.log('👔 Cargo selecionado:', selectedCargoId);
+        console.log('Populando departamentos e cargos para empresa:', empresaId);
+        console.log('Departamento selecionado:', selectedDepartamentoId);
+        console.log('Cargo selecionado:', selectedCargoId);
         
         resetSelect($editDepartamentoSelect, '--- Carregando Departamentos ---', false);
         resetSelect($editCargoSelect, '--- Carregando Cargos ---', false);
         resetSelect($editSetorSelect, '--- Selecione o Departamento ---', true);
 
         if (!empresaId) {
-            console.warn('⚠️ Nenhuma empresa selecionada');
+            console.warn('Nenhuma empresa selecionada');
             resetSelect($editDepartamentoSelect, '--- Selecione a Empresa ---', true);
             resetSelect($editCargoSelect, '--- Selecione a Empresa ---', true);
             return;
@@ -577,10 +694,10 @@ $(document).ready(function() {
 
         // Filtra departamentos da empresa
         const deptsFiltrados = todosDepartamentos.filter(d => d.empresa_id == empresaId);
-        console.log('📋 Departamentos filtrados:', deptsFiltrados);
+        console.log('Departamentos filtrados:', deptsFiltrados);
         
         if (deptsFiltrados.length === 0) {
-            console.warn('⚠️ Nenhum departamento encontrado para a empresa:', empresaId);
+            console.warn('Nenhum departamento encontrado para a empresa:', empresaId);
             resetSelect($editDepartamentoSelect, '--- Nenhum Departamento Encontrado ---', true);
         } else {
             popularSelect($editDepartamentoSelect, deptsFiltrados, selectedDepartamentoId);
@@ -588,10 +705,10 @@ $(document).ready(function() {
 
         // Filtra cargos da empresa
         const cargosFiltrados = todosCargos.filter(c => c.empresa_id == empresaId);
-        console.log('👔 Cargos filtrados:', cargosFiltrados);
+        console.log('Cargos filtrados:', cargosFiltrados);
         
         if (cargosFiltrados.length === 0) {
-            console.warn('⚠️ Nenhum cargo encontrado para a empresa:', empresaId);
+            console.warn('Nenhum cargo encontrado para a empresa:', empresaId);
             resetSelect($editCargoSelect, '--- Nenhum Cargo Encontrado ---', true);
         } else {
             popularSelect($editCargoSelect, cargosFiltrados, selectedCargoId);
@@ -600,13 +717,13 @@ $(document).ready(function() {
         // Se um departamento foi pré-selecionado, dispara o change dele também para carregar setores
         if (selectedDepartamentoId) {
             setTimeout(() => {
-                console.log('🔄 Disparando change do departamento para carregar setores');
+                console.log('Disparando change do departamento para carregar setores');
                 $editDepartamentoSelect.trigger('editFormDepartamentoChange');
             }, 50);
         }
 
         // Log de verificação
-        console.log('✅ Departamentos e cargos populados:', {
+        console.log('Departamentos e cargos populados:', {
             departamento_selecionado: $editDepartamentoSelect.val(),
             cargo_selecionado: $editCargoSelect.val(),
             departamentos_disponiveis: deptsFiltrados.length,
@@ -616,30 +733,30 @@ $(document).ready(function() {
 
     // Popula Setores no form de edição
     function popularEditSetores(departamentoId, selectedSetorId = null) {
-        console.log('🏢 Popularizando setores para departamento:', departamentoId);
-        console.log('📋 Setor selecionado:', selectedSetorId);
+        console.log('Populando setores para departamento:', departamentoId);
+        console.log('Setor selecionado:', selectedSetorId);
         
         resetSelect($editSetorSelect, '--- Carregando Setores ---', false);
 
         if (!departamentoId) {
-            console.warn('⚠️ Nenhum departamento selecionado');
+            console.warn('Nenhum departamento selecionado');
             resetSelect($editSetorSelect, '--- Selecione o Departamento ---', true);
             return;
         }
 
         // Filtra setores do departamento
         const setoresFiltrados = todosSetores.filter(s => s.departamento_id == departamentoId);
-        console.log('📋 Setores filtrados:', setoresFiltrados);
+        console.log('Setores filtrados:', setoresFiltrados);
         
         if (setoresFiltrados.length === 0) {
-            console.warn('⚠️ Nenhum setor encontrado para o departamento:', departamentoId);
+            console.warn('Nenhum setor encontrado para o departamento:', departamentoId);
             resetSelect($editSetorSelect, '--- Nenhum Setor Encontrado ---', true);
         } else {
             popularSelect($editSetorSelect, setoresFiltrados, selectedSetorId);
         }
 
         // Log de verificação
-        console.log('✅ Setores populados:', {
+        console.log('Setores populados:', {
             setor_selecionado: $editSetorSelect.val(),
             setores_disponiveis: setoresFiltrados.length
         });
@@ -647,55 +764,101 @@ $(document).ready(function() {
 
     // Popula Lojas no form de edição
     function popularEditLojas(empresaId, selectedLojasIds = []) {
-        console.log('🏪 Popularizando lojas para empresa:', empresaId);
-        console.log('📋 Lojas selecionadas:', selectedLojasIds);
+        console.log('Populando lojas para empresa:', empresaId);
+        console.log('Lojas selecionadas:', selectedLojasIds);
         
         const $container = $('#edit_lojas_container');
         $container.empty();
 
         if (!empresaId) {
-            console.warn('⚠️ Nenhuma empresa selecionada');
+            console.warn('Nenhuma empresa selecionada');
             $container.html('<div class="alert alert-warning">Selecione uma empresa primeiro</div>');
             return;
         }
-
-        // Filtra lojas da empresa
-        const lojasFiltradas = todasLojas.filter(l => l.empresa_id == empresaId);
-        console.log('📋 Lojas filtradas:', lojasFiltradas);
         
-        if (lojasFiltradas.length === 0) {
-            console.warn('⚠️ Nenhuma loja encontrada para a empresa:', empresaId);
-            $container.html('<div class="alert alert-warning">Nenhuma loja encontrada para esta empresa</div>');
-            return;
-        }
-
-        // Cria os checkboxes
-        lojasFiltradas.forEach(loja => {
-            const $div = $('<div class="form-check">');
-            const $input = $('<input>', {
-                type: 'checkbox',
-                class: 'form-check-input loja-checkbox',
-                id: `edit_loja_${loja.id}`,
-                name: 'edit_lojas',
-                value: loja.id,
-                checked: selectedLojasIds.includes(loja.id)
+        // Busca diretamente da API para garantir que temos os dados mais recentes
+        console.log('Buscando lojas diretamente da API infogeralemp...');
+        $.getJSON(apiUrlInfoGeralEmp)
+            .done(function(data) {
+                console.log('Dados recebidos da API:', data);
+                
+                // Procura a empresa específica
+                let lojasDaEmpresa = [];
+                if (data.empresas && data.empresas.length > 0) {
+                    // Encontra a empresa pelo ID
+                    const empresa = data.empresas.find(e => String(e.id) === String(empresaId));
+                    
+                    if (empresa && empresa.lojas && empresa.lojas.length > 0) {
+                        console.log(`Encontrou empresa ${empresaId} com ${empresa.lojas.length} lojas:`, empresa.lojas);
+                        lojasDaEmpresa = empresa.lojas.map(loja => ({
+                            ...loja,
+                            empresa_id: empresa.id
+                        }));
+                    } else {
+                        console.warn(`Empresa ${empresaId} não encontrada ou sem lojas`);
+                    }
+                }
+                
+                // Atualiza o cache global de lojas
+                if (lojasDaEmpresa.length > 0) {
+                    // Adiciona apenas as lojas desta empresa (substitui se já existirem)
+                    const lojasDeOutrasEmpresas = todasLojas.filter(l => String(l.empresa_id) !== String(empresaId));
+                    todasLojas = [...lojasDeOutrasEmpresas, ...lojasDaEmpresa];
+                }
+                
+                console.log(`Lojas encontradas para empresa ${empresaId}:`, lojasDaEmpresa);
+                
+                // Exibe as lojas
+                if (lojasDaEmpresa.length === 0) {
+                    console.warn('Nenhuma loja encontrada para a empresa:', empresaId);
+                    $container.html('<div class="alert alert-warning">Nenhuma loja encontrada para esta empresa</div>');
+                    return;
+                }
+                
+                // Cria os checkboxes
+                lojasDaEmpresa.forEach(loja => {
+                    console.log('Criando checkbox para loja:', loja.id, loja.nome);
+                    
+                    // Converte para string para garantir compatibilidade na comparação
+                    const lojaId = String(loja.id);
+                    const isChecked = Array.isArray(selectedLojasIds) && 
+                                      selectedLojasIds.some(id => String(id) === lojaId);
+                    
+                    console.log(`Loja ${lojaId} (${loja.nome}) selecionada:`, isChecked);
+                    
+                    const $div = $('<div class="form-check">');
+                    const $input = $('<input>', {
+                        type: 'checkbox',
+                        class: 'form-check-input loja-checkbox',
+                        id: `edit_loja_${lojaId}`,
+                        name: 'edit_lojas',
+                        value: lojaId,
+                        checked: isChecked
+                    });
+                    
+                    const $label = $('<label>', {
+                        class: 'form-check-label',
+                        for: `edit_loja_${lojaId}`,
+                        text: loja.nome
+                    });
+                    
+                    $div.append($input).append($label);
+                    $container.append($div);
+                });
+                
+                console.log('Checkboxes de lojas criados com sucesso!');
+            })
+            .fail(function(jqXHR, textStatus, errorThrown) {
+                console.error('Erro ao carregar lojas:', textStatus, errorThrown);
+                $container.html('<div class="alert alert-danger">Erro ao carregar lojas. Tente novamente.</div>');
             });
-            const $label = $('<label>', {
-                class: 'form-check-label',
-                for: `edit_loja_${loja.id}`,
-                text: loja.nome
-            });
-            
-            $div.append($input, $label);
-            $container.append($div);
-        });
-
-        // Log de verificação
-        console.log('✅ Lojas populadas:', {
-            lojas_selecionadas: selectedLojasIds,
-            lojas_disponiveis: lojasFiltradas.length,
-            checkboxes_criados: $container.find('.loja-checkbox').length
-        });
+    }
+    
+    // Função para obter as lojas associadas a um funcionário
+    function obterLojasDoFuncionario(funcionarioId) {
+        // Esta função pode ser expandida no futuro para buscar as lojas associadas a um funcionário
+        // Por enquanto, retorna um array vazio
+        return [];
     }
 
     // Função para enviar o formulário de edição
@@ -816,14 +979,14 @@ $(document).ready(function() {
     // Filtragem em tempo real nos selects
     $('#filtro_empresa').on('change', function() {
         const empresaId = $(this).val();
-        console.log("🏢 Empresa selecionada:", empresaId);
+        console.log("Empresa selecionada:", empresaId);
         
         // Filtra departamentos e setores pela empresa selecionada
         const departamentosFiltrados = todosDepartamentos.filter(d => d.empresa_id == empresaId);
         const setoresFiltrados = todosSetores.filter(s => s.empresa_id == empresaId);
         
-        console.log("📋 Departamentos filtrados:", departamentosFiltrados);
-        console.log("📋 Setores filtrados:", setoresFiltrados);
+        console.log("Departamentos filtrados:", departamentosFiltrados);
+        console.log("Setores filtrados:", setoresFiltrados);
         
         // Atualiza os selects
         popularSelect($('#filtro_departamento'), departamentosFiltrados, 'id', 'nome', 'Todos os Departamentos', false);
@@ -838,12 +1001,12 @@ $(document).ready(function() {
 
     $('#filtro_departamento').on('change', function() {
         const departamentoId = $(this).val();
-        console.log("🏢 Departamento selecionado:", departamentoId);
+        console.log("Departamento selecionado:", departamentoId);
         
         // Filtra setores pelo departamento selecionado
         const setoresFiltrados = todosSetores.filter(s => s.departamento_id == departamentoId);
         
-        console.log("📋 Setores filtrados:", setoresFiltrados);
+        console.log("Setores filtrados:", setoresFiltrados);
         
         // Atualiza o select de setores
         popularSelect($('#filtro_setor'), setoresFiltrados, 'id', 'nome', 'Todos os Setores', false);
@@ -1059,6 +1222,62 @@ $(document).ready(function() {
                     title: 'Erro ao carregar dados',
                     text: 'Não foi possível carregar os dados do funcionário. Por favor, tente novamente.',
                     confirmButtonText: 'OK'
+                });
+            }
+        });
+    }
+
+    // Função para desativar funcionário
+    function desativarFuncionario(funcionarioId) {
+        console.log(`Desativando funcionário ID: ${funcionarioId}`);
+        
+        // Confirma com o usuário
+        Swal.fire({
+            title: 'Desativar Funcionário?',
+            text: "Esta ação marcará o funcionário como inativo no sistema.",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'Sim, desativar',
+            cancelButtonText: 'Cancelar'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                // Envia requisição para desativar
+                $.ajax({
+                    url: apiUrlDeactivateFuncionario,
+                    type: 'POST',
+                    data: {
+                        funcionario_id: funcionarioId
+                    },
+                    headers: {
+                        'X-CSRFToken': getCsrfToken()
+                    },
+                    success: function(response) {
+                        console.log("Funcionário desativado com sucesso:", response);
+                        
+                        // Exibe mensagem de sucesso
+                        Swal.fire(
+                            'Desativado!',
+                            'O funcionário foi desativado com sucesso.',
+                            'success'
+                        );
+                        
+                        // Atualiza a tabela
+                        setTimeout(() => {
+                            filtrarEAtualizarTabela();
+                        }, 1000);
+                    },
+                    error: function(xhr, status, error) {
+                        console.error("Erro ao desativar funcionário:", error);
+                        
+                        // Exibe mensagem de erro
+                        Swal.fire(
+                            'Erro!',
+                            `Não foi possível desativar o funcionário: ${xhr.responseJSON?.error || error}`,
+                            'error'
+                        );
+                    }
                 });
             }
         });
