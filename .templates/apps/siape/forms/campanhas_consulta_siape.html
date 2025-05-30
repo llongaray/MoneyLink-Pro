@@ -115,6 +115,29 @@
       </div>
     </div>
 
+    <!-- Card: Excluir Débitos da Campanha -->
+    <div id="col-excluir-debitos">
+      <div class="card shadow-sm" id="card-excluir-debitos">
+        <div class="card-header d-flex align-items-center text-white bg-danger" id="header-excluir-debitos">
+          <i class="bi bi-trash-fill me-2"></i>
+          Excluir Débitos de Campanha
+        </div>
+        <div class="card-body" id="body-excluir-debitos">
+          <form id="form-excluir-debitos-campanha">
+            <div class="form-group mb-3" id="group-campanha-excluir">
+              <label for="campanha_id_excluir" class="form-label">Selecionar Campanha:</label>
+              <select id="campanha_id_excluir" name="campanha_id_excluir" class="form-select" required>
+                <option value="">Selecione uma campanha para limpar os débitos...</option>
+              </select>
+            </div>
+            <button type="submit" class="btn btn-danger w-100" id="btn-excluir-debitos-campanha">
+              <i class="bi bi-trash me-2"></i>Excluir Débitos desta Campanha
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 {% endblock %}

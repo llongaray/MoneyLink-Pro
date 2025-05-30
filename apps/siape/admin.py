@@ -14,7 +14,7 @@ except ImportError:
 
 @admin.register(Campanha)
 class CampanhaAdmin(admin.ModelAdmin):
-    list_display = ('nome', 'get_setor_nome', 'data_criacao', 'status')
+    list_display = ('id', 'nome', 'get_setor_nome', 'data_criacao', 'status')
     list_filter = ('status', 'setor')
     search_fields = ('nome', 'setor__nome')
     list_editable = ('status',)
@@ -29,7 +29,7 @@ class CampanhaAdmin(admin.ModelAdmin):
 
 @admin.register(Cliente)
 class ClienteAdmin(admin.ModelAdmin):
-    list_display = ('nome', 'cpf', 'uf', 'situacao_funcional', 'renda_bruta', 'total_saldo')
+    list_display = ('id', 'nome', 'cpf', 'uf', 'situacao_funcional', 'renda_bruta', 'total_saldo')
     list_filter = ('uf', 'situacao_funcional', 'rjur')
     search_fields = ('nome', 'cpf')
     readonly_fields = ('total_util', 'total_saldo') # Campos calculados podem ser readonly
@@ -52,7 +52,7 @@ class ClienteAdmin(admin.ModelAdmin):
 
 @admin.register(Debito)
 class DebitoAdmin(admin.ModelAdmin):
-    list_display = ('cliente', 'campanha', 'matricula', 'banco', 'orgao', 'parcela', 'prazo_restante', 'tipo_contrato', 'num_contrato')
+    list_display = ('id', 'cliente', 'campanha', 'matricula', 'banco', 'orgao', 'parcela', 'prazo_restante', 'tipo_contrato', 'num_contrato')
     list_filter = ('banco', 'tipo_contrato', 'campanha', 'orgao')
     search_fields = ('matricula', 'num_contrato', 'cliente__nome', 'cliente__cpf', 'banco', 'orgao')
     autocomplete_fields = ('cliente', 'campanha') # Usar autocomplete para FKs com muitos registros
@@ -61,7 +61,7 @@ class DebitoAdmin(admin.ModelAdmin):
 
 @admin.register(Produto)
 class ProdutoAdmin(admin.ModelAdmin):
-    list_display = ('nome', 'descricao', 'ativo', 'data_criacao')
+    list_display = ('id', 'nome', 'descricao', 'ativo', 'data_criacao')
     list_filter = ('ativo',)
     search_fields = ('nome', 'descricao')
     list_editable = ('ativo',)
@@ -69,7 +69,7 @@ class ProdutoAdmin(admin.ModelAdmin):
 
 @admin.register(RegisterMoney)
 class RegisterMoneyAdmin(admin.ModelAdmin):
-    list_display = ('get_user_display', 'loja', 'produto', 'cpf_cliente', 'valor_est', 'status', 'data')
+    list_display = ('id', 'get_user_display', 'loja', 'produto', 'cpf_cliente', 'valor_est', 'status', 'data')
     list_filter = ('status', 'loja', 'produto', 'data')
     search_fields = (
         'user__username',
@@ -116,7 +116,7 @@ class RegisterMoneyAdmin(admin.ModelAdmin):
 
 @admin.register(RegisterMeta)
 class RegisterMetaAdmin(admin.ModelAdmin):
-    list_display = ('titulo', 'valor', 'categoria', 'get_target_display', 'data_inicio', 'data_fim', 'status')
+    list_display = ('id', 'titulo', 'valor', 'categoria', 'get_target_display', 'data_inicio', 'data_fim', 'status')
     list_filter = ('categoria', 'status', 'setor', 'equipe') # Adicionado equipe ao filtro
     search_fields = ('titulo', 'setor__nome', 'equipe__nome') # Adicionado equipe à busca
     filter_horizontal = ('equipe',) # Mantém para M2M
@@ -155,7 +155,7 @@ class RegisterMetaAdmin(admin.ModelAdmin):
 
 @admin.register(AgendamentoFichaCliente)
 class AgendamentoFichaClienteAdmin(admin.ModelAdmin):
-    list_display = ('get_cliente_nome', 'get_usuario_display', 'data', 'hora', 'status', 'data_criacao')
+    list_display = ('id', 'get_cliente_nome', 'get_usuario_display', 'data', 'hora', 'status', 'data_criacao')
     list_filter = ('status', 'data', 'usuario') # Adicionado usuário ao filtro
     search_fields = ('cliente__nome', 'cliente__cpf', 'usuario__username', 'usuario__first_name', 'usuario__last_name')
     date_hierarchy = 'data'
@@ -197,7 +197,7 @@ class AgendamentoFichaClienteAdmin(admin.ModelAdmin):
 # Adiciona a classe Admin para o modelo Reembolso
 @admin.register(Reembolso)
 class ReembolsoAdmin(admin.ModelAdmin):
-    list_display = ('registermoney', 'data_reembolso', 'status')
+    list_display = ('registermoney_id', 'registermoney', 'data_reembolso', 'status')
     list_filter = ('status', 'data_reembolso')
     search_fields = (
         'registermoney__cpf_cliente', # Busca pelo CPF do cliente no RegisterMoney

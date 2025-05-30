@@ -243,23 +243,37 @@ def api_get_ficha_cliente(request):
     API que retorna os dados da ficha de um cliente em formato JSON,
     considerando apenas os débitos associados a campanhas ativas e com prazo_restante > 0.
     """
+    print("🔍 [api_get_ficha_cliente] Iniciando busca de ficha do cliente")
+    
     if request.method != 'GET':
+        print("❌ [api_get_ficha_cliente] Método não permitido:", request.method)
         return JsonResponse({'erro': 'Método não permitido. Use GET.'}, status=405)
 
     cpf = request.GET.get('cpf')
+    print(f"🔍 [api_get_ficha_cliente] CPF recebido: {cpf}")
+    
     if not cpf:
+        print("❌ [api_get_ficha_cliente] CPF não fornecido")
         return JsonResponse({'erro': 'CPF não fornecido.'}, status=400)
 
     # Normaliza o CPF (supondo que a função normalize_cpf já esteja implementada)
     cpf_normalizado = normalize_cpf(cpf)
+    print(f"🔍 [api_get_ficha_cliente] CPF normalizado: {cpf_normalizado}")
+    
     if not cpf_normalizado:
+        print("❌ [api_get_ficha_cliente] CPF inválido após normalização")
         return JsonResponse({'erro': 'CPF inválido.'}, status=400)
 
     # Busca o cliente pelo CPF normalizado
+    print(f"🔍 [api_get_ficha_cliente] Buscando cliente com CPF: {cpf_normalizado}")
     cliente = Cliente.objects.filter(cpf=cpf_normalizado).first()
+    
     if not cliente:
+        print("❌ [api_get_ficha_cliente] Cliente não encontrado")
         return JsonResponse({'erro': 'Cliente não encontrado.'}, status=404)
 
+    print(f"✅ [api_get_ficha_cliente] Cliente encontrado: {cliente.nome}")
+    
     # Dados do cliente (informações pessoais e financeiras)
     cliente_data = {
         'id': cliente.id,
@@ -283,9 +297,13 @@ def api_get_ficha_cliente(request):
     }
 
     # Filtra os débitos do cliente associados a campanhas ativas e com prazo_restante > 0
+    print(f"🔍 [api_get_ficha_cliente] Buscando débitos para o cliente ID: {cliente.id}")
     debitos = Debito.objects.filter(cliente=cliente, campanha__status=True, prazo_restante__gt=0).select_related('campanha')
+    print(f"✅ [api_get_ficha_cliente] Encontrados {debitos.count()} débitos ativos")
+    
     lista_debitos = []
     for d in debitos:
+        print(f"📋 [api_get_ficha_cliente] Processando débito: {d.num_contrato} - Campanha: {d.campanha.nome if d.campanha else 'N/A'}")
         lista_debitos.append({
             'matricula': d.matricula,
             'banco': d.banco,
@@ -304,6 +322,7 @@ def api_get_ficha_cliente(request):
             },
         })
 
+    print("✅ [api_get_ficha_cliente] Retornando dados completos do cliente e débitos")
     return JsonResponse({
         'cliente': cliente_data,
         'debitos': lista_debitos
@@ -809,6 +828,7 @@ def api_post_importar_csv(request):
                 'banco': clean_text_field(get_safe_value(row, 'Banco', ''), 100),
                 'matricula': clean_text_field(get_safe_value(row, 'Matricula', ''), 50),
                 'orgao': clean_text_field(get_safe_value(row, 'Orgao', ''), 50),
+                'rebrica': clean_text_field(get_safe_value(row, 'Rebrica', ''), 50), # Adicionado campo Rebrica
                 'parcela': parse_valor_br(get_safe_value(row, 'Parcela', '0')),
                 'prazo_restante': parse_int(get_safe_value(row, 'Prazo_Restante', '0')),
                 'tipo_contrato': clean_text_field(get_safe_value(row, 'Tipo_de_Contrato', ''), 50),
@@ -852,6 +872,7 @@ def api_post_importar_csv(request):
                     banco=info['banco'],
                     matricula=info['matricula'],
                     orgao=info['orgao'],
+                    rebrica=info['rebrica'], # Adicionado campo rebrica
                     parcela=info['parcela'],
                     prazo_restante=info['prazo_restante'],
                     tipo_contrato=info['tipo_contrato'],
@@ -869,6 +890,54 @@ def api_post_importar_csv(request):
         'clientes_atualizados':len(atualizar),
         'debitos_criados':     len(debs),
     })
+
+
+@csrf_exempt
+@require_POST
+@login_required
+@transaction.atomic
+def api_post_excluir_debitos_campanha(request):
+    """
+    API endpoint para excluir todos os débitos associados a uma campanha.
+    Recebe o ID da campanha via POST.
+    """
+    logger.info("----- Iniciando api_post_excluir_debitos_campanha -----")
+    mensagem = {'texto': '', 'classe': ''}
+
+    try:
+        campanha_id = request.POST.get('campanha_id')
+        if not campanha_id:
+            logger.error("Erro: ID da campanha não fornecido.")
+            mensagem['texto'] = 'ID da campanha não fornecido.'
+            mensagem['classe'] = 'error'
+            return JsonResponse(mensagem, status=400)
+
+        try:
+            campanha_id_int = int(campanha_id)
+            campanha = Campanha.objects.get(pk=campanha_id_int)
+        except (ValueError, Campanha.DoesNotExist):
+            logger.error(f"Erro: Campanha com ID '{campanha_id}' inválido ou não encontrado.")
+            mensagem['texto'] = f'Campanha com ID \'{campanha_id}\' inválida ou não encontrada.'
+            mensagem['classe'] = 'error'
+            return JsonResponse(mensagem, status=404)
+
+        # Excluir débitos associados à campanha
+        debitos_excluidos, _ = Debito.objects.filter(campanha=campanha).delete()
+
+        mensagem['texto'] = f'{debitos_excluidos} débitos da campanha "{campanha.nome}" foram excluídos com sucesso! ✅'
+        mensagem['classe'] = 'success'
+        logger.info(f"{debitos_excluidos} débitos da campanha '{campanha.nome}' (ID: {campanha_id}) excluídos.")
+        status_code = 200
+
+    except Exception as e:
+        logger.error(f"Erro inesperado ao excluir débitos da campanha: {str(e)}")
+        mensagem['texto'] = f'Erro inesperado ao excluir débitos: {str(e)}'
+        mensagem['classe'] = 'error'
+        status_code = 500
+
+    logger.info("----- Finalizando api_post_excluir_debitos_campanha -----")
+    return JsonResponse(mensagem, status=status_code)
+
 
 
 # Antes de get_all_forms()

@@ -28,30 +28,30 @@ def check_access(departamento, nivel_minimo):
         @login_required
         def _wrapped_view(request, *args, **kwargs):
             user = request.user
-            print(f"\n----- Verificando acesso para o usuário: {user.username} -----")
+            # print(f"\n----- Verificando acesso para o usuário: {user.username} -----")
             
             if user.is_superuser or user.groups.filter(name='ADMINISTRAÇÃO').exists():
-                print(f"Usuário {user.username} é superuser ou pertence ao grupo ADMINISTRAÇÃO. Acesso concedido.")
+                # print(f"Usuário {user.username} é superuser ou pertence ao grupo ADMINISTRAÇÃO. Acesso concedido.")
                 return view_func(request, *args, **kwargs)
 
             funcionario, departamento_nome, cargo, nivel = get_user_info(user)
             
             if not funcionario:
-                print(f"Erro: Usuário {user.username} não tem um funcionário associado.")
+                # print(f"Erro: Usuário {user.username} não tem um funcionário associado.")
                 messages.error(request, "Usuário não tem um funcionário associado.")
                 return redirect('siape:ranking')
 
-            print(f"Funcionário: {funcionario}")
-            print(f"Departamento: {departamento_nome}")
-            print(f"Cargo: {cargo}")
-            print(f"Nível: {nivel}")
+            # print(f"Funcionário: {funcionario}")
+            # print(f"Departamento: {departamento_nome}")
+            # print(f"Cargo: {cargo}")
+            # print(f"Nível: {nivel}")
 
             # Verifica se o usuário pertence ao departamento ou ao grupo correspondente
             pertence_ao_departamento = departamento_nome == departamento
             pertence_ao_grupo = user.groups.filter(name=departamento).exists()
 
             if not (pertence_ao_departamento or pertence_ao_grupo) and departamento != 'TODOS':
-                print(f"Acesso negado. Usuário não pertence ao departamento ou grupo {departamento}.")
+                # print(f"Acesso negado. Usuário não pertence ao departamento ou grupo {departamento}.")
                 messages.error(request, f"Acesso negado. Você não pertence ao departamento {departamento}.")
                 return redirect('siape:ranking')
 
@@ -68,11 +68,11 @@ def check_access(departamento, nivel_minimo):
             nivel_minimo_req = niveis_hierarquia.get(nivel_minimo, 6)
             
             if nivel_usuario < nivel_minimo_req:
-                print(f"Acesso negado. Nível do usuário ({nivel}) é inferior ao requerido ({nivel_minimo}).")
+                # print(f"Acesso negado. Nível do usuário ({nivel}) é inferior ao requerido ({nivel_minimo}).")
                 messages.error(request, f"Acesso negado. Nível mínimo requerido: {nivel_minimo}.")
                 return redirect('geral:ranking', {'mensagem': {'texto': f"Acesso negado. Nível mínimo requerido: {nivel_minimo}.", 'classe': 'error'}})
 
-            print(f"Acesso concedido para {user.username}.")
+            # print(f"Acesso concedido para {user.username}.")
             return view_func(request, *args, **kwargs)
 
         return _wrapped_view
@@ -82,15 +82,15 @@ def check_access_light(view_func):
     @login_required
     def _wrapped_view(request, *args, **kwargs):
         user = request.user
-        print(f"\n----- Acesso leve verificado para o usuário: {user.username} -----")
+        # print(f"\n----- Acesso leve verificado para o usuário: {user.username} -----")
         funcionario, departamento_nome, cargo, nivel = get_user_info(user)
-        if funcionario:
-            print(f"Funcionário: {funcionario}")
-            print(f"Departamento: {departamento_nome}")
-            print(f"Cargo: {cargo}")
-            print(f"Nível: {nivel}")
-        else:
-            print(f"Aviso: Usuário {user.username} não tem um funcionário associado.")
+        #if funcionario:
+            # print(f"Funcionário: {funcionario}")
+            # print(f"Departamento: {departamento_nome}")
+            # print(f"Cargo: {cargo}")
+            # print(f"Nível: {nivel}")
+        #else:
+            # print(f"Aviso: Usuário {user.username} não tem um funcionário associado.")
         
         return view_func(request, *args, **kwargs)
     return _wrapped_view

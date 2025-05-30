@@ -145,10 +145,58 @@ Dashboard Administrativo<span class="produto-text"></span>
       </div>
     </div>
     {% endif %}
-
+    
   </div>
   {% endif %}
-
+  
+  
+    {# ========================================== #}
+    {#            SESSÃO: SIAPE                 #}
+    {# ========================================== #}
+    {% has_access user "SSXX" as can_sess_siape %} {# Substitua SSXX pela permission tag correta #}
+    {% if can_sess_siape %}
+    <div class="dashboard-section" id="sessao-siape">
+      <h2 class="section-title"><i class='bx bx-data'></i> Sessão SIAPE</h2>
+      <div class="box siape" id="box-siape-geral">
+        <div class="card" id="card-siape-fat-ano">
+          <span class="icon"><i class='bx bx-calendar-check'></i></span>
+          <span class="container-info">
+            <span class="title">Faturamento Ano (SIAPE)</span>
+            <span class="value" id="valor-siape-fat-ano">R$ 0,00</span>
+          </span>
+        </div>
+        <div class="card" id="card-siape-fat-mes">
+          <span class="icon"><i class='bx bx-calendar'></i></span>
+          <span class="container-info">
+            <span class="title">Faturamento Mês (SIAPE)</span>
+            <span class="value" id="valor-siape-fat-mes">R$ 0,00</span>
+          </span>
+        </div>
+        <div class="card" id="card-siape-melhor-func-ano">
+          <span class="icon-container" id="icon-container-siape-melhor-func-ano">
+            <img src="" alt="Foto Funcionário" class="funcionario-foto-dashboard" style="display:none;" />
+            <i class='bx bx-user-star funcionario-icon-dashboard-fallback'></i>
+          </span>
+          <span class="container-info">
+            <span class="title">Melhor Funcionário Ano (SIAPE)</span>
+            <span class="value" id="valor-siape-melhor-func-ano-nome">-</span>
+            <small class="text-muted" id="valor-siape-melhor-func-ano-valor">R$ 0,00</small>
+          </span>
+        </div>
+        <div class="card" id="card-siape-melhor-func-mes">
+          <span class="icon-container" id="icon-container-siape-melhor-func-mes">
+            <img src="" alt="Foto Funcionário" class="funcionario-foto-dashboard" style="display:none;" />
+            <i class='bx bxs-user-star funcionario-icon-dashboard-fallback'></i>
+          </span>
+          <span class="container-info">
+            <span class="title">Melhor Funcionário Mês (SIAPE)</span>
+            <span class="value" id="valor-siape-melhor-func-mes-nome">-</span>
+            <small class="text-muted" id="valor-siape-melhor-func-mes-valor">R$ 0,00</small>
+          </span>
+        </div>
+      </div>
+    </div>
+    {% endif %}
 
   {% has_access user "SS28" as can_sess_lojas %}
   {% if can_sess_lojas %}

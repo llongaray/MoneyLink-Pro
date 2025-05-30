@@ -6,7 +6,7 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin, GroupAdmin as 
 from django.utils.translation import gettext_lazy as _
 from django.contrib.admin.widgets import FilteredSelectMultiple
 
-from .models import Acesso, GroupsAcessos, ControleAcessos
+from .models import Acesso, GroupsAcessos, ControleAcessos, AlertaTI, AlertaTIVisto
 
 # -------------------------
 # Custom UserAdmin
@@ -88,3 +88,66 @@ class ControleAcessosAdmin(admin.ModelAdmin):
             kwargs['queryset'] = Acesso.objects.filter(status=True).order_by('tipo','nome')
             kwargs['widget']   = FilteredSelectMultiple('Acessos', is_stacked=False)
         return super().formfield_for_manytomany(db_field, request, **kwargs)
+
+# -------------------------
+# AlertaTIVistoAdmin
+# -------------------------
+@admin.register(AlertaTIVisto)
+class AlertaTIVistoAdmin(admin.ModelAdmin):
+    list_display = ('id', 'alerta', 'usuario', 'data_visualizacao')
+    list_filter = ('data_visualizacao', 'usuario')
+    search_fields = ('alerta__mensagem', 'usuario__username')
+    ordering = ('-data_visualizacao',)
+    readonly_fields = ('data_visualizacao',)
+    
+    fieldsets = (
+        (None, {
+            'fields': ('alerta', 'usuario')
+        }),
+        ('Informações de Visualização', {
+            'fields': ('data_visualizacao',),
+            'classes': ('collapse',)
+        }),
+    )
+
+# -------------------------
+# AlertaTIAdmin
+# -------------------------
+@admin.register(AlertaTI)
+class AlertaTIAdmin(admin.ModelAdmin):
+    list_display = ('id', 'mensagem', 'criado_por', 'data_criacao', 'ativo', 'total_destinatarios', 'total_vistos')
+    list_filter = ('ativo', 'data_criacao', 'criado_por')
+    search_fields = ('mensagem', 'criado_por__username')
+    ordering = ('-data_criacao',)
+    filter_horizontal = ('destinatarios',)
+    readonly_fields = ('data_criacao', 'total_destinatarios', 'total_vistos')
+    
+    fieldsets = (
+        (None, {
+            'fields': ('mensagem', 'audio', 'ativo')
+        }),
+        ('Destinatários', {
+            'fields': ('destinatarios',)
+        }),
+        ('Estatísticas', {
+            'fields': ('total_destinatarios', 'total_vistos'),
+            'classes': ('collapse',)
+        }),
+        ('Informações Adicionais', {
+            'fields': ('criado_por', 'data_criacao'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def total_destinatarios(self, obj):
+        return obj.destinatarios.count()
+    total_destinatarios.short_description = 'Total de Destinatários'
+    
+    def total_vistos(self, obj):
+        return obj.vistos.count()
+    total_vistos.short_description = 'Total de Visualizações'
+    
+    def save_model(self, request, obj, form, change):
+        if not change:  # Se for uma nova criação
+            obj.criado_por = request.user
+        super().save_model(request, obj, form, change)

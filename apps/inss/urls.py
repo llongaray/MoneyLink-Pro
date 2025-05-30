@@ -11,6 +11,7 @@ urlpatterns = [
     path('dashboard/', render_dashboard, name='dashboard'),
     path('all_forms/', render_inss_forms, name='all_forms'),
     path('ranking/', render_ranking, name='ranking'),
+    path('acoes/', render_acoesinss, name='acoes'),
 
     # APIs GET
     path('api/get/submodal-cliente/', api_get_submodal_cliente, name='api_get_submodal_cliente'),
@@ -21,6 +22,9 @@ urlpatterns = [
     path('api/get/infogeral/', api_get_infogeral, name='api_get_infogeral'),
     path('api/get/info-loja-funcionario/', api_get_infolojaefuncionario, name='api_get_infolojaefuncionario'),
     path('api/get/cpfclientenome/', api_get_cpfclientenome, name='api_get_cpfclientenome'),
+    path('api/get/acoes/', api_get_acoes, name='api_get_acoes'),
+    path('api/get/arquivosacoes/<int:acao_id>/', api_get_arquivosacoes, name='api_get_arquivosacoes'),
+    path('api/get/info_processo/<int:acao_id>/', api_get_info_processo, name='api_get_info_processo'),
     
     # APIs para a página de loja
     path('api/get/agendadosHoje/', api_get_agendadosHoje, name='api_get_agendadosHoje'),
@@ -37,6 +41,11 @@ urlpatterns = [
     path('api/post/agendamento/', api_post_agendamento, name='api_post_agendamento'),
     path('api/post/novavenda/', api_post_novavenda, name='api_post_novavenda'),
     path('api/post/addvenda/', api_post_addvenda, name='api_post_addvenda'),
+    path('api/post/finalizaratendimento/', api_post_finalizaratendimento, name='api_post_finalizaratendimento'),
+    path('api/post/adicionaracao/', api_post_adicionaracao, name='api_post_adicionaracao'),
+    path('api/post/acao/', api_post_adicionaracao, name='api_post_acao'),
+    path('api/post/clienterua_acao/', api_post_clienterua_acao, name='api_post_clienterua_acao'),
+    path('api/post/arquivo/', api_post_arquivo, name='api_post_arquivo'),
 
     # APIs de Ranking e Cards
     path('api/inss/cards/', api_get_cards, name='api_cards'),

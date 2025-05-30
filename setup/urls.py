@@ -10,6 +10,7 @@ urlpatterns = [
     path('rh/', include('apps.funcionarios.urls')),
     path('autenticacao/', include('apps.usuarios.urls')),
     path('moneyplus/', include('apps.moneyplus.urls')),
+    path('juridico/', include('apps.juridico.urls')),
     path('', include('apps.administrativo.urls')),
 ]
 

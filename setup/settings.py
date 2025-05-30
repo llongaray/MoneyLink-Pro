@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     'apps.moneyplus.apps.MoneyplusConfig',
     'custom_tags_app',
     'apps.administrativo.apps.AdministrativoConfig',
+    'apps.juridico.apps.JuridicoConfig',
 ]
 
 AUTHENTICATION_BACKENDS = [
@@ -63,7 +64,9 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'custom_tags_app.middleware.SetorRedirectMiddleware',
 ]
+
 ROOT_URLCONF = 'setup.urls'
 
 TEMPLATES = [
@@ -153,6 +156,7 @@ STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'static', 'files'),
 ]
 
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Media files
 MEDIA_URL = '/media/'

@@ -21,6 +21,11 @@ class ClienteAgendamento(models.Model):
 
 # Modelo para o agendamento em si
 class Agendamento(models.Model):
+    class StatusAtendimentoChoices(models.TextChoices):
+        EM_ATENDIMENTO = 'EM_ATENDIMENTO', 'EM ATENDIMENTO'
+        FINALIZADO = 'FINALIZADO', 'FINALIZADO'
+        AGUARDANDO = 'AGUARDANDO', 'AGUARDANDO'
+    
     cliente_agendamento = models.ForeignKey(
         ClienteAgendamento, 
         on_delete=models.CASCADE, # Se excluir o cliente, exclui o agendamento
@@ -44,6 +49,12 @@ class Agendamento(models.Model):
         verbose_name="Atendente que Agendou"
     )
     tabulacao_agendamento = models.TextField(blank=True, null=True, verbose_name="Tabulação do Agendamento")
+    status_atendimento = models.CharField(
+        max_length=20, 
+        choices=StatusAtendimentoChoices.choices,
+        default=StatusAtendimentoChoices.AGUARDANDO,
+        verbose_name="Status do Atendimento"
+    )
 
     def __str__(self):
         return f"Agendamento de {self.cliente_agendamento.nome_completo} para {self.dia_agendado.strftime('%d/%m/%Y %H:%M')} na loja {self.loja.nome}"

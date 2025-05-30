@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.core.validators import FileExtensionValidator
 
 class Acesso(models.Model):
     CATEGORIA_APP      = 'CT'
@@ -43,3 +44,51 @@ class ControleAcessos(models.Model):
 
     def __str__(self):
         return f"{self.user.username} – {self.acessos.count()} acessos"
+
+class AlertaTI(models.Model):
+    """
+    Modelo para armazenar alertas enviados pelo TI para os usuários.
+    """
+    mensagem = models.TextField(verbose_name="Mensagem")
+    destinatarios = models.ManyToManyField(
+        User,
+        related_name='alertas_ti_recebidos',
+        verbose_name="Destinatários"
+    )
+    audio = models.FileField(
+        upload_to='alertas/audios/',
+        verbose_name="Áudio de Alerta",
+        validators=[
+            FileExtensionValidator(allowed_extensions=['mp3', 'wav', 'ogg', 'mpeg', 'mpeg4'])
+        ]
+    )
+    data_criacao = models.DateTimeField(auto_now_add=True, verbose_name="Data de Criação")
+    ativo = models.BooleanField(default=True, verbose_name="Ativo")
+    criado_por = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        related_name='alertas_ti_criados',
+        verbose_name="Criado por"
+    )
+
+    def __str__(self):
+        return f"Alerta TI - {self.data_criacao.strftime('%d/%m/%Y %H:%M')}"
+
+    class Meta:
+        verbose_name = "Alerta TI"
+        verbose_name_plural = "Alertas TI"
+        ordering = ['-data_criacao']
+
+class AlertaTIVisto(models.Model):
+    """
+    Modelo para controlar quais alertas foram vistos por cada usuário
+    """
+    alerta = models.ForeignKey(AlertaTI, on_delete=models.CASCADE, related_name='vistos')
+    usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name='alertas_vistos')
+    data_visualizacao = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ['alerta', 'usuario']
+        verbose_name = "Alerta TI Visto"
+        verbose_name_plural = "Alertas TI Vistos"
+

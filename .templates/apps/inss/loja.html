@@ -6,7 +6,8 @@ Visão da Loja - INSS<span class="produto-text"></span>
 {% endblock %}
 
 {% block addcss_extra %}
-<link rel="stylesheet" href="{% static 'css/apps/inss/loja.css' %}"> {# Reutilizando o CSS de agendamento #}
+<link rel="stylesheet" href="{% static 'css/apps/inss/loja.css' %}">
+<link rel="stylesheet" href="{% static 'css/cliente_rua.css' %}">
 <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
 {% endblock %}
 
@@ -15,148 +16,222 @@ Visão da Loja - INSS<span class="produto-text"></span>
     <div class="row">
         <!-- COLUNA 1: Ações Rápidas / Registro Cliente Rua -->
         <div class="col-md-4">
+            <!-- Card Cliente Rua INSS -->
             <div class="card mb-4">
-                <div class="card-header bg-primary text-white">
-                    <i class='bx bx-walk me-2'></i> Registrar Cliente Rua
+                <div class="card-header bg-primary text-white" data-bs-toggle="collapse" data-bs-target="#collapseClienteRuaForm" aria-expanded="false" aria-controls="collapseClienteRuaForm">
+                    <i class='bx bx-walk me-2'></i> Cliente Rua INSS
+                    <i class='bx bx-chevron-down float-end'></i>
                 </div>
-                <div class="card-body">
-                    <form id="formClienteRuaInline" method="POST" action="{% url 'inss:all_forms' %}">
-                        {% csrf_token %}
-                        <input type="hidden" name="form_type" value="cliente_rua">
+                <div class="collapse" id="collapseClienteRuaForm">
+                    <div class="card-body">
+                        <form id="formClienteRuaInline" method="POST" action="{% url 'inss:all_forms' %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_type" value="cliente_rua">
 
-                        <!-- SEÇÃO: INFORMAÇÕES DO CLIENTE -->
-                        <h6 class="section-title"><i class='bx bx-user-detail me-2'></i>Informações do Cliente</h6>
-                        <div class="divider mb-2"></div>
+                            <!-- SEÇÃO: INFORMAÇÕES DO CLIENTE -->
+                            <h6 class="section-title"><i class='bx bx-user-detail me-2'></i>Informações do Cliente</h6>
 
-                        <div class="mb-2">
-                            <label for="nome_cliente_rua_inline" class="form-label">Nome*</label>
-                            <input type="text" id="nome_cliente_rua_inline" name="nome_cliente" class="form-control form-control-sm" required maxlength="255">
-                        </div>
+                            <div class="mb-2">
+                                <label for="nome_cliente_rua_inline" class="form-label">Nome*</label>
+                                <input type="text" id="nome_cliente_rua_inline" name="nome_cliente" class="form-control form-control-sm" required maxlength="255">
+                            </div>
 
-                        <div class="mb-2">
-                            <label for="cpf_cliente_rua_inline" class="form-label">CPF*</label>
-                            <input type="text" id="cpf_cliente_rua_inline" name="cpf_cliente" class="form-control form-control-sm" required maxlength="14" placeholder="000.000.000-00">
-                        </div>
+                            <div class="mb-2">
+                                <label for="cpf_cliente_rua_inline" class="form-label">CPF*</label>
+                                <input type="text" id="cpf_cliente_rua_inline" name="cpf_cliente" class="form-control form-control-sm" required maxlength="14" placeholder="000.000.000-00">
+                            </div>
 
-                        <div class="mb-2">
-                            <label for="numero_cliente_rua_inline" class="form-label">Celular*</label>
-                            <input type="text" id="numero_cliente_rua_inline" name="numero_cliente" class="form-control form-control-sm" required maxlength="15" placeholder="(00) 0 0000-0000">
-                        </div>
+                            <div class="mb-2">
+                                <label for="numero_cliente_rua_inline" class="form-label">Contato*</label>
+                                <input type="text" id="numero_cliente_rua_inline" name="numero_cliente" class="form-control form-control-sm" required placeholder="(00) 0 0000-0000">
+                            </div>
 
-                        <div class="mb-2">
-                            <label for="data_comparecimento_rua_inline" class="form-label">Data Comparecimento*</label>
-                            <input type="date" id="data_comparecimento_rua_inline" name="data_comparecimento" class="form-control form-control-sm" required>
-                        </div>
+                            <div class="mb-2">
+                                <label for="data_comparecimento_rua_inline" class="form-label">Data Comparecimento*</label>
+                                <input type="date" id="data_comparecimento_rua_inline" name="data_comparecimento" class="form-control form-control-sm" required>
+                            </div>
 
-                        <!-- SEÇÃO: INFORMAÇÕES DO ATENDIMENTO -->
-                        <h6 class="section-title mt-3"><i class='bx bx-headset me-2'></i>Informações do Atendimento</h6>
-                        <div class="divider mb-2"></div>
+                            <div class="divider mb-2"></div>
+                            <!-- SEÇÃO: INFORMAÇÕES DO ATENDIMENTO -->
+                            <h6 class="section-title mt-3"><i class='bx bx-headset me-2'></i>Informações do Atendimento</h6>
 
-                        <div class="mb-2">
-                            <label for="loja_rua_inline" class="form-label">Loja*</label>
-                            <select id="loja_rua_inline" name="loja" class="form-select form-select-sm" required>
-                                <option value="">Selecione uma loja</option>
-                            </select>
-                        </div>
+                            <div class="mb-2">
+                                <label for="loja_rua_inline" class="form-label">Loja*</label>
+                                <select id="loja_rua_inline" name="loja" class="form-select form-select-sm" required>
+                                    <option value="">Selecione uma loja</option>
+                                </select>
+                            </div>
 
-                        <div class="mb-2">
-                            <label for="vendedor_rua_inline" class="form-label">Vendedor*</label>
-                            <select id="vendedor_rua_inline" name="vendedor_id" class="form-select form-select-sm" required>
-                                <option value="">Selecione um vendedor</option>
-                            </select>
-                        </div>
+                            <div class="mb-2">
+                                <label for="vendedor_rua_inline" class="form-label">Atendido por*</label>
+                                <select id="vendedor_rua_inline" name="vendedor_id" class="form-select form-select-sm" required>
+                                    <option value="">Selecione um vendedor</option>
+                                </select>
+                            </div>
 
-                        <div class="mb-3"> {# Mais margem antes da tabulação #}
-                            <label for="tabulacao_vendedor_rua_inline" class="form-label">Tabulação Vendedor*</label>
-                            <select id="tabulacao_vendedor_rua_inline" name="tabulacao_vendedor" class="form-select form-select-sm" required onchange="handleTabulacaoVendedorInline()"> {# JS function a ser criada #}
-                                <option value="">Selecione uma opção</option>
-                                <option value="NEGÓCIO FECHADO">NEGÓCIO FECHADO</option>
-                                <option value="INELEGIVEL">INELEGIVEL</option>
-                                <option value="NÃO ACEITOU">NÃO ACEITOU</option>
-                                <option value="NÃO QUIS OUVIR">NÃO QUIS OUVIR</option>
-                                <option value="PENDENTE">PENDENTE</option>
-                            </select>
-                        </div>
+                            <div class="mb-3">
+                                <label for="tabulacao_vendedor_rua_inline" class="form-label">Tabulação Venda*</label>
+                                <select id="tabulacao_vendedor_rua_inline" name="tabulacao_vendedor" class="form-select form-select-sm" required>
+                                    <option value="">Selecione uma opção</option>
+                                    <option value="NEGOCIO_FECHADO">NEGÓCIO FECHADO</option>
+                                    <option value="INELEGIVEL">INELEGIVEL</option>
+                                    <option value="NÃO ACEITOU">NÃO ACEITOU</option>
+                                    <option value="NÃO QUIS OUVIR">NÃO QUIS OUVIR</option>
+                                </select>
+                            </div>
 
-                        <!-- Botão para adicionar produtos (inicialmente oculto) -->
-                        <div id="addProdutoBtnContainerInline" class="mb-3" style="display: none;">
-                             <button type="button" id="btnAddProdutoInline" class="btn btn-secondary btn-sm w-100">
-                                <i class='bx bx-plus-circle me-1'></i> Adicionar Produto/Negociação
+                            <!-- Container para motivo (aparece apenas para INELEGIVEL, NÃO ACEITOU, NÃO QUIS OUVIR) -->
+                            <div id="motivoContainerInline" class="mb-3">
+                                <label for="motivo_rua_inline" class="form-label">Motivo*</label>
+                                <textarea id="motivo_rua_inline" name="motivo" class="form-control form-control-sm" rows="3"></textarea>
+                            </div>
+
+                            <!-- Botão para adicionar produtos (aparece apenas para NEGÓCIO FECHADO) -->
+                            <div id="addProdutoBtnContainerInss" class="mb-3">
+                                <button type="button" id="btnAddProdutoInss" class="btn btn-secondary btn-sm w-100">
+                                    <i class='bx bx-plus-circle me-1'></i> Adicionar Produto
+                                </button>
+                            </div>
+
+                            <!-- Container onde os formulários de produto serão adicionados -->
+                            <div id="produtosContainerInline">
+                                <!-- Produtos adicionados via JS aparecerão aqui -->
+                            </div>
+
+                            <div class="divider mt-3"></div>
+                            <button type="submit" class="btn btn-primary w-100 btn-submit">
+                                <i class='bx bx-save me-2'></i> Salvar Cliente
                             </button>
-                        </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
 
-                        <!-- Container onde os formulários de produto serão adicionados -->
-                        <div id="produtosContainerInline">
-                            <!-- Produtos adicionados via JS aparecerão aqui -->
-                        </div>
+            <!-- Card Cliente Rua com Ação -->
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white" data-bs-toggle="collapse" data-bs-target="#collapseClienteRuaAcaoForm" aria-expanded="false" aria-controls="collapseClienteRuaAcaoForm">
+                    <i class='bx bx-gavel me-2'></i> Cliente Rua com Ação
+                    <i class='bx bx-chevron-down float-end'></i>
+                </div>
+                <div class="collapse" id="collapseClienteRuaAcaoForm">
+                    <div class="card-body">
+                        <form id="formClienteRuaAcaoInline" method="POST" action="">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_type" value="cliente_rua_acao">
 
-                        <!-- Template para um bloco de produto (não será renderizado inicialmente) -->
-                        <template id="produtoTemplateInline">
-                            <div class="produto-bloco mb-3 p-2 border rounded">
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                     <h6 class="section-title-produto m-0"><i class='bx bx-package me-1'></i>Detalhes do Produto</h6>
-                                    <button type="button" class="btn btn-danger btn-sm btn-remove-produto">
-                                        <i class='bx bx-trash'></i>
-                                    </button>
-                                </div>
-                                <div class="divider mb-2"></div>
+                            <!-- SEÇÃO: INFORMAÇÕES DO CLIENTE -->
+                            <h6 class="section-title"><i class='bx bx-user-detail me-2'></i>Informações do Cliente</h6>
 
-                                <div class="mb-2">
-                                    <label for="tipo_negociacao_rua_inline___INDEX__" class="form-label">Tipo Negociação</label>
-                                    <select id="tipo_negociacao_rua_inline___INDEX__" name="produtos[__INDEX__][produto_id]" class="form-select form-select-sm">
-                                        <option value="">Selecione um produto</option>
-                                        <!-- Opções serão preenchidas via JavaScript -->
-                                    </select>
+                            <div class="mb-2">
+                                <label for="nome_cliente_rua_acao_inline" class="form-label">Nome*</label>
+                                <input type="text" id="nome_cliente_rua_acao_inline" name="nome_cliente" class="form-control form-control-sm" required maxlength="255">
+                            </div>
+
+                            <div class="mb-2">
+                                <label for="cpf_cliente_rua_acao_inline" class="form-label">CPF*</label>
+                                <input type="text" id="cpf_cliente_rua_acao_inline" name="cpf_cliente" class="form-control form-control-sm" required maxlength="14" placeholder="000.000.000-00">
+                            </div>
+
+                            <div class="mb-2">
+                                <label for="numero_cliente_rua_acao_inline" class="form-label">Contato*</label>
+                                <input type="text" id="numero_cliente_rua_acao_inline" name="numero_cliente" class="form-control form-control-sm" required placeholder="(00) 0 0000-0000">
+                            </div>
+
+                            <div class="mb-2">
+                                <label for="data_comparecimento_rua_acao_inline" class="form-label">Data Comparecimento*</label>
+                                <input type="date" id="data_comparecimento_rua_acao_inline" name="data_comparecimento" class="form-control form-control-sm" required>
+                            </div>
+
+                            <div class="divider mb-2"></div>
+                            <!-- SEÇÃO: INFORMAÇÕES DO ATENDIMENTO -->
+                            <h6 class="section-title mt-3"><i class='bx bx-headset me-2'></i>Informações do Atendimento</h6>
+
+                            <div class="mb-2">
+                                <label for="loja_rua_acao_inline" class="form-label">Loja*</label>
+                                <select id="loja_rua_acao_inline" name="loja" class="form-select form-select-sm" required>
+                                    <option value="">Selecione uma loja</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-2">
+                                <label for="vendedor_rua_acao_inline" class="form-label">Atendido por*</label>
+                                <select id="vendedor_rua_acao_inline" name="vendedor_id" class="form-select form-select-sm" required>
+                                    <option value="">Selecione um vendedor</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-2">
+                                <label for="senha_inss_rua_acao_inline" class="form-label">Senha INSS</label>
+                                <input type="text" id="senha_inss_rua_acao_inline" name="senha_inss" class="form-control form-control-sm">
+                            </div>
+
+                            <div class="mb-2">
+                                <label for="tipo_acao_rua_acao_inline" class="form-label">Tipo de Ação*</label>
+                                <select id="tipo_acao_rua_acao_inline" name="tipo_acao" class="form-select form-select-sm" required>
+                                    <option value="">Selecione o tipo de ação</option>
+                                    <option value="ASSOCIACAO">Associação</option>
+                                    <option value="CARTAO">Cartão</option>
+                                    <option value="DEBITO">Débito em Conta</option>
+                                    <option value="LIMPANOME">Limpa Nome</option>
+                                    <option value="REVISIONAL">Revisional</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-2">
+                                <label for="tipo_pagamento_rua_acao_inline" class="form-label">Tipo de Pagamento*</label>
+                                <select id="tipo_pagamento_rua_acao_inline" name="tipo_pagamento" class="form-select form-select-sm" required onchange="handleTipoPagamentoAcaoInline()">
+                                    <option value="">Selecione o tipo de pagamento</option>
+                                    <option value="SEM_PAGAMENTO">Sem Pagamento</option>
+                                    <option value="A_VISTA">À Vista</option>
+                                    <option value="PARCELADO">Parcelado</option>
+                                </select>
+                            </div>
+
+                            <!-- Campos condicionais para pagamento -->
+                            <div id="camposPagamentoAcaoInline" style="display: none;">
+                                <!-- Campos para pagamento à vista -->
+                                <div id="camposAVistaAcaoInline" class="mb-2" style="display: none;">
+                                    <label for="valor_total_rua_acao_inline" class="form-label">Valor Total*</label>
+                                    <input type="text" id="valor_total_rua_acao_inline" name="valor_total" class="form-control form-control-sm" pattern="[0-9,.]*" inputmode="decimal" placeholder="0,00" oninput="this.value = this.value.replace(/[^0-9,.]/g, '');">
                                 </div>
-                                <div class="mb-2">
-                                    <label for="banco_rua_inline___INDEX__" class="form-label">Banco</label>
-                                    <input type="text" id="banco_rua_inline___INDEX__" name="produtos[__INDEX__][banco]" class="form-control form-control-sm text-uppercase">
-                                </div>
-                                <div class="mb-2">
-                                    <label for="subsidio_rua_inline___INDEX__" class="form-label">Subsídio</label>
-                                    <select id="subsidio_rua_inline___INDEX__" name="produtos[__INDEX__][subsidio]" class="form-select form-select-sm">
-                                        <option value="">Selecione</option>
-                                        <option value="true">Sim</option>
-                                        <option value="false">Não</option>
-                                    </select>
-                                </div>
-                                <div class="mb-2">
-                                    <label for="valor_tac_rua_inline___INDEX__" class="form-label">Valor TC</label>
-                                    <input type="text" id="valor_tac_rua_inline___INDEX__" name="produtos[__INDEX__][valor_tac]" class="form-control form-control-sm money">
-                                </div>
-                                <div class="mb-2">
-                                    <label for="acao_rua_inline___INDEX__" class="form-label">Com Ação Judicial</label>
-                                    <select id="acao_rua_inline___INDEX__" name="produtos[__INDEX__][acao]" class="form-select form-select-sm">
-                                        <option value="">Selecione</option>
-                                        <option value="true">Sim</option>
-                                        <option value="false">Não</option>
-                                    </select>
-                                </div>
-                                <div class="mb-2">
-                                    <label for="associacao_rua_inline___INDEX__" class="form-label">Com Associação</label>
-                                    <select id="associacao_rua_inline___INDEX__" name="produtos[__INDEX__][associacao]" class="form-select form-select-sm">
-                                        <option value="">Selecione</option>
-                                        <option value="true">Sim</option>
-                                        <option value="false">Não</option>
-                                    </select>
-                                </div>
-                                <div class="mb-2">
-                                    <label for="aumento_rua_inline___INDEX__" class="form-label">Com Aumento de Margem</label>
-                                    <select id="aumento_rua_inline___INDEX__" name="produtos[__INDEX__][aumento]" class="form-select form-select-sm">
-                                        <option value="">Selecione</option>
-                                        <option value="true">Sim</option>
-                                        <option value="false">Não</option>
-                                    </select>
+
+                                <!-- Campos para pagamento parcelado -->
+                                <div id="camposParceladoAcaoInline" class="mb-2" style="display: none;">
+                                    <div class="row">
+                                        <div class="col-md-4">
+                                            <label for="valor_entrada_rua_acao_inline" class="form-label">Valor Entrada*</label>
+                                            <input type="text" id="valor_entrada_rua_acao_inline" name="valor_entrada" class="form-control form-control-sm" pattern="[0-9,.]*" inputmode="decimal" placeholder="0,00" oninput="this.value = this.value.replace(/[^0-9,.]/g, '');">
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label for="qtd_parcelas_rua_acao_inline" class="form-label">Qtd. Parcelas*</label>
+                                            <input type="number" id="qtd_parcelas_rua_acao_inline" name="qtd_parcelas" class="form-control form-control-sm" min="1">
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label for="valor_parcela_rua_acao_inline" class="form-label">Valor Parcela*</label>
+                                            <input type="text" id="valor_parcela_rua_acao_inline" name="valor_parcela" class="form-control form-control-sm" pattern="[0-9,.]*" inputmode="decimal" placeholder="0,00" oninput="this.value = this.value.replace(/[^0-9,.]/g, '');">
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                        </template>
 
-                        <div class="divider mt-3"></div>
-                        <button type="submit" class="btn btn-primary w-100 btn-submit">
-                            <i class='bx bx-save me-2'></i> Salvar Cliente e Produtos
-                        </button>
-                    </form>
-                    {# Necessário JS para máscaras (CPF, Celular, TAC), lógica condicional e validação #}
+                            <!-- Botão para adicionar arquivo -->
+                            <div id="addArquivoBtnContainerInline" class="mb-3">
+                                <button type="button" id="btnAddArquivoInline" class="btn btn-secondary btn-sm w-100">
+                                    <i class='bx bx-plus-circle me-1'></i> Adicionar Arquivo
+                                </button>
+                            </div>
+
+                            <!-- Container onde os arquivos serão adicionados -->
+                            <div id="arquivosContainerInline">
+                                <!-- Arquivos adicionados via JS aparecerão aqui -->
+                            </div>
+
+                            <div class="divider mt-3"></div>
+                            <button type="submit" class="btn btn-primary w-100 btn-submit">
+                                <i class='bx bx-save me-2'></i> Salvar Cliente com Ação
+                            </button>
+                        </form>
+                    </div>
                 </div>
             </div>
         </div>
@@ -165,11 +240,11 @@ Visão da Loja - INSS<span class="produto-text"></span>
         <div class="col-md-8">
             <!-- Card Clientes Agendados para Hoje -->
             <div class="card mb-4">
-                <div class="card-header" data-bs-toggle="collapse" data-bs-target="#collapseClientesHoje" aria-expanded="true" aria-controls="collapseClientesHoje">
+                <div class="card-header" data-bs-toggle="collapse" data-bs-target="#collapseClientesHoje" aria-expanded="false" aria-controls="collapseClientesHoje">
                     <i class='bx bx-calendar-star me-2'></i> Clientes Agendados para Hoje na Loja
                     <i class='bx bx-chevron-down float-end'></i>
                 </div>
-                <div class="collapse show" id="collapseClientesHoje"> {# Começa expandido (show) #}
+                <div class="collapse" id="collapseClientesHoje"> {# Removido 'show' #}
                     <div class="card-body">
                         <form id="formFiltroClientesHoje">
                             <div class="filtros-wrapper mb-3">
@@ -216,7 +291,7 @@ Visão da Loja - INSS<span class="produto-text"></span>
             </div>
 
             <!-- Card Agendamentos Pendentes na Loja -->
-            <div class="card mb-4 collapsed"> {# Começa fechado #}
+            <div class="card mb-4 collapsed"> {# 'collapsed' class no card pai é opcional, mas mantido. O 'show' no div.collapse é o principal. #}
                 <div class="card-header" data-bs-toggle="collapse" data-bs-target="#collapseAgendamentosPendentes" aria-expanded="false" aria-controls="collapseAgendamentosPendentes">
                     <i class='bx bx-calendar-week me-2'></i> Agendamentos Pendentes na Loja
                     <i class='bx bx-chevron-down float-end'></i>
@@ -268,7 +343,7 @@ Visão da Loja - INSS<span class="produto-text"></span>
             </div>
 
             <!-- Card Clientes que Não Compareceram na Loja -->
-            <div class="card mb-4 collapsed"> {# Começa fechado #}
+            <div class="card mb-4 collapsed"> {# 'collapsed' class no card pai é opcional, mas mantido. O 'show' no div.collapse é o principal. #}
                 <div class="card-header" data-bs-toggle="collapse" data-bs-target="#collapseClientesNaoPresentes" aria-expanded="false" aria-controls="collapseClientesNaoPresentes">
                     <i class='bx bx-calendar-x me-2'></i> Clientes que Não Compareceram na Loja
                     <i class='bx bx-chevron-down float-end'></i>
@@ -359,7 +434,7 @@ Visão da Loja - INSS<span class="produto-text"></span>
 
                     <div class="mb-3">
                         <label for="numero_cliente_rua" class="form-label">Número de Celular*</label>
-                        <input type="text" id="numero_cliente_rua" name="numero_cliente" class="form-control" required maxlength="15" placeholder="(00) 0 0000-0000">
+                        <input type="text" id="numero_cliente_rua" name="numero_cliente" class="form-control" required placeholder="(00) 0 0000-0000">
                     </div>
 
                     <div class="mb-3">
@@ -389,7 +464,7 @@ Visão da Loja - INSS<span class="produto-text"></span>
                         <label for="tabulacao_vendedor_rua" class="form-label">Tabulação Vendedor*</label>
                         <select id="tabulacao_vendedor_rua" name="tabulacao_vendedor" class="form-select" required onchange="handleTabulacaoVendedorRua()">
                             <option value="">Selecione uma opção</option>
-                            <option value="NEGÓCIO FECHADO">NEGÓCIO FECHADO</option>
+                            <option value="NEGOCIO_FECHADO">NEGÓCIO FECHADO</option>
                             <option value="INELEGIVEL">INELEGIVEL</option>
                             <option value="NÃO ACEITOU">NÃO ACEITOU</option>
                             <option value="NÃO QUIS OUVIR">NÃO QUIS OUVIR</option>
@@ -426,16 +501,7 @@ Visão da Loja - INSS<span class="produto-text"></span>
 
                         <div class="mb-3">
                             <label for="valor_tac_rua" class="form-label">Valor TC</label>
-                            <input type="text" id="valor_tac_rua" name="valor_tac" class="form-control money"> {# Adicionar máscara JS se necessário #}
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="acao_rua" class="form-label">Com Ação Judicial</label>
-                            <select id="acao_rua" name="acao" class="form-select">
-                                <option value="">Selecione uma opção</option>
-                                <option value="true">Sim</option>
-                                <option value="false">Não</option>
-                            </select>
+                            <input type="text" id="valor_tac_rua" name="valor_tac" class="form-control"> {# Adicionar máscara JS se necessário #}
                         </div>
 
                         <div class="mb-3">
@@ -456,18 +522,6 @@ Visão da Loja - INSS<span class="produto-text"></span>
                             </select>
                         </div>
                     </div>
-
-                    <!-- SEÇÃO: OBSERVAÇÕES (Removida - Campo não existe mais no modelo PresencaLoja) -->
-                    <!--
-                    <div id="observacaoVendedorRuaContainer" style="display: none;">
-                        <h6 class="section-title mt-4"><i class='bx bx-comment-detail me-2'></i>Observações</h6>
-                        <div class="divider mb-3"></div>
-                        <div class="mb-3">
-                            <label for="observacao_vendedor_rua" class="form-label">Observação do Vendedor*</label>
-                            <textarea id="observacao_vendedor_rua" name="observacao_vendedor" class="form-control" rows="3"></textarea>
-                        </div>
-                    </div>
-                    -->
 
                     <div class="divider mt-4"></div>
                     <button type="submit" class="btn btn-primary w-100 btn-submit">
@@ -538,22 +592,26 @@ Visão da Loja - INSS<span class="produto-text"></span>
                     <div class="form-section">
                         <h6 class="form-section-title"><i class='bx bx-headset me-2'></i>Atendimento do Vendedor</h6>
                         <div class="form-fields-container">
-                            <div class="form-field half-width">
+                            <div class="form-field third-width">
                                 <label for="vendedorLojaEdicao" class="form-label">Vendedor*</label>
                                 <select class="form-select form-select-sm" id="vendedorLojaEdicao" name="vendedor_id" required>
                                     <option value="">Selecione um vendedor</option>
                                     {# Opções carregadas via JS #}
                                 </select>
                             </div>
-                            <div class="form-field half-width">
+                            <div class="form-field third-width">
                                 <label for="tabulacaoVendedorEdicao" class="form-label">Tabulação Vendedor*</label>
                                 <select class="form-select form-select-sm" id="tabulacaoVendedorEdicao" name="tabulacao_vendedor" required>
                                     <option value="">Selecione uma opção</option>
-                                    <option value="NEGÓCIO FECHADO">NEGÓCIO FECHADO</option>
+                                    <option value="NEGOCIO_FECHADO">NEGÓCIO FECHADO</option>
                                     <option value="INELEGIVEL">INELEGIVEL</option>
                                     <option value="NÃO ACEITOU">NÃO ACEITOU</option>
                                     <option value="NÃO QUIS OUVIR">NÃO QUIS OUVIR</option>
                                 </select>
+                            </div>
+                            <div class="form-field third-width">
+                                <label for="dataComparecimentoEdicao" class="form-label">Data Comparecimento*</label>
+                                <input type="date" class="form-control form-control-sm" id="dataComparecimentoEdicao" name="data_comparecimento" required>
                             </div>
                         </div>
                     </div>
@@ -566,7 +624,7 @@ Visão da Loja - INSS<span class="produto-text"></span>
                         <!-- Botão para adicionar produtos -->
                         <div id="addProdutoBtnContainerEdicao" class="mb-3 w-100 text-center"> {# Centralizado ou alinhado como preferir #}
                             <button type="button" id="btnAddProdutoEdicao" class="btn btn-secondary btn-sm">
-                                <i class='bx bx-plus-circle me-1'></i> Adicionar Produto/Negociação
+                                <i class='bx bx-plus-circle me-1'></i> Adicionar Produto
                             </button>
                         </div>
 
@@ -601,21 +659,13 @@ Visão da Loja - INSS<span class="produto-text"></span>
                             </div>
                             <div class="form-field mb-2">
                                 <label for="valor_tac_edicao___INDEX__" class="form-label">Valor TAC</label>
-                                <input type="text" id="valor_tac_edicao___INDEX__" name="produtos[__INDEX__][valor_tac]" class="form-control form-control-sm money">
+                                <input type="text" id="valor_tac_edicao___INDEX__" name="produtos[__INDEX__][valor_tac]" class="form-control form-control-sm">
                             </div>
                             {# Usando form-field-inline-group para colocar selects menores lado a lado se couber #}
                             <div class="form-field-inline-group mb-2">
                                 <div class="form-field">
                                     <label for="subsidio_edicao___INDEX__" class="form-label">Subsídio</label>
                                     <select id="subsidio_edicao___INDEX__" name="produtos[__INDEX__][subsidio]" class="form-select form-select-sm">
-                                        <option value="">Selecione</option>
-                                        <option value="true">Sim</option>
-                                        <option value="false">Não</option>
-                                    </select>
-                                </div>
-                                <div class="form-field">
-                                    <label for="acao_edicao___INDEX__" class="form-label">Ação Judicial</label>
-                                    <select id="acao_edicao___INDEX__" name="produtos[__INDEX__][acao]" class="form-select form-select-sm">
                                         <option value="">Selecione</option>
                                         <option value="true">Sim</option>
                                         <option value="false">Não</option>
@@ -643,6 +693,118 @@ Visão da Loja - INSS<span class="produto-text"></span>
                         </div>
                     </template>
 
+                    <!-- Template para um bloco de ação judicial -->
+                    <template id="acaoTemplateEdicao">
+                        <div class="produto-bloco mb-3 p-2 border rounded">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h6 class="section-title-produto m-0"><i class='bx bx-gavel me-1'></i>Detalhes da Ação Judicial</h6>
+                                <button type="button" class="btn btn-danger btn-sm btn-remove-produto">
+                                    <i class='bx bx-trash'></i>
+                                </button>
+                            </div>
+                            <div class="divider mb-2"></div>
+
+                            <div class="mb-2">
+                                <label for="tipo_acao_edicao___INDEX__" class="form-label">Tipo de Ação*</label>
+                                <select id="tipo_acao_edicao___INDEX__" name="produtos[__INDEX__][tipo_acao]" class="form-select form-select-sm" required>
+                                    <option value="">Selecione o tipo de ação</option>
+                                    <option value="ASSOCIACAO">Associação</option>
+                                    <option value="CARTAO">Cartão</option>
+                                    <option value="DEBITO">Débito em Conta</option>
+                                    <option value="LIMPANOME">Limpa Nome</option>
+                                    <option value="REVISIONAL">Revisional</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-2">
+                                <label for="tipo_pagamento_edicao___INDEX__" class="form-label">Tipo de Pagamento*</label>
+                                <select id="tipo_pagamento_edicao___INDEX__" name="produtos[__INDEX__][tipo_pagamento]" class="form-select form-select-sm" required>
+                                    <option value="">Selecione o tipo de pagamento</option>
+                                    <option value="SEM_PAGAMENTO">Sem Pagamento</option>
+                                    <option value="A_VISTA">À vista</option>
+                                    <option value="PARCELADO">Parcelado</option>
+                                </select>
+                            </div>
+
+                            <!-- Campos condicionais para pagamento -->
+                            <div id="camposPagamentoEdicao___INDEX__" class="campos-pagamento" style="display: none;">
+                                <!-- Campos para pagamento à vista -->
+                                <div id="camposAVistaEdicao___INDEX__" class="campos-avista mb-2" style="display: none;">
+                                    <label for="valor_total_edicao___INDEX__" class="form-label">Valor Total*</label>
+                                    <input type="text" id="valor_total_edicao___INDEX__" name="produtos[__INDEX__][valor_total]" class="form-control form-control-sm" placeholder="0,00">
+                                </div>
+
+                                <!-- Campos para pagamento parcelado -->
+                                <div id="camposParceladoEdicao___INDEX__" class="campos-parcelado mb-2" style="display: none;">
+                                    <div class="row">
+                                        <div class="col-md-4">
+                                            <label for="valor_entrada_edicao___INDEX__" class="form-label">Valor Entrada*</label>
+                                            <input type="text" id="valor_entrada_edicao___INDEX__" name="produtos[__INDEX__][valor_entrada]" class="form-control form-control-sm" placeholder="0,00">
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label for="qtd_parcelas_edicao___INDEX__" class="form-label">Qtd. Parcelas*</label>
+                                            <input type="number" id="qtd_parcelas_edicao___INDEX__" name="produtos[__INDEX__][qtd_parcelas]" class="form-control form-control-sm" min="1">
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label for="valor_parcela_edicao___INDEX__" class="form-label">Valor Parcela*</label>
+                                            <input type="text" id="valor_parcela_edicao___INDEX__" name="produtos[__INDEX__][valor_parcela]" class="form-control form-control-sm" placeholder="0,00">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-2">
+                                <label for="senha_inss_acao_edicao___INDEX__" class="form-label">Senha INSS*</label>
+                                <input type="text" id="senha_inss_acao_edicao___INDEX__" name="produtos[__INDEX__][senha_inss]" class="form-control form-control-sm" required>
+                                <input type="hidden" name="produtos[__INDEX__][acao]" value="true">
+                            </div>
+
+                            <!-- Container para documentos da ação -->
+                            <div class="documentos-container mt-3">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h6 class="section-title-produto m-0"><i class='bx bx-file me-1'></i>Documentos da Ação</h6>
+                                    <button type="button" class="btn btn-secondary btn-sm btn-add-documento" data-index="__INDEX__">
+                                        <i class='bx bx-plus-circle me-1'></i> Adicionar Documento
+                                    </button>
+                                </div>
+                                <div class="documentos-list" id="documentosListEdicao___INDEX__">
+                                    <!-- Documentos serão adicionados aqui -->
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- Template para Documento da Ação (Edição) -->
+                    <template id="documentoAcaoTemplateEdicao">
+                        <div class="documento-item mb-2 p-2 border rounded">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h6 class="m-0"><i class='bx bx-file me-1'></i>Arquivo</h6>
+                                <button type="button" class="btn btn-danger btn-sm btn-remove-documento">
+                                    <i class='bx bx-trash'></i>
+                                </button>
+                            </div>
+                            <div class="mb-2">
+                                <label for="titulo_documento_edicao___ACAO_INDEX_____DOC_INDEX__" class="form-label">Título do Arquivo*</label>
+                                <input type="text" 
+                                       id="titulo_documento_edicao___ACAO_INDEX_____DOC_INDEX__" 
+                                       name="produtos[__ACAO_INDEX__][documentos][__DOC_INDEX__][titulo]" 
+                                       class="form-control form-control-sm" 
+                                       required>
+                            </div>
+                            <div class="mb-2">
+                                <label for="arquivo_documento_edicao___ACAO_INDEX_____DOC_INDEX__" class="form-label">Arquivo*</label>
+                                <input type="file" 
+                                       id="arquivo_documento_edicao___ACAO_INDEX_____DOC_INDEX__" 
+                                       name="produtos[__ACAO_INDEX__][documentos][__DOC_INDEX__][file]" 
+                                       class="form-control form-control-sm" 
+                                       required>
+                            </div>
+                            <input type="hidden" 
+                                   name="produtos[__ACAO_INDEX__][documentos][__DOC_INDEX__][acao_judicial]" 
+                                   value="true">
+                        </div>
+                    </template>
+
                     <div class="divider mt-4 w-100"></div>
                     <button type="submit" class="btn btn-primary w-100 btn-submit">
                         <i class='bx bx-save me-2'></i> Salvar Alterações Atendimento
@@ -653,11 +815,457 @@ Visão da Loja - INSS<span class="produto-text"></span>
     </div>
 </div>
 
+<!-- SUB MODAL: Adicionar Ação a um Agendamento -->
+<div class="modal-sec" id="modalAdicionarAcao" tabindex="-1" role="dialog" aria-labelledby="modalAdicionarAcaoLabel">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalAdicionarAcaoLabel"><i class='bx bx-gavel me-2'></i> Adicionar Ação ao Agendamento</h5>
+                <button type="button" class="btn-close" onclick="fecharModal('#modalAdicionarAcao')" aria-label="Fechar">
+                    <i class='bx bx-x'></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="formAcaoAgendamentoGenerico" method="POST" action="{% url 'inss:all_forms' %}" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_type" value="acao_agendamento">
+                    <input type="hidden" id="agendamentoIdAcao" name="agendamento_id" value="">
+
+                    <!-- SEÇÃO: INFORMAÇÕES DO CLIENTE (somente leitura) -->
+                    <div class="form-section">
+                        <h6 class="form-section-title"><i class='bx bx-user-circle me-2'></i>Informações do Cliente</h6>
+                        <div class="form-fields-container">
+                            <div class="form-field third-width">
+                                <label for="nomeClienteAcao" class="form-label">Nome Cliente</label>
+                                <input type="text" class="form-control form-control-sm" id="nomeClienteAcao" name="nome_cliente" readonly>
+                            </div>
+                            <div class="form-field third-width">
+                                <label for="cpfClienteAcao" class="form-label">CPF</label>
+                                <input type="text" class="form-control form-control-sm" id="cpfClienteAcao" name="cpf_cliente" readonly>
+                            </div>
+                            <div class="form-field third-width">
+                                <label for="numeroClienteAcao" class="form-label">Número Contato</label>
+                                <input type="text" class="form-control form-control-sm" id="numeroClienteAcao" name="numero_cliente" readonly>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SEÇÃO: INFORMAÇÕES DO AGENDAMENTO (somente leitura) -->
+                    <div class="form-section">
+                        <h6 class="form-section-title"><i class='bx bx-calendar-check me-2'></i>Informações do Agendamento</h6>
+                        <div class="form-fields-container">
+                            <div class="form-field third-width">
+                                <label for="diaAgendadoAcao" class="form-label">Dia Agendado</label>
+                                <input type="text" class="form-control form-control-sm" id="diaAgendadoAcao" name="dia_agendado" readonly>
+                            </div>
+                            <div class="form-field third-width">
+                                <label for="lojaAgendadaAcao" class="form-label">Loja Agendada</label>
+                                <input type="text" class="form-control form-control-sm" id="lojaAgendadaAcao" name="loja_agendada" readonly>
+                            </div>
+                            <div class="form-field third-width">
+                                <label for="atendenteAgendouAcao" class="form-label">Atendente Agendou</label>
+                                <input type="text" class="form-control form-control-sm" id="atendenteAgendouAcao" name="atendente_agendou" readonly>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SEÇÃO: DETALHES DA AÇÃO -->
+                    <div class="form-section">
+                        <h6 class="form-section-title"><i class='bx bx-gavel me-2'></i>Detalhes da Ação</h6>
+                        <div class="form-fields-container">
+                            <div class="form-field third-width">
+                                <label for="vendedor_acao" class="form-label">Vendedor*</label>
+                                <select id="vendedor_acao" name="vendedor" class="form-select form-select-sm" required>
+                                    <option value="">Selecione o vendedor</option>
+                                    {% for user in users %}
+                                        <option value="{{ user.id }}">{{ user.first_name }} {{ user.last_name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="form-field third-width">
+                                <label for="tipo_acao_acao" class="form-label">Tipo de Ação*</label>
+                                <select id="tipo_acao_acao" name="tipo_acao" class="form-select form-select-sm" required>
+                                    <option value="">Selecione o tipo de ação</option>
+                                    <option value="ASSOCIACAO">Associação</option>
+                                    <option value="CARTAO">Cartão</option>
+                                    <option value="DEBITO">Débito em Conta</option>
+                                    <option value="LIMPANOME">Limpa Nome</option>
+                                    <option value="REVISIONAL">Revisional</option>
+                                </select>
+                            </div>
+                            <div class="form-field third-width">
+                                <label for="senha_inss_acao" class="form-label">Senha INSS</label>
+                                <input type="text" id="senha_inss_acao" name="senha_inss" class="form-control form-control-sm">
+                            </div>
+                            <div class="form-field third-width">
+                                <label for="tipo_pagamento_acao" class="form-label">Tipo de Pagamento*</label>
+                                <select id="tipo_pagamento_acao" name="tipo_pagamento" class="form-select form-select-sm" required onchange="handleTipoPagamentoAcao()">
+                                    <option value="">Selecione o tipo de pagamento</option>
+                                    <option value="SEM_PAGAMENTO">Sem Pagamento</option>
+                                    <option value="A_VISTA">À Vista</option>
+                                    <option value="PARCELADO">Parcelado</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Campos condicionais para pagamento -->
+                        <div id="camposPagamentoAcao" style="display: none;">
+                            <!-- Campos para pagamento à vista -->
+                            <div id="camposAVistaAcao" class="form-fields-container" style="display: none;">
+                                <div class="form-field full-width">
+                                    <label for="valor_total_acao" class="form-label">Valor Total*</label>
+                                    <input type="text" id="valor_total_acao" name="valor_total" class="form-control form-control-sm" placeholder="0,00">
+                                </div>
+                            </div>
+
+                            <!-- Campos para pagamento parcelado -->
+                            <div id="camposParceladoAcao" class="form-fields-container" style="display: none;">
+                                <div class="form-field third-width">
+                                    <label for="valor_entrada_acao" class="form-label">Valor Entrada*</label>
+                                    <input type="text" id="valor_entrada_acao" name="valor_entrada" class="form-control form-control-sm" placeholder="0,00">
+                                </div>
+                                <div class="form-field third-width">
+                                    <label for="qtd_parcelas_acao" class="form-label">Qtd. Parcelas*</label>
+                                    <input type="number" id="qtd_parcelas_acao" name="qtd_parcelas" class="form-control form-control-sm" min="1">
+                                </div>
+                                <div class="form-field third-width">
+                                    <label for="valor_parcela_acao" class="form-label">Valor Parcela*</label>
+                                    <input type="text" id="valor_parcela_acao" name="valor_parcela" class="form-control form-control-sm" placeholder="0,00">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SEÇÃO: DOCUMENTOS DA AÇÃO -->
+                    <div class="form-section">
+                        <h6 class="form-section-title"><i class='bx bx-file me-2'></i>Documentos da Ação</h6>
+                        <div id="documentosAcaoContainer" class="documentos-list">
+                            <!-- Documentos serão adicionados aqui -->
+                        </div>
+                        <button type="button" class="btn btn-secondary btn-sm mt-2" id="btnAddDocumentoAcao">
+                            <i class='bx bx-plus-circle me-1'></i> Adicionar Documento
+                        </button>
+                    </div>
+
+                    <div class="divider mt-4 mb-3"></div>
+                    <button type="submit" class="btn btn-primary w-100 btn-submit">
+                        <i class='bx bx-save me-2'></i> Salvar Ação
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Template para documento da ação -->
+<template id="documentoAcaoTemplate">
+    <div class="documento-item mb-2 p-2 border rounded">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="m-0"><i class='bx bx-file me-1'></i>Documento</h6>
+            <button type="button" class="btn btn-danger btn-sm btn-remove-documento">
+                <i class='bx bx-trash'></i>
+            </button>
+        </div>
+        <div class="mb-2">
+            <label for="titulo_documento___DOC_INDEX__" class="form-label">Título do Documento*</label>
+            <input type="text" 
+                   id="titulo_documento___DOC_INDEX__" 
+                   name="documentos[__DOC_INDEX__][titulo]" 
+                   class="form-control form-control-sm" 
+                   required>
+        </div>
+        <div class="mb-2">
+            <label for="arquivo_documento___DOC_INDEX__" class="form-label">Arquivo*</label>
+            <input type="file" 
+                   id="arquivo_documento___DOC_INDEX__" 
+                   name="documentos[__DOC_INDEX__][file]" 
+                   class="form-control form-control-sm" 
+                   required>
+        </div>
+    </div>
+</template>
+
+<!-- Template para Produto -->
+<template id="produtoTemplateInline">
+    <div class="produto-bloco mb-3 p-2 border rounded">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="section-title-produto m-0"><i class='bx bx-package me-1'></i>Detalhes do Produto</h6>
+            <button type="button" class="btn btn-danger btn-sm btn-remove-produto">
+                <i class='bx bx-trash'></i>
+            </button>
+        </div>
+        <div class="divider mb-2"></div>
+
+        <div class="mb-2">
+            <label for="tipo_negociacao___INDEX__" class="form-label">Tipo Negociação</label>
+            <select id="tipo_negociacao___INDEX__" name="produtos[__INDEX__][produto_id]" class="form-select form-select-sm">
+                <option value="">Selecione um produto</option>
+                <!-- Opções serão preenchidas via JavaScript -->
+            </select>
+        </div>
+
+        <div class="mb-2">
+            <label for="banco___INDEX__" class="form-label">Banco</label>
+            <input type="text" id="banco___INDEX__" name="produtos[__INDEX__][banco]" class="form-control form-control-sm text-uppercase">
+        </div>
+
+        <div class="mb-2">
+            <label for="valor_tac___INDEX__" class="form-label">Valor TAC</label>
+            <input type="text" id="valor_tac___INDEX__" name="produtos[__INDEX__][valor_tac]" class="form-control form-control-sm">
+        </div>
+
+        <div class="form-field-inline-group mb-2">
+            <div class="form-field">
+                <label for="subsidio___INDEX__" class="form-label">Subsídio</label>
+                <select id="subsidio___INDEX__" name="produtos[__INDEX__][subsidio]" class="form-select form-select-sm">
+                    <option value="">Selecione</option>
+                    <option value="true">Sim</option>
+                    <option value="false">Não</option>
+                </select>
+            </div>
+        </div>
+    </div>
+</template>
+
+<!-- Template para Ação -->
+<template id="acaoTemplateInline">
+    <div class="produto-bloco mb-3 p-2 border rounded">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="section-title-produto m-0"><i class='bx bx-gavel me-1'></i>Detalhes da Ação</h6>
+            <button type="button" class="btn btn-danger btn-sm btn-remove-produto">
+                <i class='bx bx-trash'></i>
+            </button>
+        </div>
+        <div class="divider mb-2"></div>
+
+        <div class="mb-2">
+            <label for="tipo_acao___INDEX__" class="form-label">Tipo da Ação*</label>
+            <select id="tipo_acao___INDEX__" name="produtos[__INDEX__][tipo_acao]" class="form-select form-select-sm" required>
+                <option value="">Selecione o tipo</option>
+                <option value="ASSOCIACAO">Associação</option>
+                <option value="CARTAO">Cartão</option>
+                <option value="DEBITO">Débito em Conta</option>
+                <option value="LIMPANOME">Limpa Nome</option>
+                <option value="REVISIONAL">Revisional</option>
+            </select>
+        </div>
+
+        <div class="mb-2">
+            <label for="senha_inss___INDEX__" class="form-label">Senha INSS</label>
+            <input type="text" id="senha_inss___INDEX__" name="produtos[__INDEX__][senha_inss]" class="form-control form-control-sm">
+        </div>
+
+        <div class="mb-2">
+            <label class="form-label">Arquivos da Ação</label>
+            <div id="documentos_acao___INDEX__" class="documentos-list">
+                <!-- Documentos serão adicionados aqui -->
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm btn-add-documento mt-2" data-acao-index="__INDEX__">
+                <i class='bx bx-plus'></i> Adicionar Arquivo
+            </button>
+        </div>
+    </div>
+</template>
+
+<!-- Template para Documento da Ação (Inline) -->
+<template id="documentoAcaoTemplateInline">
+    <div class="documento-item mb-2 p-2 border rounded">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="m-0"><i class='bx bx-file me-1'></i>Arquivo</h6>
+            <button type="button" class="btn btn-danger btn-sm btn-remove-documento">
+                <i class='bx bx-trash'></i>
+            </button>
+        </div>
+        <div class="mb-2">
+            <label for="titulo_documento___ACAO_INDEX_____DOC_INDEX__" class="form-label">Título do Arquivo*</label>
+            <input type="text" 
+                   id="titulo_documento___ACAO_INDEX_____DOC_INDEX__" 
+                   name="acoes[__ACAO_INDEX__][arquivos][__DOC_INDEX__][titulo]" 
+                   class="form-control form-control-sm" 
+                   required>
+        </div>
+        <div class="mb-2">
+            <label for="arquivo_documento___ACAO_INDEX_____DOC_INDEX__" class="form-label">Arquivo*</label>
+            <input type="file" 
+                   id="arquivo_documento___ACAO_INDEX_____DOC_INDEX__" 
+                   name="acoes[__ACAO_INDEX__][arquivos][__DOC_INDEX__][file]" 
+                   class="form-control form-control-sm" 
+                   required>
+        </div>
+    </div>
+</template>
+
+<!-- Template para Arquivo -->
+<template id="arquivoTemplateInline">
+    <div class="arquivo-bloco mb-3 p-2 border rounded">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="section-title-arquivo m-0"><i class='bx bx-file me-1'></i>Detalhes do Arquivo</h6>
+            <button type="button" class="btn btn-danger btn-sm btn-remove-arquivo">
+                <i class='bx bx-trash'></i>
+            </button>
+        </div>
+        <div class="divider mb-2"></div>
+
+        <div class="mb-2">
+            <label for="titulo_arquivo___INDEX__" class="form-label">Título do Arquivo*</label>
+            <input type="text" id="titulo_arquivo___INDEX__" name="arquivos[__INDEX__][titulo]" class="form-control form-control-sm" required>
+        </div>
+
+        <div class="mb-2">
+            <label for="arquivo___INDEX__" class="form-label">Arquivo*</label>
+            <input type="file" id="arquivo___INDEX__" name="arquivos[__INDEX__][file]" class="form-control form-control-sm" required>
+        </div>
+    </div>
+</template>
+
+<!-- Modal Adicionar Ação Judicial -->
+<div class="modal fade modal-sec" id="modalAdicionarAcao" tabindex="-1" aria-labelledby="modalAdicionarAcaoLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalAdicionarAcaoLabel">Adicionar Ação Judicial</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formAdicionarAcao" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <input type="hidden" id="acao_agendamento_id" name="agendamento_id">
+
+                    <h6>Dados do Cliente</h6>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label for="acao_nome_cliente" class="form-label">Nome Completo*</label>
+                            <input type="text" class="form-control" id="acao_nome_cliente" name="nome_cliente" required>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="acao_cpf_cliente" class="form-label">CPF*</label>
+                            <input type="text" class="form-control" id="acao_cpf_cliente" name="cpf_cliente" required>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="acao_numero_cliente" class="form-label">Nº de Contato*</label>
+                            <input type="text" class="form-control" id="acao_numero_cliente" name="numero_cliente" required>
+                        </div>
+                    </div>
+
+                    <hr>
+                    <h6>Detalhes da Ação Judicial</h6>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label for="acao_tipo_acao" class="form-label">Tipo de Ação*</label>
+                            <select class="form-select" id="acao_tipo_acao" name="tipo_acao" required>
+                                <option value="" selected disabled>Selecione...</option>
+                                <option value="REVISAO">Revisão de Benefício</option>
+                                <option value="APOSENTADORIA">Solicitação de Aposentadoria</option>
+                                <option value="AUXILIO_DOENCA">Solicitação de Auxílio Doença</option>
+                                <option value="BPC_LOAS">BPC-LOAS</option>
+                                <option value="PENSAO_MORTE">Pensão por Morte</option>
+                                <option value="OUTRA">Outra Ação</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="acao_senha_inss" class="form-label">Senha MeuINSS</label>
+                            <input type="text" class="form-control" id="acao_senha_inss" name="senha_inss">
+                        </div>
+                         <div class="col-md-4 mb-3">
+                            <label for="acao_tipo_pagamento" class="form-label">Tipo de Pagamento*</label>
+                            <select class="form-select" id="acao_tipo_pagamento" name="tipo_pagamento" required>
+                                <option value="" selected disabled>Selecione...</option>
+                                <option value="GRATUITO">Gratuito / Pro Bono</option>
+                                <option value="A_VISTA">À Vista</option>
+                                <option value="PARCELADO">Parcelado</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="acao_detalhes_pagamento_container" style="display: none;">
+                        <div class="row">
+                            <div class="col-md-4 mb-3" id="acao_valor_total_container" style="display: none;">
+                                <label for="acao_valor_total" class="form-label">Valor Total (R$)*</label>
+                                <input type="text" class="form-control" id="acao_valor_total" name="valor_total">
+                            </div>
+                        </div>
+                        <div class="row" id="acao_parcelado_container" style="display: none;">
+                            <div class="col-md-4 mb-3">
+                                <label for="acao_valor_entrada" class="form-label">Valor Entrada (R$)*</label>
+                                <input type="text" class="form-control" id="acao_valor_entrada" name="valor_entrada">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="acao_qtd_parcelas" class="form-label">Qtd. Parcelas*</label>
+                                <input type="number" class="form-control" id="acao_qtd_parcelas" name="qtd_parcelas" min="1">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="acao_valor_parcela" class="form-label">Valor da Parcela (R$)*</label>
+                                <input type="text" class="form-control" id="acao_valor_parcela" name="valor_parcela">
+                            </div>
+                        </div>
+                    </div>
+
+                    <h6>Documentos da Ação</h6>
+                    <div id="acao_documentos_container">
+                        <!-- Documentos serão adicionados aqui -->
+                    </div>
+                    <button type="button" class="btn btn-outline-secondary btn-sm mt-2" id="acao_btn_add_documento">
+                        <i class="bx bx-plus"></i> Adicionar Documento
+                    </button>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary" form="formAdicionarAcao">
+                    <i class="bx bx-save me-1"></i> Salvar Ação
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Template para arquivo do cliente rua ação -->
+<template id="arquivoTemplateInline">
+    <div class="arquivo-bloco mb-2 p-2 border rounded">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="section-title-arquivo m-0"><i class='bx bx-file me-1'></i>Arquivo</h6>
+            <button type="button" class="btn btn-danger btn-sm btn-remove-arquivo">
+                <i class='bx bx-trash'></i>
+            </button>
+        </div>
+        <div class="mb-2">
+            <label class="form-label">Título do Arquivo</label>
+            <input type="text" name="titulo_arquivo___INDEX__" class="form-control form-control-sm" placeholder="Título do arquivo">
+        </div>
+        <div class="mb-2">
+            <label class="form-label">Arquivo</label>
+            <input type="file" name="arquivo___INDEX__" class="form-control form-control-sm" required>
+        </div>
+    </div>
+</template>
+
+<!-- Template para item de documento -->
+<template id="acaoDocumentoTemplate">
+    <div class="documento-item-acao row mb-2 align-items-center">
+        <div class="col-md-5">
+            <input type="text" class="form-control form-control-sm" name="documentos[__DOC_INDEX__][titulo]" placeholder="Título do Documento" required>
+        </div>
+        <div class="col-md-5">
+            <input type="file" class="form-control form-control-sm" name="documentos[__DOC_INDEX__][file]" required>
+        </div>
+        <div class="col-md-2 text-end">
+            <button type="button" class="btn btn-danger btn-sm acao_btn_remove_documento"><i class="bx bx-trash"></i></button>
+        </div>
+    </div>
+</template>
+
 {% endblock %}
 
 {% block addjs_extra %}
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-{# Se você tiver um arquivo JS específico para esta página: #}
-<script src="{% static 'js/apps/inss/loja.js' %}"></script> {# Criar ou adaptar este JS #}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.mask/1.14.16/jquery.mask.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+{# Se você tiver um arquivo JS específico para esta página: #}
+<script src="{% static 'js/apps/inss/loja.js' %}"></script>
+<script src="{% static 'js/apps/inss/loja-clienterua.js' %}"></script>
+<script src="{% static 'js/apps/inss/loja-clienterua-acao.js' %}"></script>
+<script src="{% static 'js/apps/inss/loja-edicao.js' %}"></script>
+<script src="https://unpkg.com/imask"></script>
 {% endblock %}

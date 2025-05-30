@@ -6,6 +6,7 @@
     <title>{% block title %}MoneyConsig{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'css/main.css' %}">
     <link rel="stylesheet" href="{% static 'css/partials/menu-lateral.css' %}">
+    <link rel="stylesheet" href="{% static 'css/partials/alert_ti.css' %}">
     <!-- Favicon -->
     <link rel="icon" href="{% static 'img/geral/logo.png' %}" type="image/png">
     <!-- Importando Boxicons via CDN -->
@@ -86,10 +87,10 @@
         {% block content %}{% endblock %}
     </main>
     
-    <!-- jQuery (necessário para o funcionamento dos comunicados) -->
+    <!-- Scripts -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <!-- Script dos comunicados -->
     <script src="{% static 'js/apps/funcionarios/comunicados_cliente.js' %}"></script>
+    <script src="{% static 'js/alert_ti.js' %}"></script>
     {% block addjs_extra %}{% endblock %}
 </body>
 </html>

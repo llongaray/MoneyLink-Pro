@@ -23,11 +23,14 @@ $(document).ready(function() {
         var campEdit   = $("#filtro_campanha").empty()
                             .append("<option value=''>Selecione uma campanha</option>"),
             campImport = $("#campanha_id").empty()
-                            .append("<option value=''>Selecione uma campanha</option>");
+                            .append("<option value=''>Selecione uma campanha</option>"),
+            campExcluir = $("#campanha_id_excluir").empty()
+                            .append("<option value=''>Selecione uma campanha para limpar os débitos...</option>");
         response.campanhas.forEach(function(camp) {
           var opt = $("<option>").val(camp.id).text(camp.nome);
           campEdit.append(opt.clone());
-          campImport.append(opt);
+          campImport.append(opt.clone());
+          campExcluir.append(opt);
         });
       },
       error: function(xhr, status, err) {
@@ -153,6 +156,45 @@ $(document).ready(function() {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+  });
+
+  // 🗑️ Excluir Débitos da Campanha
+  $("#form-excluir-debitos-campanha").on("submit", function(e) {
+    e.preventDefault();
+    var campanhaId = $("#campanha_id_excluir").val();
+    var nomeCampanha = $("#campanha_id_excluir option:selected").text();
+
+    if (!campanhaId) {
+      alert("Por favor, selecione uma campanha para excluir os débitos.");
+      return;
+    }
+
+    // Mensagem de confirmação
+    if (!confirm(`Tem certeza que deseja excluir TODOS os débitos da campanha "${nomeCampanha}"? Esta ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    $.ajax({
+      url: "/siape/api/post/excluir-debitos-campanha/", 
+      type: "POST",
+      data: { campanha_id: campanhaId },
+      success: function(response) {
+        alert(response.texto);
+        if (response.classe === "success") {
+          // Opcional: Limpar o seletor ou recarregar as campanhas
+          // carregarInfoCamp(); 
+          $("#campanha_id_excluir").val(''); // Limpa a seleção
+        }
+      },
+      error: function(xhr, status, error) {
+        var errorMessage = "Erro ao excluir débitos da campanha.";
+        if (xhr.responseJSON && xhr.responseJSON.texto) {
+          errorMessage = xhr.responseJSON.texto;
+        }
+        alert(errorMessage);
+        console.error("Erro ao excluir débitos:", error);
+      }
+    });
   });
 
 });

@@ -4,7 +4,8 @@ $(document).ready(function() {
         financeiro: {},
         lojas: {},
         rh: {},
-        metas: {}
+        metas: {},
+        siape: {}
     };
 
     // --- Helpers de formatação ---
@@ -91,6 +92,17 @@ $(document).ready(function() {
             .fail((jqXHR, textStatus, errorThrown) => {
                 console.error("Erro ao carregar dados de metas:", errorThrown);
             });
+
+        // Carrega dados do SIAPE
+        $.getJSON('/api/dashboard/siape/')
+            .done(data => {
+                console.log("Dados do SIAPE recebidos:", data);
+                dashboardData.siape = data;
+                populateSiape(data);
+            })
+            .fail((jqXHR, textStatus, errorThrown) => {
+                console.error("Erro ao carregar dados do SIAPE:", errorThrown);
+            });
     }
 
     function populateFinanceiro(data) {
@@ -145,6 +157,8 @@ $(document).ready(function() {
             populateSelect('select-filial-financeiro', filialOptions, 'Todas as filiais');
             updateFinanceiroFilialCards();
         }
+
+        updateMetaCards();
     }
 
     function populateLojas(data) {
@@ -190,6 +204,64 @@ $(document).ready(function() {
 
         // Atualiza cards de metas
         updateMetaCards();
+    }
+
+    function populateSiape(data) {
+        console.log("Populando dados SIAPE:", data);
+        if (!data) return;
+
+        updateCardValue('card-siape-fat-ano', data.faturamento_anual);
+        updateCardValue('card-siape-fat-mes', data.faturamento_mensal);
+
+        // Melhor Funcionário Ano
+        const funcAnoNomeEl = $('#valor-siape-melhor-func-ano-nome');
+        const funcAnoValorEl = $('#valor-siape-melhor-func-ano-valor');
+        const funcAnoFotoEl = $('#icon-container-siape-melhor-func-ano .funcionario-foto-dashboard');
+        const funcAnoIconFallbackEl = $('#icon-container-siape-melhor-func-ano .funcionario-icon-dashboard-fallback');
+
+        if (funcAnoNomeEl.length && funcAnoValorEl.length && funcAnoFotoEl.length && funcAnoIconFallbackEl.length) {
+            if (data.melhor_funcionario_ano && data.melhor_funcionario_ano.nome !== 'N/A') {
+                funcAnoNomeEl.text(data.melhor_funcionario_ano.nome);
+                funcAnoValorEl.text(formatCurrency(data.melhor_funcionario_ano.valor));
+                if (data.melhor_funcionario_ano.foto_url) {
+                    funcAnoFotoEl.attr('src', data.melhor_funcionario_ano.foto_url).show();
+                    funcAnoIconFallbackEl.hide();
+                } else {
+                    funcAnoFotoEl.hide();
+                    funcAnoIconFallbackEl.show();
+                }
+            } else {
+                funcAnoNomeEl.text('-');
+                funcAnoValorEl.text(formatCurrency(0));
+            }
+        } else {
+            console.warn("Elementos do card de melhor funcionário (ano) do SIAPE não encontrados.");
+        }
+
+        // Melhor Funcionário Mês
+        const funcMesNomeEl = $('#valor-siape-melhor-func-mes-nome');
+        const funcMesValorEl = $('#valor-siape-melhor-func-mes-valor');
+        const funcMesFotoEl = $('#icon-container-siape-melhor-func-mes .funcionario-foto-dashboard');
+        const funcMesIconFallbackEl = $('#icon-container-siape-melhor-func-mes .funcionario-icon-dashboard-fallback');
+
+        if (funcMesNomeEl.length && funcMesValorEl.length && funcMesFotoEl.length && funcMesIconFallbackEl.length) {
+            if (data.melhor_funcionario_mes && data.melhor_funcionario_mes.nome !== 'N/A') {
+                funcMesNomeEl.text(data.melhor_funcionario_mes.nome);
+                funcMesValorEl.text(formatCurrency(data.melhor_funcionario_mes.valor));
+                if (data.melhor_funcionario_mes.foto_url) {
+                    funcMesFotoEl.attr('src', data.melhor_funcionario_mes.foto_url).show();
+                    funcMesIconFallbackEl.hide();
+                } else {
+                    funcMesFotoEl.hide();
+                    funcMesIconFallbackEl.show();
+                }
+            } else {
+                funcMesNomeEl.text('-');
+                funcMesValorEl.text(formatCurrency(0));
+            }
+        } else {
+            console.warn("Elementos do card de melhor funcionário (mês) do SIAPE não encontrados.");
+        }
     }
 
     function updateFinanceiroEmpresaCards() {

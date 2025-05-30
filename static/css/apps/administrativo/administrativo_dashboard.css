@@ -187,6 +187,58 @@ body {
 #sessao-rh .icon { background-color: var(--color-success-light); color: var(--color-success); }
 #sessao-metas .icon { background-color: var(--color-primary-light); color: var(--color-primary); }
 
+/* Estilos para foto do funcionário no dashboard */
+.icon-container {
+    width: 48px; /* Ajuste conforme o tamanho do .icon original */
+    height: 48px; /* Ajuste conforme o tamanho do .icon original */
+    border-radius: 10px; /* Mesmo radius do .icon original */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 15px; /* Mesmo margin do .icon original */
+    flex-shrink: 0;
+    overflow: hidden;
+    position: relative; 
+    background-color: var(--color-light-gray); /* Cor de fundo caso a imagem seja transparente ou falhe */
+}
+
+.funcionario-foto-dashboard {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none; /* Começa escondida, JS mostra se houver URL */
+}
+
+.funcionario-icon-dashboard-fallback {
+    font-size: 22px; /* Mesmo font-size do .icon original */
+    display: flex; 
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    /* As cores de fundo e do ícone serão definidas por seção ou globalmente */
+}
+
+/* Estilo geral para ícones dentro de icon-container (se não for foto) */
+.icon-container i {
+    color: var(--color-primary);
+    background-color: var(--color-primary-light);
+     /* Para garantir que o ícone preencha o espaço se a imagem não carregar */
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: inherit; /* Herda o radius do container */
+}
+
+/* Cores específicas para ícones SIAPE (fallback e ícones normais da seção) */
+#sessao-siape .icon-container i,
+#sessao-siape .icon i { /* Para outros ícones na seção SIAPE que não sejam de funcionário */
+    background-color: var(--color-info-light); 
+    color: var(--color-info); 
+}
+
 /* Sobrescrever cores específicas onde necessário (exemplos) */
 #card-empresa-fat-ano .icon, #card-interno-fat-ano .icon, #card-franquia-fat-ano .icon, #card-filial-fat-ano .icon { background-color: var(--color-tertiary-light); color: var(--color-tertiary); }
 #card-rh-func-inativos .icon { background-color: var(--color-danger-light); color: var(--color-danger); }

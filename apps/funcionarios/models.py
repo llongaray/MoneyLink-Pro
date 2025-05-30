@@ -6,6 +6,7 @@ import os
 from django.utils.text import slugify
 from django.utils import timezone
 from django.core.validators import FileExtensionValidator
+from django.core.exceptions import ValidationError
 
 # --- Configuração de Armazenamento ---
 

@@ -284,12 +284,88 @@
             </a>
           </li>
           {% endif %}
+
+          
         </ul>
       </li>
       {% endif %}
 
 
-      {# 6. CONFIGURAÇÕES #}
+      {# 6. JURÍDICO #}
+      {% has_access user "CT56" as can_juridico_cat %}
+      {% if can_juridico_cat %}
+      <li class="sidebar-category">
+        <a href="javascript:void(0)" class="category-toggle">
+          <i class='bx bx-briefcase-alt'></i>
+          <span class="menu-label">Jurídico</span>
+          <i class='bx bx-chevron-down category-arrow'></i>
+        </a>
+        <ul class="subcategory">
+          {% has_access user "SCT57" as can_juridico_dashboard %}
+          {% if can_juridico_dashboard %}
+          <li>
+            <a href="{% url 'juridico:dashboard_acoes' %}">
+              <i class='bx bx-tachometer'></i>
+              <span class="menu-label">Dashboard Jurídico</span>
+            </a>
+          </li>
+          {% has_access user "SCT60" as can_juridico_acoes %}
+          {% if can_juridico_acoes %}
+          <li>
+            <a href="{% url 'juridico:acoes' %}">
+              <i class='bx bx-list-ul'></i>
+              <span class="menu-label">Ações</span>
+            </a>
+          </li>
+          {% endif %}
+          {% endif %}
+
+          {% has_access user "SCT58" as can_juridico_minhas_acoes %}
+          {% if can_juridico_minhas_acoes %}
+          <li>
+            <a href="{% url 'inss:acoes' %}">
+              <i class='bx bx-file'></i>
+              <span class="menu-label">Minhas Ações</span>
+            </a>
+          </li>
+          {% endif %}
+
+          {% has_access user "SCT59" as can_juridico_nova_acao %}
+          {% if can_juridico_nova_acao %}
+          <li>
+            <a href="{% url 'juridico:adicionar_acao' %}">
+              <i class='bx bx-plus-circle'></i>
+              <span class="menu-label">Nova Ação</span>
+            </a>
+          </li>
+          {% endif %}
+
+
+          {% has_access user "SCT61" as can_juridico_limpa_nome %}
+          {% if can_juridico_limpa_nome %}
+          <li>
+            <a href="{% url 'juridico:limpa_nome' %}">
+              <i class='bx bx-eraser'></i>
+              <span class="menu-label">Limpa Nome</span>
+            </a>
+          </li>
+          {% endif %}
+          
+          {% has_access user "SCT62" as can_juridico_pagamentos %}
+          {% if can_juridico_pagamentos %}
+          <li>
+            <a href="{% url 'juridico:pagamentos' %}">
+              <i class='bx bx-dollar-circle'></i>
+              <span class="menu-label">Pagamentos</span>
+            </a>
+          </li>
+          {% endif %}
+        </ul>
+      </li>
+      {% endif %}
+
+
+      {# 7. CONFIGURAÇÕES #}
       {% has_access user "CT2" as can_cfg_cat %}
       {% if can_cfg_cat %}
       <li class="sidebar-category">
@@ -299,6 +375,14 @@
           <i class="bx bx-chevron-down category-arrow"></i>
         </a>
         <ul class="subcategory">
+          {% if user.is_superuser %}
+          <li>
+            <a href="{% url 'usuarios:render_alert_ti' %}">
+              <i class="bx bx-bell-ring"></i>
+              <span class="menu-label">Alertas TI</span>
+            </a>
+          </li>
+          {% endif %}
           {% has_access user "SCT8" as can_cfg_perm %}
           {% if can_cfg_perm %}
           <li>

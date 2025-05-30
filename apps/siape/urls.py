@@ -23,6 +23,9 @@ urlpatterns = [
     path('api/post/novo-tac/', api_post_novotac, name='api_post_novotac'), # Atualizado
     path('api/get/nome-cliente/', api_get_nomecliente, name='api_get_nomecliente'), # Atualizado
 
+    # Nova rota para excluir débitos de campanha
+    path('api/post/excluir-debitos-campanha/', api_post_excluir_debitos_campanha, name='api_post_excluir_debitos_campanha'),
+    
     # Rotas de páginas (não precisam seguir o padrão da API)
     path('ranking/', render_ranking, name='ranking'),
     path('consulta-cliente/', render_consulta_cliente, name='consulta_cliente'),

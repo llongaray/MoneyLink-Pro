@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.utils import timezone
 from datetime import timedelta
 import calendar
+from django.db import models
 
 from .models import ClienteAgendamento, Agendamento, PresencaLoja
 
@@ -139,6 +140,24 @@ class TabulacaoVendaFilter(admin.SimpleListFilter):
         return queryset
 
 
+class ValorTacFilter(admin.SimpleListFilter):
+    title = 'Possui Valor TAC'
+    parameter_name = 'tem_valor_tac'
+
+    def lookups(self, request, model_admin):
+        return (
+            ('sim', 'Sim'),
+            ('nao', 'Não'),
+        )
+
+    def queryset(self, request, queryset):
+        if self.value() == 'sim':
+            return queryset.filter(valor_tac__isnull=False).exclude(valor_tac=0)
+        if self.value() == 'nao':
+            return queryset.filter(valor_tac__isnull=True) | queryset.filter(valor_tac=0)
+        return queryset
+
+
 # --- REGISTROS NO ADMIN ---
 
 @admin.register(ClienteAgendamento)
@@ -215,6 +234,7 @@ class PresencaLojaAdmin(admin.ModelAdmin):
     list_filter = (
         TabulacaoVendaFilter,
         'status_pagamento',
+        ValorTacFilter,
         'cliente_rua',
         'loja_comp',
         'vendedor',
@@ -256,3 +276,27 @@ class PresencaLojaAdmin(admin.ModelAdmin):
     @admin.display(description='Agendamento ID')
     def get_agendamento_info(self, obj):
         return obj.agendamento.id if obj.agendamento else 'N/A (Cliente Rua)'
+
+    def changelist_view(self, request, extra_context=None):
+        # Obtém o queryset filtrado que será exibido na lista
+        cl = self.get_changelist_instance(request)
+        queryset = cl.get_queryset(request)
+        
+        # Calcula a soma dos valores TAC (ignorando valores nulos)
+        total_tac = queryset.filter(valor_tac__isnull=False).aggregate(
+            total=models.Sum('valor_tac')
+        )['total'] or 0
+        
+        # Formata o valor para exibição
+        formatted_total = f"R$ {total_tac:.2f}".replace('.', ',')
+        
+        # Prepara o contexto extra
+        extra_context = extra_context or {}
+        extra_context['total_tac'] = formatted_total
+        
+        # Obtém o número de resultados para exibir junto com a soma
+        count = queryset.count()
+        extra_context['subtitle'] = f"{count} Presenças/Resultados em Loja - Total TAC: {formatted_total}"
+        
+        # Chama o método original com o contexto extra
+        return super().changelist_view(request, extra_context=extra_context)

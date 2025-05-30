@@ -36,4 +36,13 @@ urlpatterns = [
     path('api/users-acessos/register-multiple/', api_post_registeracessosusers, name='api_post_registeracessosusers'),
 
     path('api/users-info/', api_get_infouser, name='api_get_infouser'),
+
+    # Alertas TI
+    path('alertas-ti/', render_alert_ti, name='render_alert_ti'),
+    path('api/alertas/novo/', api_post_alert_ti, name='api_post_alert_ti'),
+    path('api/alertas/verificar/', api_get_alert_ti, name='api_get_alert_ti'),
+    path('api/alertas/verificar/<int:alerta_id>/', api_get_alert_ti, name='api_get_alert_ti_specific'),
+    path('api/alertas/marcar-visto/<int:alerta_id>/', api_marcar_alerta_visto, name='api_marcar_alerta_visto'),
+
+    path('api/destinatarios/<str:tipo>/', api_get_destinatarios, name='api_get_destinatarios'),
 ]

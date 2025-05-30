@@ -495,7 +495,7 @@ def api_get_dashboard_metas(request):
             
             data['ativas_list'].append({
                 'id': m.id,
-                'titulo': m.titulo,
+                'nome': m.titulo,
                 'valor_meta': vm,
                 'valor_atingido': va,
                 'valor_restante': restante,
@@ -521,7 +521,7 @@ def api_get_dashboard_metas(request):
             
             data['inativadas_list'].append({
                 'id': m.id,
-                'titulo': m.titulo,
+                'nome': m.titulo,
                 'valor_meta': vm,
                 'valor_atingido': va,
                 'valor_restante': restante,
@@ -542,6 +542,132 @@ def api_get_dashboard_metas(request):
 # FIM API GET/POST DASHBOARD
 # -------------------------------------------
 
+
+
+# -------------------------------------------
+# INICIO API SIAPE DASHBOARD
+# -------------------------------------------
+@login_required
+@require_GET
+def api_get_dashboard_siape(request):
+    """
+    API endpoint para retornar dados do SIAPE para o dashboard:
+    - Faturamento anual e mensal do SIAPE.
+    - Funcionário com maior faturamento anual e mensal no SIAPE.
+    """
+    try:
+        now = timezone.now()
+        logger.info(f"[DASHBOARD SIAPE] Iniciando em {now.isoformat()}")
+
+        start_year = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        end_year = now.replace(month=12, day=31, hour=23, minute=59, second=59, microsecond=999999)
+        start_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        next_month_start = (start_month.replace(day=28) + timedelta(days=4)).replace(day=1) # Avança para o próximo mês
+        end_month = next_month_start - timedelta(microseconds=1)
+
+
+        # Considerar que todos os RegisterMoney são do SIAPE para este contexto.
+        # Se precisar de filtro específico (ex: por Produto ou Setor específico do SIAPE), adicionar aqui.
+        registros_siape = RegisterMoney.objects.filter(status=True, setor__nome__iexact='SIAPE')
+
+        # Faturamento Anual SIAPE
+        faturamento_anual_siape = registros_siape.filter(
+            data__range=(start_year, end_year)
+        ).aggregate(total=Coalesce(Sum('valor_est'), Decimal(0)))['total']
+        logger.info(f"[DASHBOARD SIAPE] Faturamento Anual: {faturamento_anual_siape}")
+
+        # Faturamento Mensal SIAPE
+        faturamento_mensal_siape = registros_siape.filter(
+            data__range=(start_month, end_month)
+        ).aggregate(total=Coalesce(Sum('valor_est'), Decimal(0)))['total']
+        logger.info(f"[DASHBOARD SIAPE] Faturamento Mensal: {faturamento_mensal_siape}")
+
+        # Melhor Funcionário Ano
+        melhor_funcionario_ano_info = {
+            'nome': 'N/A', 'valor': Decimal(0), 'foto_url': None
+        }
+        top_func_ano_qs = registros_siape.filter(
+            data__range=(start_year, end_year), user__isnull=False
+        ).values('user').annotate(
+            total_vendido=Sum('valor_est'),
+            nome_func=F('user__funcionario_profile__apelido') # Correção aqui
+        ).filter(total_vendido__gt=0).order_by('-total_vendido')
+
+        if top_func_ano_qs.exists():
+            top_func_ano = top_func_ano_qs.first()
+            nome_display_ano = top_func_ano['nome_func']
+            if not nome_display_ano: # Fallback se apelido for vazio
+                user_obj_ano = User.objects.get(pk=top_func_ano['user'])
+                nome_display_ano = user_obj_ano.get_full_name() or user_obj_ano.username
+            
+            foto_url_ano = None
+            try:
+                funcionario_obj_ano = Funcionario.objects.get(usuario_id=top_func_ano['user'])
+                if funcionario_obj_ano.foto:
+                    foto_url_ano = request.build_absolute_uri(funcionario_obj_ano.foto.url)
+            except Funcionario.DoesNotExist:
+                pass # Mantém foto_url_ano como None
+
+            melhor_funcionario_ano_info = {
+                'nome': nome_display_ano,
+                'valor': top_func_ano['total_vendido'],
+                'foto_url': foto_url_ano
+            }
+        logger.info(f"[DASHBOARD SIAPE] Melhor Funcionário Ano: {melhor_funcionario_ano_info}")
+
+
+        # Melhor Funcionário Mês
+        melhor_funcionario_mes_info = {
+            'nome': 'N/A', 'valor': Decimal(0), 'foto_url': None
+        }
+        top_func_mes_qs = registros_siape.filter(
+            data__range=(start_month, end_month), user__isnull=False
+        ).values('user').annotate(
+            total_vendido=Sum('valor_est'),
+            nome_func=F('user__funcionario_profile__apelido') # Correção aqui
+        ).filter(total_vendido__gt=0).order_by('-total_vendido')
+        
+        if top_func_mes_qs.exists():
+            top_func_mes = top_func_mes_qs.first()
+            nome_display_mes = top_func_mes['nome_func']
+            if not nome_display_mes: # Fallback se apelido for vazio
+                user_obj_mes = User.objects.get(pk=top_func_mes['user'])
+                nome_display_mes = user_obj_mes.get_full_name() or user_obj_mes.username
+
+            foto_url_mes = None
+            try:
+                funcionario_obj_mes = Funcionario.objects.get(usuario_id=top_func_mes['user'])
+                if funcionario_obj_mes.foto:
+                    foto_url_mes = request.build_absolute_uri(funcionario_obj_mes.foto.url)
+            except Funcionario.DoesNotExist:
+                pass # Mantém foto_url_mes como None
+
+            melhor_funcionario_mes_info = {
+                'nome': nome_display_mes,
+                'valor': top_func_mes['total_vendido'],
+                'foto_url': foto_url_mes
+            }
+        logger.info(f"[DASHBOARD SIAPE] Melhor Funcionário Mês: {melhor_funcionario_mes_info}")
+
+        data = {
+            'faturamento_anual': faturamento_anual_siape,
+            'faturamento_mensal': faturamento_mensal_siape,
+            'melhor_funcionario_ano': melhor_funcionario_ano_info,
+            'melhor_funcionario_mes': melhor_funcionario_mes_info,
+            'timestamp': now.isoformat()
+        }
+        return JsonResponse(data)
+
+    except Exception as e:
+        logger.error(f"[DASHBOARD SIAPE] Erro: {e}", exc_info=True)
+        return JsonResponse({
+            'error': 'Erro interno ao processar dados SIAPE do dashboard.',
+            'details': str(e)
+        }, status=500)
+
+# -------------------------------------------
+# FIM API SIAPE DASHBOARD
+# -------------------------------------------
 
 
 # -------------------------------------------

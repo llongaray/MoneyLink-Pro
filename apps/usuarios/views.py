@@ -26,6 +26,8 @@ from .models import *
 from apps.funcionarios.models import *
 import json
 from custom_tags_app.templatetags.permissionsacess import controle_acess
+from django.template.loader import render_to_string
+from django.utils import timezone
 
 
 # 1. Renderiza a página de permissões
@@ -557,3 +559,202 @@ def api_post_registeracessosusers(request):
             'status': 'error',
             'message': f'Erro ao processar requisição: {str(e)}'
         }, status=500)
+
+@login_required
+def render_alert_ti(request):
+    """Renderiza a página de formulário de alertas TI"""
+    if not request.user.is_superuser:
+        return JsonResponse({'error': 'Acesso negado'}, status=403)
+    return render(request, 'usuarios/forms_alert_ti.html')
+
+@login_required
+@require_http_methods(["POST"])
+@csrf_exempt
+def api_post_alert_ti(request):
+    """API para criar novo alerta"""
+    if not request.user.is_superuser:
+        return JsonResponse({'error': 'Acesso negado'}, status=403)
+    
+    try:
+        mensagem = request.POST.get('mensagem')
+        destinatarios_ids = request.POST.getlist('destinatarios[]')  # Agora recebe uma lista de IDs
+        audio = request.FILES.get('audio')
+        
+        if not all([mensagem, destinatarios_ids, audio]):
+            return JsonResponse({'error': 'Todos os campos são obrigatórios'}, status=400)
+        
+        # Cria o alerta
+        alerta = AlertaTI.objects.create(
+            mensagem=mensagem,
+            audio=audio,
+            criado_por=request.user
+        )
+        
+        # Adiciona os destinatários
+        alerta.destinatarios.set(destinatarios_ids)
+        
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Alerta criado com sucesso',
+            'alerta_id': alerta.id
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+@login_required
+@require_http_methods(["GET"])
+def api_get_alert_ti(request, alerta_id=None):
+    """API para verificar novos alertas"""
+    try:
+        # print('🔍 [api_get_alert_ti] Iniciando verificação de alertas...')
+        # print(f'🔍 [api_get_alert_ti] Usuário: {request.user.username}')
+        # print(f'🔍 [api_get_alert_ti] Alerta ID: {alerta_id}')
+        
+        # Busca alertas ativos dos últimos 5 minutos
+        cinco_minutos_atras = timezone.now() - timedelta(minutes=5)
+        # print(f'🔍 [api_get_alert_ti] Buscando alertas após: {cinco_minutos_atras}')
+        
+        # Primeiro, busca todos os alertas ativos
+        query = AlertaTI.objects.filter(
+            ativo=True,
+            data_criacao__gte=cinco_minutos_atras
+        )
+        
+        # Se um ID específico foi fornecido, filtra por ele
+        if alerta_id:
+            # print(f'🔍 [api_get_alert_ti] Filtrando por alerta ID: {alerta_id}')
+            query = query.filter(id=alerta_id)
+        
+        # Ordena por data de criação (mais recente primeiro)
+        alertas = query.order_by('-data_criacao')
+        # print(f'🔍 [api_get_alert_ti] Total de alertas encontrados: {alertas.count()}')
+        
+        # Filtra os alertas para o usuário atual
+        alertas_usuario = []
+        for alerta in alertas:
+            if alerta.destinatarios.filter(id=request.user.id).exists():
+                alertas_usuario.append(alerta)
+        
+        # print(f'🔍 [api_get_alert_ti] Total de alertas para o usuário: {len(alertas_usuario)}')
+        
+        if not alertas_usuario:
+            # print('🔍 [api_get_alert_ti] Nenhum alerta encontrado para o usuário')
+            return JsonResponse({'tem_alerta': False})
+        
+        # Pega o alerta mais recente
+        alerta = alertas_usuario[0]
+        # print(f'🔍 [api_get_alert_ti] Alerta mais recente ID: {alerta.id}')
+        
+        # Verifica se o usuário já viu este alerta
+        ja_visto = AlertaTIVisto.objects.filter(
+            alerta=alerta,
+            usuario=request.user
+        ).exists()
+        # print(f'🔍 [api_get_alert_ti] Alerta já visto: {ja_visto}')
+        
+        # print('🔍 [api_get_alert_ti] Retornando dados do alerta')
+        return JsonResponse({
+            'tem_alerta': True,
+            'alerta_id': alerta.id,
+            'mensagem': alerta.mensagem,
+            'audio_url': alerta.audio.url,
+            'ja_visto': ja_visto
+        })
+        
+    except Exception as e:
+        # print(f'❌ [api_get_alert_ti] Erro: {str(e)}')
+        return JsonResponse({'error': str(e)}, status=500)
+
+@login_required
+@require_http_methods(["POST"])
+@csrf_exempt
+def api_marcar_alerta_visto(request, alerta_id):
+    """API para marcar um alerta como visto"""
+    try:
+        alerta = get_object_or_404(AlertaTI, id=alerta_id)
+        
+        # Verifica se o usuário é destinatário do alerta
+        if not alerta.destinatarios.filter(id=request.user.id).exists():
+            return JsonResponse({'error': 'Usuário não é destinatário deste alerta'}, status=403)
+        
+        # Marca o alerta como visto
+        AlertaTIVisto.objects.get_or_create(
+            alerta=alerta,
+            usuario=request.user
+        )
+        
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Alerta marcado como visto'
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+@login_required
+@require_http_methods(["GET"])
+def api_get_destinatarios(request, tipo):
+    """API para listar destinatários por tipo"""
+    try:
+        if tipo == 'funcionarios':
+            # Busca todos os funcionários ativos
+            funcionarios = Funcionario.objects.filter(
+                status=True,
+                usuario__isnull=False
+            ).select_related('usuario')
+            
+            data = [{
+                'id': f.usuario.id,
+                'nome': f.nome_completo
+            } for f in funcionarios]
+            
+        elif tipo == 'empresas':
+            # Busca todas as empresas ativas
+            empresas = Empresa.objects.filter(status=True)
+            data = [{
+                'id': e.id,
+                'nome': e.nome
+            } for e in empresas]
+            
+        elif tipo == 'departamentos':
+            # Busca todos os departamentos ativos
+            departamentos = Departamento.objects.filter(status=True)
+            data = [{
+                'id': d.id,
+                'nome': d.nome
+            } for d in departamentos]
+            
+        elif tipo == 'setores':
+            # Busca todos os setores ativos
+            setores = Setor.objects.filter(status=True)
+            data = [{
+                'id': s.id,
+                'nome': s.nome
+            } for s in setores]
+            
+        elif tipo == 'lojas':
+            # Busca todas as lojas ativas
+            lojas = Loja.objects.filter(status=True)
+            data = [{
+                'id': l.id,
+                'nome': l.nome
+            } for l in lojas]
+            
+        elif tipo == 'equipes':
+            # Busca todas as equipes ativas
+            equipes = Equipe.objects.filter(status=True)
+            data = [{
+                'id': e.id,
+                'nome': e.nome
+            } for e in equipes]
+            
+        else:
+            return JsonResponse({
+                'error': f'Tipo de destinatário inválido: {tipo}. Tipos válidos: funcionarios, empresas, departamentos, setores, lojas, equipes'
+            }, status=400)
+            
+        return JsonResponse(data, safe=False)
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)

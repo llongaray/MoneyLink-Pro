@@ -53,6 +53,7 @@ urlpatterns = [
     path('api/dashboard/lojas/', api_get_dashboard_lojas, name='api_get_dashboard_lojas'),
     path('api/dashboard/rh/', api_get_dashboard_rh, name='api_get_dashboard_rh'),
     path('api/dashboard/metas/', api_get_dashboard_metas, name='api_get_dashboard_metas'),
+    path('api/dashboard/siape/', api_get_dashboard_siape, name='api_get_dashboard_siape'),
 
     # --- Comunicados ---
     path('', render_comunicados, name='render_comunicados'),  # Nova URL para comunicados

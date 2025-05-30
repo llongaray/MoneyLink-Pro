@@ -931,6 +931,66 @@ html.dark .arquivo-item .arquivo-data {
     color: #999;
 }
 
+/* Estilos para a área de arrastar e soltar */
+#drop-area {
+    border: 2px dashed var(--color-gray);
+    border-radius: var(--border-radius);
+    padding: 30px;
+    transition: border-color 0.3s ease, background-color 0.3s ease;
+    background-color: #f9f9f9; /* Fundo levemente diferente */
+}
+
+#drop-area i {
+    color: var(--color-secondary);
+    font-size: 3rem;
+}
+
+#drop-area p {
+    color: var(--color-text);
+    font-weight: 500;
+}
+
+#drop-area.highlight {
+    border-color: var(--color-primary);
+    background-color: var(--color-light);
+}
+
+#drop-area.highlight i {
+    color: var(--color-primary);
+}
+
+.text-muted_extra {
+    color: #888;
+    display: block;
+    margin-top: 5px;
+}
+
+html.dark #drop-area {
+    border-color: #555;
+    background-color: #333;
+}
+
+html.dark #drop-area i {
+    color: #6ab0f3;
+}
+
+html.dark #drop-area p {
+    color: #ccc;
+}
+
+html.dark #drop-area.highlight {
+    border-color: var(--color-primary);
+    background-color: #444;
+}
+
+html.dark #drop-area.highlight i {
+    color: var(--color-primary);
+}
+
+html.dark .text-muted_extra {
+    color: #aaa;
+}
+
 @media (max-width: 767px) {
   #three-col-layout {
     flex-direction: column;

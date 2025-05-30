@@ -45,6 +45,9 @@ $(document).ready(function() {
     const $listaArquivosExistentes = $('#lista-arquivos-existentes');
     const $semArquivosMsg = $('#sem-arquivos-msg');
 
+    // Novo elemento para a área de arrastar e soltar
+    const $dropArea = $('#drop-area');
+
     // Contador para IDs únicos de formulários de arquivo
     let contadorFormArquivos = 1;
 
@@ -1059,6 +1062,44 @@ $(document).ready(function() {
         $(this).removeClass('is-invalid');
     });
 
+    // --- Event Listeners para Arrastar e Soltar ---
+    if ($dropArea.length) {
+        // Prevenir comportamentos padrão
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            $dropArea.on(eventName, function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            });
+        });
+
+        // Adicionar classe de destaque ao arrastar sobre
+        ['dragenter', 'dragover'].forEach(eventName => {
+            $dropArea.on(eventName, function() {
+                $dropArea.addClass('highlight');
+            });
+        });
+
+        // Remover classe de destaque ao sair ou soltar
+        ['dragleave', 'drop'].forEach(eventName => {
+            $dropArea.on(eventName, function() {
+                $dropArea.removeClass('highlight');
+            });
+        });
+
+        // Lidar com o evento de soltar arquivos
+        $dropArea.on('drop', function(e) {
+            const dt = e.originalEvent.dataTransfer;
+            const files = dt.files;
+            
+            if (files.length > 0) {
+                console.log(`${files.length} arquivo(s) solto(s).`);
+                Array.from(files).forEach(file => {
+                    adicionarFormularioArquivo(file); // Passa o arquivo para a função
+                });
+            }
+        });
+    }
+
     // --- Inicialização ---
     carregarDadosIniciais();
     $cardEdicao.hide(); // Garante que o card de edição começa oculto
@@ -1137,7 +1178,8 @@ $(document).ready(function() {
     }
 
     // Adicionar novo formulário de arquivo
-    function adicionarFormularioArquivo() {
+    // Modificada para aceitar um arquivo pré-selecionado (para o drag and drop)
+    function adicionarFormularioArquivo(arquivoPreSelecionado = null) {
         const novoId = contadorFormArquivos++;
         
         const $novoFormulario = $(`
@@ -1171,6 +1213,21 @@ $(document).ready(function() {
         });
         
         $containerNovosArquivos.append($novoFormulario);
+
+        // Se um arquivo foi pré-selecionado (do drag and drop), atribui-o ao input
+        if (arquivoPreSelecionado) {
+            const $fileInput = $novoFormulario.find('.input-arquivo-file');
+            if ($fileInput.length > 0 && $fileInput[0].files) {
+                // Criar um DataTransfer para simular a seleção do arquivo
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(arquivoPreSelecionado);
+                $fileInput[0].files = dataTransfer.files;
+
+                // Opcional: disparar um evento 'change' se necessário para alguma lógica de UI
+                // $fileInput.trigger('change');
+                console.log(`Arquivo '${arquivoPreSelecionado.name}' atribuído ao novo formulário de arquivo.`);
+            }
+        }
         
         // Dar foco ao campo de título do novo formulário
         $novoFormulario.find('.input-arquivo-titulo').focus();

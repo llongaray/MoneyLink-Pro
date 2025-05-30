@@ -19,7 +19,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST, require_GET
 from django.views.decorators.csrf import csrf_exempt
 from django.core.exceptions import FieldError
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from django.utils import timezone
 from datetime import timedelta
 from django.conf import settings
@@ -30,12 +30,15 @@ import pytz
 # Importações locais
 from custom_tags_app.permissions import check_access
 from setup.utils import verificar_autenticacao
+from django.core.exceptions import ValidationError
+
 
 # Importações de apps
 from .forms import *
 from .models import *
 from apps.funcionarios.models import *
 from apps.siape.models import *
+from apps.juridico.models import *
 import re
 from django.views.decorators.csrf import ensure_csrf_cookie
 
@@ -1083,147 +1086,142 @@ def api_get_infocliente(request):
     }
     return JsonResponse(resposta, status=200)
 
-
 @login_required
 @require_POST
 def api_post_novavenda(request):
-    import logging
-    logger = logging.getLogger(__name__)
-
-    # 1️⃣ Extrai campos do POST
-    nome      = request.POST.get('nome_cliente', '').strip()
-    cpf       = request.POST.get('cpf_cliente', '').strip().replace('.', '').replace('-', '')
-    num       = request.POST.get('numero_cliente', '').strip()
-    dt_s      = request.POST.get('data_comparecimento', '')
-    loja_id   = request.POST.get('loja', '')
-    vend_id   = request.POST.get('vendedor_id', '')
-    tab_v_raw = request.POST.get('tabulacao_vendedor', '').strip()
-
-    # 2️⃣ Mapeamento das tabulações para as chaves válidas em TextChoices
-    TAB_MAP = {
-        'NEGÓCIO FECHADO':  'NEGOCIO_FECHADO',
-        'FECHOU NEGÓCIO':   'NEGOCIO_FECHADO',
-        'FECHOU NEGOCIO':   'NEGOCIO_FECHADO',
-        'INELEGÍVEL':       'INELEGIVEL',
-        'NAO ACEITOU':      'NAO_ACEITOU',
-        'NÃO ACEITOU':      'NAO_ACEITOU',
-        'NAO QUIS OUVIR':   'NAO_QUIS_OUVIR',
-        'NÃO QUIS OUVIR':   'NAO_QUIS_OUVIR',
-        'PENDENTE':         'PENDENTE',
-    }
-    tab_v = TAB_MAP.get(tab_v_raw.upper(), tab_v_raw.upper())
-
-    # 3️⃣ Validações básicas
-    if not all([nome, cpf, num, dt_s, loja_id, vend_id, tab_v]):
-        return JsonResponse({'status':'error','message':'Campos obrigatórios faltando'}, status=400)
-
+    print("[NOVA_VENDA] Iniciando processamento de nova venda")
     try:
-        dt_naive = timezone.datetime.strptime(dt_s, '%Y-%m-%d')
-        dt_cmp = timezone.make_aware(dt_naive) if settings.USE_TZ else dt_naive
-    except ValueError:
-        return JsonResponse({'status':'error','message':'Data inválida'}, status=400)
-
-    # 4️⃣ Cria ou atualiza ClienteAgendamento
-    cliente, created = ClienteAgendamento.objects.get_or_create(
-        cpf=cpf,
-        defaults={
-            'nome_completo': nome.upper(),
-            'numero': num,
-            'flg_whatsapp': True,
-            'status': True
-        }
-    )
-    if not created:
-        cliente.nome_completo = nome.upper()
-        cliente.numero = num
-        cliente.save()
-
-    # 5️⃣ Busca loja e vendedor
-    try:
-        loja = Loja.objects.get(id=loja_id)
-        vend = User.objects.get(id=vend_id)
-    except (Loja.DoesNotExist, User.DoesNotExist):
-        return JsonResponse({'status':'error','message':'Loja ou vendedor não encontrado'}, status=400)
-
-    # 6️⃣ Processa produtos, se for NEGÓCIO_FECHADO
-    produtos_json = request.POST.get('produtos_json') or request.POST.get('produtos','{}')
-    produtos = []
-    valor_total = Decimal('0')
-    if tab_v == 'NEGOCIO_FECHADO':
+        # 1. Printar todos os campos recebidos
+        print(f'[NOVA_VENDA] Campos recebidos no POST:')
+        for k, v in request.POST.items():
+            print(f'  {k}: {v}')
+        
+        # 2. Verificar/obter cliente
+        cpf = (request.POST.get('cpf_cliente') or request.POST.get('cpf', '')).replace('.', '').replace('-', '')
+        nome = request.POST.get('nome_cliente') or request.POST.get('nome_completo') or request.POST.get('nome')
+        numero = request.POST.get('numero_cliente') or request.POST.get('numero')
+        if not cpf or not nome or not numero:
+            return JsonResponse({'status': 'error', 'message': 'Nome, CPF e número são obrigatórios'}, status=400)
         try:
-            parsed = json.loads(produtos_json)
-            # converte lista em dict de índices
-            produtos = {str(i): p for i, p in enumerate(parsed)} if isinstance(parsed, list) else parsed
-        except json.JSONDecodeError:
-            return JsonResponse({'status':'error','message':'Produtos inválidos'}, status=400)
-        if not produtos:
-            return JsonResponse({'status':'error','message':'Pelo menos um produto é obrigatório'}, status=400)
-
-    # 7️⃣ Cria as PresencaLoja
-    pres_ids = []
-    if produtos:
-        for info in produtos.values():
-            sub   = str(info.get('subsidio')).lower() in ['true', '1', 'sim']
-            acao  = str(info.get('acao')).lower()     in ['true', '1', 'sim']
-            asso  = str(info.get('associacao')).lower() in ['true', '1', 'sim']
-            aum   = str(info.get('aumento')).lower()  in ['true', '1', 'sim']
-            vt    = info.get('valor_tac','0').replace('R$','').replace('.','').replace(',','.')
-            try:
-                vt_dec = Decimal(vt)
-            except:
-                vt_dec = Decimal('0')
-            valor_total += vt_dec
-
-            tipo = info.get('tipo_negociacao','').upper()
-            pid  = info.get('produto_id')
-            if pid:
-                try:
-                    prod = Produto.objects.get(id=pid)
-                    tipo = prod.nome.upper()
-                except Produto.DoesNotExist:
-                    pass
-
-            p = PresencaLoja.objects.create(
-                cliente_agendamento=cliente,
-                loja_comp=loja,
-                vendedor=vend,
-                tabulacao_venda=tab_v,
-                tipo_negociacao=tipo,
-                banco=info.get('banco','').upper(),
-                subsidio=sub,
-                valor_tac=vt_dec,
-                acao=acao,
-                associacao=asso,
-                aumento=aum,
-                status_pagamento=PresencaLoja.StatusPagamentoChoices.EM_ESPERA,
-                cliente_rua=True,
-                data_presenca=dt_cmp
+            cliente = ClienteAgendamento.objects.get(cpf=cpf)
+            print(f"[NOVA_VENDA] Cliente existente encontrado: {cliente.id}")
+            cliente.nome_completo = nome
+            cliente.numero = numero
+            cliente.save()
+        except ClienteAgendamento.DoesNotExist:
+            cliente = ClienteAgendamento.objects.create(
+                nome_completo=nome,
+                cpf=cpf,
+                numero=numero
             )
-            pres_ids.append(p.id)
-
-    else:
-        # sem produto
-        p = PresencaLoja.objects.create(
-            cliente_agendamento=cliente,
-            loja_comp=loja,
-            vendedor=vend,
-            tabulacao_venda=tab_v,
-            cliente_rua=True,
-            data_presenca=dt_cmp
-        )
-        pres_ids.append(p.id)
-
-    # 8️⃣ Monta resposta
-    resp = {
-        'status': 'success',
-        'message': f'Cliente {cliente.nome_completo} registrado',
-        'cliente_id': cliente.id,
-        'presencas_ids': pres_ids
-    }
-    if valor_total > 0:
-        resp['valor_total_tac'] = f'R$ {valor_total:.2f}'.replace('.', ',')
-
-    return JsonResponse(resp, status=201)
+            print(f"[NOVA_VENDA] Novo cliente criado: {cliente.id}")
+        
+        # 3. Obter dados comuns
+        loja_id = request.POST.get('loja')
+        vendedor_id = request.POST.get('vendedor_id')
+        tabulacao = request.POST.get('tabulacao_vendedor') or request.POST.get('tabulacao') or 'NEGOCIO_FECHADO'
+        data_comparecimento = request.POST.get('data_comparecimento') or request.POST.get('data')
+        try:
+            loja = Loja.objects.get(id=loja_id)
+            funcionario = Funcionario.objects.get(id=vendedor_id)
+            vendedor = User.objects.get(id=funcionario.usuario_id)
+        except Exception as e:
+            print(f'[NOVA_VENDA] Erro ao buscar loja/vendedor: {e}')
+            return JsonResponse({'status': 'error', 'message': 'Loja ou vendedor não encontrado'}, status=404)
+        
+        # 4. Montar lista de produtos a partir dos campos do FormData
+        produtos = []
+        
+        # Verificar se os produtos foram enviados como JSON
+        produtos_json = request.POST.get('produtos_json')
+        if produtos_json:
+            import json
+            try:
+                produtos = json.loads(produtos_json)
+                print(f'[NOVA_VENDA] Produtos recebidos via JSON: {produtos}')
+            except json.JSONDecodeError as e:
+                print(f'[NOVA_VENDA] Erro ao decodificar JSON de produtos: {e}')
+        else:
+            # Método antigo: descobrir quantos produtos vieram via campos individuais
+            indices = set()
+            for key in request.POST.keys():
+                if key.startswith('produtos['):
+                    idx = key.split('[')[1].split(']')[0]
+                    if idx.isdigit():
+                        indices.add(int(idx))
+            indices = sorted(indices)
+            print(f'[NOVA_VENDA] Indices de produtos encontrados: {indices}')
+            for idx in indices:
+                produto = {
+                    'produto_id': request.POST.get(f'produtos[{idx}][produto_id]'),
+                    'tipo_negociacao': request.POST.get(f'produtos[{idx}][tipo_negociacao]'),
+                    'banco': request.POST.get(f'produtos[{idx}][banco]'),
+                    'valor_tac': request.POST.get(f'produtos[{idx}][valor_tac]'),
+                    'subsidio': request.POST.get(f'produtos[{idx}][subsidio]'),
+                    'associacao': request.POST.get(f'produtos[{idx}][associacao]'),
+                    'aumento': request.POST.get(f'produtos[{idx}][aumento]'),
+                }
+                print(f'[NOVA_VENDA] Produto {idx}: {produto}')
+                produtos.append(produto)
+        
+        # Verificar se temos produtos para processar
+        if tabulacao == 'NEGOCIO_FECHADO' and not produtos:
+            return JsonResponse({'status': 'error', 'message': 'Para NEGÓCIO FECHADO é necessário adicionar pelo menos um produto'}, status=400)
+        
+        # 5. Criar uma PresencaLoja para cada produto
+        presencas_ids = []
+        for produto in produtos:
+            try:
+                # Processar valor TAC
+                vt_str = produto.get('valor_tac','0').replace('R$','').replace('.','').replace(',','.')
+                try: vt_dec = Decimal(vt_str)
+                except: vt_dec = Decimal('0')
+                
+                # Buscar nome do produto se for passado produto_id
+                tipo_negociacao = produto.get('tipo_negociacao', '')
+                produto_id = produto.get('produto_id')
+                
+                if produto_id and produto_id.isdigit():
+                    try:
+                        from apps.siape.models import Produto
+                        produto_obj = Produto.objects.get(id=int(produto_id))
+                        tipo_negociacao = produto_obj.nome
+                        print(f'[NOVA_VENDA] Produto encontrado: {tipo_negociacao} (ID: {produto_id})')
+                    except Exception as e:
+                        print(f'[NOVA_VENDA] Erro ao buscar produto com ID {produto_id}: {e}')
+                
+                presenca = PresencaLoja.objects.create(
+                    cliente_agendamento=cliente,
+                    loja_comp=loja,
+                    vendedor=vendedor,
+                    tabulacao_venda=tabulacao,
+                    tipo_negociacao=(tipo_negociacao or '').upper(),
+                    banco=(produto.get('banco') or '').upper(),
+                    subsidio=str(produto.get('subsidio')).lower() in ('true','1','sim'),
+                    valor_tac=vt_dec,
+                    associacao=str(produto.get('associacao')).lower() in ('true','1','sim'),
+                    aumento=str(produto.get('aumento')).lower() in ('true','1','sim'),
+                    cliente_rua=True,
+                    data_presenca=timezone.now(),
+                )
+                presencas_ids.append(presenca.id)
+                print(f'[NOVA_VENDA] PresencaLoja criada para produto {tipo_negociacao}: {presenca.id}')
+            except Exception as e:
+                print(f'[NOVA_VENDA] Erro ao criar PresencaLoja para produto {produto}: {e}')
+        print(f'[NOVA_VENDA] Total de presenças criadas: {len(presencas_ids)}')
+        return JsonResponse({
+            'status': 'success',
+            'message': f'{len(presencas_ids)} presença(s) registrada(s) para cliente rua',
+            'presencas_ids': presencas_ids
+        })
+    except Exception as e:
+        print(f"[NOVA_VENDA] Erro ao processar nova venda: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
 
 @login_required
 @require_POST
@@ -1320,10 +1318,11 @@ def api_post_addvenda(request):
             p.save()
             pres_ids.append(p.id)
 
-        # marca confirmado
+        # Atualiza status do agendamento
         if ag.tabulacao_agendamento != 'CONFIRMADO':
             ag.tabulacao_agendamento = 'CONFIRMADO'
-            ag.save()
+        ag.status_atendimento = Agendamento.StatusAtendimentoChoices.EM_ATENDIMENTO
+        ag.save()
 
         return JsonResponse({
             'status':'success',
@@ -1343,9 +1342,11 @@ def api_post_addvenda(request):
     p.save()
     pres_ids.append(p.id)
 
+    # Atualiza status do agendamento
     if ag.tabulacao_agendamento != 'CONFIRMADO':
         ag.tabulacao_agendamento = 'CONFIRMADO'
-        ag.save()
+    ag.status_atendimento = Agendamento.StatusAtendimentoChoices.EM_ATENDIMENTO
+    ag.save()
 
     return JsonResponse({
         'status':'success',
@@ -1353,122 +1354,127 @@ def api_post_addvenda(request):
         'presenca_id': p.id
     })
 
-
 @login_required
 @require_GET
 def api_get_infolojaefuncionario(request):
     """
     API para buscar informações de lojas ativas e funcionários permitidos.
-
-    Retorna um JSON contendo:
-    - 'lojas': Um dicionário com ID da loja como chave e {'id', 'nome'} como valor.
-    - 'funcionarios': Um dicionário com ID do usuário como chave e {'id', 'nome'} como valor.
-    - 'produtos': Um dicionário com ID do produto como chave e {'id', 'nome'} como valor.
-
-    A lista de funcionários e de lojas depende do nível hierárquico do usuário logado:
-    - Superusuários ou cargos SUPERVISOR_GERAL e GESTOR veem todas as lojas ativas e todos os funcionários dessas lojas.
-    - Cargos de nível superior a PADRAO (COORDENADOR, GERENTE, FRANQUEADO) veem apenas suas lojas e todos os funcionários dessas lojas.
-    - Cargos ESTAGIO ou PADRAO veem apenas suas lojas e apenas a si mesmos.
-    - Usuários sem perfil de funcionário ou sem cargo definido (e não superusuários) veem apenas a si mesmos, sem nenhuma loja adicional.
+    
+    Aplica filtros baseados na hierarquia do usuário:
+    - Superuser: vê todas as lojas e todos os funcionários
+    - Supervisor Geral: vê todas as lojas e todos os funcionários
+    - Gerente: vê todas as lojas não-franquia e funcionários dessas lojas
+    - Coordenador: vê suas lojas e funcionários dessas lojas
+    - Demais (ESTAGIO, PADRAO): vê apenas suas lojas e apenas o próprio usuário como funcionário
     """
     try:
         user = request.user
-
-        # 1. Produtos ativos
-        produtos_qs = Produto.objects.filter(ativo=True).order_by('nome')
-        produtos_dict = {
-            p.id: {'id': p.id, 'nome': p.nome}
-            for p in produtos_qs
-        }
-
-        # 2. Determinar perfil do funcionário logado (se existir)
-        func_logado = Funcionario.objects.select_related('cargo').prefetch_related('lojas').filter(
-            usuario=user, status=True
-        ).first()
-
-        # 3. Inicialização
-        lojas_qs = Loja.objects.filter(status=True)  # base de todas as lojas ativas
-        funcionarios_qs = Funcionario.objects.none()  # vazio por padrão
-
-        # 4. Superuser -> todas as lojas e todos os funcionários dessas lojas
+        print(f"[INFO_LOJA_FUNC] Usuário: {user.username}")
+        
+        # Inicializa queryset vazias
+        lojas_qs = Loja.objects.none()
+        funcionarios_qs = Funcionario.objects.none()
+        
+        # Variável para armazenar a hierarquia do usuário
+        user_hierarquia = None
+        
+        # Se for superuser, retorna todas as lojas e todos os funcionários
         if user.is_superuser:
-            # lojistas
-            lojas_permitidas = lojas_qs
-            # funcionários de todas essas lojas
-            funcionarios_qs = Funcionario.objects.filter(
-                status=True,
-                lojas__in=lojas_permitidas,
-                usuario__isnull=False
-            ).select_related('usuario').prefetch_related('lojas').order_by('nome_completo')
-
+            print(f"[INFO_LOJA_FUNC] Usuário é superuser - acesso total")
+            lojas_qs = Loja.objects.filter(status=True)
+            funcionarios_qs = Funcionario.objects.filter(status=True, cargo__isnull=False)
         else:
-            # 5. Se não superuser, mas tem perfil de funcionário
-            if func_logado and func_logado.cargo:
-                hier = func_logado.cargo.hierarquia
-                minhas_lojas = func_logado.lojas.all()
-
-                # SUPERVISOR_GERAL ou GESTOR veem tudo também
-                if hier in [Cargo.HierarquiaChoices.SUPERVISOR_GERAL,
-                            Cargo.HierarquiaChoices.GESTOR]:
-                    lojas_permitidas = lojas_qs
+            # Procura o funcionário associado ao usuário logado
+            try:
+                funcionario = Funcionario.objects.select_related('cargo').prefetch_related('lojas').get(usuario=user, status=True)
+                hier = funcionario.cargo.hierarquia if funcionario.cargo else None
+                # Armazena a hierarquia para uso posterior
+                user_hierarquia = hier
+                
+                print(f"[INFO_LOJA_FUNC] Usuário tem hierarquia: {hier}")
+                
+                # Supervisor Geral - acesso total
+                if hier == Cargo.HierarquiaChoices.SUPERVISOR_GERAL:
+                    print(f"[INFO_LOJA_FUNC] Supervisor Geral - acesso total")
+                    lojas_qs = Loja.objects.filter(status=True)
+                    funcionarios_qs = Funcionario.objects.filter(status=True, cargo__isnull=False)
+                
+                # Gerente - todas as lojas não-franquia e funcionários dessas lojas
+                elif hier == Cargo.HierarquiaChoices.GERENTE:
+                    print(f"[INFO_LOJA_FUNC] Gerente - lojas não-franquia")
+                    lojas_qs = Loja.objects.filter(status=True, is_franquia=False)
+                    # Funcionários dessas lojas
                     funcionarios_qs = Funcionario.objects.filter(
-                        status=True,
-                        lojas__in=lojas_permitidas,
-                        usuario__isnull=False
-                    ).select_related('usuario').prefetch_related('lojas').order_by('nome_completo')
-
-                # cargos superiores a PADRAO (COORDENADOR, GERENTE, FRANQUEADO)
-                elif hier not in [Cargo.HierarquiaChoices.ESTAGIO,
-                                  Cargo.HierarquiaChoices.PADRAO]:
-                    # vê apenas suas lojas, mas todos os funcionários delas
-                    lojas_permitidas = minhas_lojas
+                        status=True, 
+                        cargo__isnull=False,
+                        lojas__in=lojas_qs
+                    ).distinct()
+                
+                # Coordenador - suas lojas e funcionários dessas lojas
+                elif hier == Cargo.HierarquiaChoices.COORDENADOR:
+                    print(f"[INFO_LOJA_FUNC] Coordenador - lojas próprias")
+                    lojas_qs = funcionario.lojas.filter(status=True)
+                    # Funcionários dessas lojas
                     funcionarios_qs = Funcionario.objects.filter(
-                        status=True,
-                        lojas__in=minhas_lojas,
-                        usuario__isnull=False
-                    ).select_related('usuario').prefetch_related('lojas').order_by('nome_completo')
-
-                else:
-                    # ESTAGIO ou PADRAO: vê apenas suas lojas e somente a si mesmo
-                    lojas_permitidas = minhas_lojas
+                        status=True, 
+                        cargo__isnull=False,
+                        lojas__in=lojas_qs
+                    ).distinct()
+                
+                # ESTAGIO ou PADRAO (níveis 1 e 2) - apenas suas lojas e apenas o próprio usuário
+                elif hier in [Cargo.HierarquiaChoices.ESTAGIO, Cargo.HierarquiaChoices.PADRAO]:
+                    print(f"[INFO_LOJA_FUNC] Nível básico (ESTAGIO/PADRAO) - apenas próprio usuário")
+                    lojas_qs = funcionario.lojas.filter(status=True)
+                    # Apenas o próprio funcionário
                     funcionarios_qs = Funcionario.objects.filter(
                         usuario=user,
-                        status=True,
-                        lojas__in=minhas_lojas,
-                        usuario__isnull=False
-                    ).select_related('usuario').prefetch_related('lojas')
-
-            else:
-                # 6. Sem perfil de funcionário associado: só ele mesmo, sem loja
-                lojas_permitidas = Loja.objects.none()
-                funcionarios_qs = Funcionario.objects.filter(
-                    usuario=user, status=True, usuario__isnull=False
-                ).select_related('usuario')
-
-        # 7. Formatar dicionários de saída
-        lojas_dict = {
-            loja.id: {'id': loja.id, 'nome': loja.nome}
-            for loja in lojas_permitidas.order_by('nome')
-        }
-        funcionarios_dict = {
-            f.usuario.id: {'id': f.usuario.id, 'nome': f.nome_completo}
-            for f in funcionarios_qs if f.usuario
-        }
-
+                        status=True
+                    )
+                
+                # Demais - suas lojas e funcionários dessas lojas
+                else:
+                    print(f"[INFO_LOJA_FUNC] Outro nível - lojas próprias")
+                    lojas_qs = funcionario.lojas.filter(status=True)
+                    # Funcionários dessas lojas
+                    funcionarios_qs = Funcionario.objects.filter(
+                        status=True, 
+                        cargo__isnull=False,
+                        lojas__in=lojas_qs
+                    ).distinct()
+            
+            except Funcionario.DoesNotExist:
+                print(f"[INFO_LOJA_FUNC] Funcionário não encontrado para usuário {user.username}")
+                return JsonResponse({"error": "Funcionário não encontrado"}, status=404)
+        
+        # Converter QuerySets para dicionários
+        lojas_dict = {loja.id: {'id': loja.id, 'nome': loja.nome} for loja in lojas_qs}
+        
+        # Para níveis 1 e 2 (ESTAGIO e PADRAO), o value do funcionário será o user_id
+        if user_hierarquia in [Cargo.HierarquiaChoices.ESTAGIO, Cargo.HierarquiaChoices.PADRAO]:
+            funcionarios_dict = {func.usuario.id: {'id': func.usuario.id, 'nome': func.nome_completo} 
+                               for func in funcionarios_qs if func.usuario}
+        else:
+            funcionarios_dict = {func.id: {'id': func.id, 'nome': func.nome_completo} for func in funcionarios_qs}
+        
+        # Obter produtos ativos (sem filtro de hierarquia)
+        produtos = Produto.objects.filter(ativo=True)
+        produtos_dict = {prod.id: {'id': prod.id, 'nome': prod.nome} for prod in produtos}
+        
+        print(f"[INFO_LOJA_FUNC] Retornando {len(lojas_dict)} lojas e {len(funcionarios_dict)} funcionários")
         return JsonResponse({
+            'status': 'success',
             'lojas': lojas_dict,
             'funcionarios': funcionarios_dict,
             'produtos': produtos_dict
         })
-
     except Exception as e:
-        # Em produção, substituir print por logger.error(...)
-        print(f"Erro em api_get_infolojaefuncionario: {e}")
-        return JsonResponse(
-            {'erro': 'Ocorreu um erro interno ao buscar dados.'},
-            status=500
-        )
-
+        import traceback
+        print(f"[INFO_LOJA_FUNC] Erro: {str(e)}")
+        traceback.print_exc()
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
 
 @csrf_exempt
 @require_POST
@@ -2376,8 +2382,8 @@ def api_get_infogeral(request):
             funcionario = Funcionario.objects.get(usuario_id=user.id)
         except Funcionario.DoesNotExist:
             return JsonResponse({"erro": "Funcionário não encontrado"}, status=404)
-        # Exibe apenas a loja do funcionário e o próprio funcionário
-        lojas = Loja.objects.filter(id=funcionario.loja.id) if funcionario.loja else []
+        # Exibe apenas as lojas do funcionário e o próprio funcionário
+        lojas = funcionario.lojas.all() # Alterado de funcionario.loja para funcionario.lojas.all()
         funcionarios = [funcionario]
 
     lojas_data = [{"id": loja.id, "nome": loja.nome} for loja in lojas]
@@ -2812,6 +2818,143 @@ def api_get_dashboard(request, periodo='mes'):
 
 # -------------------------------------------
 # FIM TEMPLATE DASHBOARD
+
+# -------------------------------------------
+# INÍCIO INFORMAÇÕES DO PROCESSO
+# -------------------------------------------
+
+@login_required(login_url='/')
+@require_GET
+def api_get_info_processo(request, acao_id):
+    """
+    API para obter informações detalhadas de um processo/ação.
+    
+    Args:
+        request: Requisição HTTP
+        acao_id: ID da ação para buscar informações
+        
+    Returns:
+        JsonResponse com as informações detalhadas do processo
+    """
+    try:
+        # Buscar a ação pelo ID
+        acao = Acoes.objects.select_related(
+            'cliente', 
+            'vendedor_responsavel', 
+            'loja', 
+            'advogado_responsavel'
+        ).get(id=acao_id)
+        
+        # Buscar arquivos relacionados à ação
+        arquivos = ArquivosAcoesINSS.objects.filter(acao_inss=acao).order_by('-data_import')
+        
+        # Buscar documentos relacionados à ação
+        documentos = DocsAcaoINSS.objects.filter(acao_inss=acao).order_by('-data_import')
+        
+        # Buscar registros de pagamento relacionados à ação
+        pagamentos = RegistroPagamentos.objects.filter(acao_inss=acao).first()
+        
+        # Preparar dados do cliente
+        cliente_data = {
+            'nome': acao.cliente.nome,
+            'cpf': format_cpf(acao.cliente.cpf),
+            'contato': acao.cliente.contato or '-',
+            'data_criacao': acao.cliente.data_criacao.strftime('%d/%m/%Y %H:%M') if acao.cliente.data_criacao else '-',
+        }
+        
+        # Preparar dados da ação
+        acao_data = {
+            'id': acao.id,
+            'tipo_acao': acao.get_tipo_acao_display(),
+            'status': acao.get_status_emcaminhamento_display(),
+            'data_criacao': acao.data_criacao.strftime('%d/%m/%Y %H:%M') if acao.data_criacao else '-',
+            'data_atualizacao': acao.data_atualizacao.strftime('%d/%m/%Y %H:%M') if acao.data_atualizacao else '-',
+            'numero_protocolo': acao.numero_protocolo or '-',
+            'vendedor_responsavel': acao.vendedor_responsavel.get_full_name() if acao.vendedor_responsavel else '-',
+            'loja': acao.loja.nome if acao.loja else '-',
+            'advogado_responsavel': acao.advogado_responsavel.get_full_name() if acao.advogado_responsavel else '-',
+            'senha_inss': acao.senha_inss or '-',
+        }
+        
+        # Adicionar informações de sentença se disponíveis
+        if acao.sentenca:
+            acao_data.update({
+                'sentenca': acao.get_sentenca_display(),
+                'grau_sentenca': acao.get_grau_sentenca_display() if acao.grau_sentenca else '-',
+                'valor_sentenca': format_currency(acao.valor_sentenca) if acao.valor_sentenca else '-',
+                'data_sentenca': acao.data_sentenca.strftime('%d/%m/%Y') if acao.data_sentenca else '-',
+            })
+            
+            # Adicionar informações de recurso baseado no grau da sentença
+            if acao.grau_sentenca == Acoes.GrauSentencaChoices.PRIMEIRO_GRAU:
+                acao_data.update({
+                    'recurso': acao.get_recurso_primeiro_grau_display() if acao.recurso_primeiro_grau else '-',
+                    'data_recurso': acao.data_recurso_primeiro_grau.strftime('%d/%m/%Y') if acao.data_recurso_primeiro_grau else '-',
+                    'resultado_recurso': acao.get_resultado_recurso_primeiro_grau_display() if acao.resultado_recurso_primeiro_grau else '-',
+                })
+            elif acao.grau_sentenca == Acoes.GrauSentencaChoices.SEGUNDO_GRAU:
+                acao_data.update({
+                    'recurso': acao.get_recurso_segundo_grau_display() if acao.recurso_segundo_grau else '-',
+                    'data_recurso': acao.data_recurso_segundo_grau.strftime('%d/%m/%Y') if acao.data_recurso_segundo_grau else '-',
+                    'resultado_recurso': acao.get_resultado_recurso_segundo_grau_display() if acao.resultado_recurso_segundo_grau else '-',
+                })
+        
+        # Preparar dados de arquivos
+        arquivos_data = []
+        for arquivo in arquivos:
+            arquivos_data.append({
+                'id': arquivo.id,
+                'titulo': arquivo.titulo,
+                'data_upload': arquivo.data_import.strftime('%d/%m/%Y %H:%M'),
+                'url': arquivo.file.url if arquivo.file else None,
+            })
+        
+        # Preparar dados de documentos
+        documentos_data = []
+        for documento in documentos:
+            documentos_data.append({
+                'id': documento.id,
+                'titulo': documento.titulo,
+                'data_upload': documento.data_import.strftime('%d/%m/%Y %H:%M'),
+                'url': documento.file.url if documento.file else None,
+            })
+        
+        # Preparar dados de pagamento
+        pagamento_data = {}
+        if pagamentos:
+            pagamento_data = {
+                'tipo_pagamento': pagamentos.get_tipo_pagamento_display(),
+                'valor_total': format_currency(pagamentos.valor_total),
+                'status': pagamentos.get_status_display(),
+                'valor_entrada': format_currency(pagamentos.valor_entrada) if pagamentos.valor_entrada else '-',
+                'parcelas_totais': pagamentos.parcelas_totais,
+                'parcelas_pagas': pagamentos.parcelas_pagas,
+                'parcelas_restantes': pagamentos.parcelas_restantes,
+            }
+        
+        # Montar resposta
+        response_data = {
+            'status': 'success',
+            'cliente': cliente_data,
+            'acao': acao_data,
+            'arquivos': arquivos_data,
+            'documentos': documentos_data,
+            'pagamento': pagamento_data,
+        }
+        
+        return JsonResponse(response_data)
+    
+    except Acoes.DoesNotExist:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Ação não encontrada'
+        }, status=404)
+    
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Erro ao obter informações do processo: {str(e)}'
+        }, status=500)
 # -------------------------------------------
 
 
@@ -2827,3 +2970,778 @@ def api_get_dashboard(request, periodo='mes'):
 
 
 
+# ==============================================================================
+# API VIEW - AÇÕES INSS
+# ==============================================================================
+
+from apps.juridico.models import *
+
+@login_required(login_url='/')
+@controle_acess('SCT58')   # 58 – INSS | AÇÕES
+def render_acoesinss(request):
+    """
+    Renderiza a página de ações do INSS.
+    """
+    return render(request, 'apps/inss/acoes.html')
+
+
+
+@require_GET
+@ensure_csrf_cookie
+@controle_acess('SCT58')   # 58 – INSS | AÇÕES
+def api_get_acoes(request):
+    """
+    API para obter todas as ações INSS com seus arquivos associados,
+    com filtro de acesso baseado na hierarquia do usuário.
+    """
+    print("[API_GET_ACOES] Iniciando consulta de ações INSS")
+    try:
+        user = request.user
+        acoes_qs = Acoes.objects.none()  # Começa com uma queryset vazia
+
+        if user.is_superuser:
+            print(f"[API_GET_ACOES] Usuário {user.username} é superuser - Acesso completo")
+            acoes_qs = Acoes.objects.filter(status=True, loja__isnull=False)
+        else:
+            try:
+                print(f"[API_GET_ACOES] Verificando perfil do usuário {user.username}")
+                funcionario_logado = Funcionario.objects.select_related(
+                    'cargo', 'empresa'
+                ).prefetch_related('lojas').get(usuario=user, status=True)
+            except Funcionario.DoesNotExist:
+                # Usuário não é superuser e não tem perfil de funcionário ativo, não mostra nada.
+                print(f"[API_GET_ACOES] Usuário {user.username} não possui perfil de funcionário ativo")
+                return JsonResponse({'success': True, 'acoes': []})
+
+            if not funcionario_logado.cargo:
+                 # Funcionário sem cargo definido, não deveria acontecer, mas por segurança.
+                print(f"[API_GET_ACOES] Funcionário {funcionario_logado.id} não possui cargo definido")
+                return JsonResponse({'success': True, 'acoes': []})
+
+            hierarquia = funcionario_logado.cargo.hierarquia
+            print(f"[API_GET_ACOES] Usuário {user.username} com hierarquia {hierarquia}")
+
+            if hierarquia in [Cargo.HierarquiaChoices.SUPERVISOR_GERAL, Cargo.HierarquiaChoices.GESTOR]:
+                # Níveis 6 ou 7: Acesso total
+                print(f"[API_GET_ACOES] Usuário {user.username} com nível de supervisor/gestor - Acesso completo")
+                acoes_qs = Acoes.objects.filter(status=True, loja__isnull=False)
+            elif hierarquia in [Cargo.HierarquiaChoices.ESTAGIO, Cargo.HierarquiaChoices.PADRAO]:
+                # Níveis 1 ou 2: Apenas ações do próprio usuário logado
+                print(f"[API_GET_ACOES] Usuário {user.username} com nível básico - Acesso apenas às próprias ações")
+                acoes_qs = Acoes.objects.filter(
+                    status=True,
+                    loja__isnull=False,
+                    vendedor_responsavel=user
+                )
+            elif hierarquia in [Cargo.HierarquiaChoices.COORDENADOR, Cargo.HierarquiaChoices.GERENTE, Cargo.HierarquiaChoices.FRANQUEADO]:
+                # Níveis 3, 4 ou 5: Ações de vendedores das mesmas lojas + próprias ações
+                ids_lojas_funcionario = list(funcionario_logado.lojas.values_list('id', flat=True))
+                print(f"[API_GET_ACOES] Usuário {user.username} com nível médio - Acesso às lojas: {ids_lojas_funcionario}")
+                
+                if ids_lojas_funcionario:
+                    # Vendedores que trabalham em pelo menos uma das lojas do funcionário logado
+                    condicao_lojas_compartilhadas = Q(vendedor_responsavel__funcionario_profile__lojas__id__in=ids_lojas_funcionario)
+                    # Ações do próprio funcionário logado
+                    condicao_proprias_acoes = Q(vendedor_responsavel=user)
+                    
+                    acoes_qs = Acoes.objects.filter(
+                        status=True,
+                        loja__isnull=False
+                    ).filter(
+                        condicao_lojas_compartilhadas | condicao_proprias_acoes
+                    ).distinct()
+                else:
+                    # Se o funcionário (níveis 3-5) não tiver lojas, mostra apenas as próprias.
+                    print(f"[API_GET_ACOES] Usuário {user.username} sem lojas associadas - Acesso apenas às próprias ações")
+                    acoes_qs = Acoes.objects.filter(
+                        status=True,
+                        loja__isnull=False,
+                        vendedor_responsavel=user
+                    )
+            else:
+                # Hierarquia não reconhecida ou sem permissão específica, não mostra nada.
+                print(f"[API_GET_ACOES] Usuário {user.username} com hierarquia não reconhecida ({hierarquia})")
+                acoes_qs = Acoes.objects.none()
+
+        # Aplica filtros dinâmicos da requisição GET
+        nome_cliente_filtro = request.GET.get('nome', '').strip()
+        cpf_cliente_filtro = request.GET.get('cpf', '').strip()
+        status_acao_filtro = request.GET.get('status', '').strip()
+        loja_acao_filtro = request.GET.get('loja', '').strip() # Este é o nome da loja da Ação, não filtro hierárquico
+
+        print(f"[API_GET_ACOES] Aplicando filtros: nome='{nome_cliente_filtro}', cpf='{cpf_cliente_filtro}', status='{status_acao_filtro}', loja='{loja_acao_filtro}'")
+
+        if nome_cliente_filtro:
+            acoes_qs = acoes_qs.filter(cliente__nome__icontains=nome_cliente_filtro)
+        if cpf_cliente_filtro:
+            acoes_qs = acoes_qs.filter(cliente__cpf__icontains=cpf_cliente_filtro)
+        if status_acao_filtro:
+            acoes_qs = acoes_qs.filter(status_emcaminhamento=status_acao_filtro)
+        if loja_acao_filtro:
+            # Aqui, assumimos que 'loja_acao_filtro' é o nome da loja da Ação.
+            # Se for ID, a lógica de filtro precisa ser ajustada (ex: Q(loja__id=loja_acao_filtro) se for ID)
+            acoes_qs = acoes_qs.filter(loja__nome__icontains=loja_acao_filtro)
+
+        # Prepara a queryset final com prefetch e select_related para otimização
+        print("[API_GET_ACOES] Otimizando query com select_related e prefetch_related")
+        acoes_final_qs = acoes_qs.select_related(
+            'cliente',
+            'vendedor_responsavel', # User
+            'advogado_responsavel', # User
+            'loja'
+        ).prefetch_related(
+            'arquivos', # ArquivosAcoesINSS
+            'vendedor_responsavel__funcionario_profile', # Para acessar dados do Funcionario do vendedor
+            'advogado_responsavel__funcionario_profile' # Para acessar dados do Funcionario do advogado
+        ).order_by('-data_criacao')
+
+        print(f"[API_GET_ACOES] Total de ações encontradas: {acoes_final_qs.count()}")
+
+        # Formata os dados para a tabela
+        dados_acoes = []
+        for acao in acoes_final_qs:
+            arquivos_data = [{
+                'id': arquivo.id,
+                'titulo': arquivo.titulo,
+                'data_import': arquivo.data_import.strftime('%d/%m/%Y %H:%M'),
+                'url': arquivo.file.url if arquivo.file else None
+            } for arquivo in acao.arquivos.all()]
+
+            vendedor_nome = '-'
+            if acao.vendedor_responsavel:
+                # Tenta obter apelido do funcionário, senão nome completo do user, senão username
+                try:
+                    perfil_vendedor = acao.vendedor_responsavel.funcionario_profile
+                    vendedor_nome = perfil_vendedor.apelido or acao.vendedor_responsavel.get_full_name() or acao.vendedor_responsavel.username
+                except AttributeError: # Se funcionario_profile não existir ou não tiver apelido
+                    vendedor_nome = acao.vendedor_responsavel.get_full_name() or acao.vendedor_responsavel.username
+            
+            dados_acoes.append({
+                'id': acao.id,
+                'cliente': acao.cliente.nome if acao.cliente else '-',
+                'cpf': acao.cliente.cpf if acao.cliente else '-',
+                'contato': acao.cliente.contato if acao.cliente else '-', # Adicionado campo contato do cliente
+                'atendente': vendedor_nome, # Nome do vendedor/atendente
+                'loja': acao.loja.nome if acao.loja else '-',
+                'status': acao.get_status_emcaminhamento_display(),
+                'motivo_incompleto': acao.motivo_incompleto if acao.status_emcaminhamento == 'INCOMPLETO' else None,
+                'arquivos': arquivos_data,
+                # Adicionar outros campos se necessário para a tabela
+                'tipo_acao': acao.get_tipo_acao_display(),
+                'data_criacao': acao.data_criacao.strftime('%d/%m/%Y %H:%M') if acao.data_criacao else '-',
+                'sentenca': acao.get_sentenca_display() if acao.sentenca else '-',
+            })
+
+        print("[API_GET_ACOES] Dados formatados com sucesso, retornando resposta")
+        return JsonResponse({
+            'success': True,
+            'acoes': dados_acoes
+        })
+    except Funcionario.DoesNotExist: # Captura aqui caso o .get() falhe mais acima e não seja pego
+        # Isso pode acontecer se o usuário logado for deletado ou seu perfil de funcionário desativado
+        # entre o login e a chamada desta API.
+        print("[API_GET_ACOES] Erro: Perfil de funcionário não encontrado ou inativo")
+        return JsonResponse({'success': True, 'acoes': [], 'message': 'Perfil de funcionário não encontrado ou inativo.'})
+    except Exception as e:
+        import traceback
+        print(f"[API_GET_ACOES] Erro crítico: {str(e)}")
+        print(traceback.format_exc())
+        return JsonResponse({
+            'success': False,
+            'message': f'Erro ao obter ações: {str(e)}'
+        }, status=500)
+
+@login_required
+@require_GET
+@ensure_csrf_cookie
+def api_get_arquivosacoes(request, acao_id):
+    """
+    API para buscar os arquivos de uma ação específica.
+    
+    Args:
+        request: Requisição HTTP
+        acao_id: ID da ação para buscar os arquivos
+        
+    Returns:
+        JsonResponse com a lista de arquivos da ação
+    """
+    try:
+        # Importar modelos do app juridico
+        from apps.juridico.models import Acoes, ArquivosAcoesINSS
+        
+        # Buscar a ação
+        acao = Acoes.objects.get(id=acao_id)
+        
+        # Buscar os arquivos da ação
+        arquivos = ArquivosAcoesINSS.objects.filter(acao_inss=acao).order_by('-data_import')
+        
+        # Serializar os arquivos
+        arquivos_list = []
+        for arquivo in arquivos:
+            arquivos_list.append({
+                'id': arquivo.id,
+                'titulo': arquivo.titulo,
+                'tipo': 'Documento',  # Pode ser expandido para usar um campo específico do modelo
+                'data_upload': arquivo.data_import.isoformat(),
+                'url': arquivo.file.url if arquivo.file else None
+            })
+        
+        return JsonResponse({
+            'status': 'success',
+            'arquivos': arquivos_list
+        })
+        
+    except Acoes.DoesNotExist:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Ação não encontrada'
+        }, status=404)
+    except Exception as e:
+        print(f"[API_GET_ARQUIVOSACOES] Erro ao buscar arquivos: {str(e)}")
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Erro ao buscar arquivos: {str(e)}'
+        }, status=500)
+
+
+@login_required
+@require_POST
+@csrf_exempt  # Adicionado para resolver o erro de CSRF
+@ensure_csrf_cookie
+def api_post_arquivo(request):
+    """
+    API para enviar arquivos relacionados a uma ação INSS
+    
+    Args:
+        request: Requisição HTTP contendo FormData com:
+            - acao_id: ID da ação
+            - titulo: Título do arquivo
+            - arquivo: Arquivo a ser carregado
+        
+    Returns:
+        JsonResponse com status da operação
+    """
+    if request.method != 'POST':
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Método não permitido. Use POST.'
+        }, status=405)
+    
+    try:
+        # Importar modelos do app juridico
+        from apps.juridico.models import Acoes, ArquivosAcoesINSS
+        
+        # Obter dados do formulário
+        acao_id = request.POST.get('acao_id')
+        titulo = request.POST.get('titulo')
+        arquivo = request.FILES.get('arquivo')
+        
+        # Validar campos obrigatórios
+        if not all([acao_id, titulo, arquivo]):
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Todos os campos são obrigatórios (acao_id, titulo, arquivo)'
+            }, status=400)
+        
+        # Buscar a ação
+        try:
+            acao = Acoes.objects.get(id=acao_id)
+        except Acoes.DoesNotExist:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Ação não encontrada'
+            }, status=404)
+        
+        # Criar o registro do arquivo
+        arquivo_acao = ArquivosAcoesINSS.objects.create(
+            acao_inss=acao,
+            titulo=titulo,
+            file=arquivo
+        )
+        
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Arquivo adicionado com sucesso',
+            'arquivo': {
+                'id': arquivo_acao.id,
+                'titulo': arquivo_acao.titulo,
+                'data_upload': arquivo_acao.data_import.isoformat(),
+                'url': arquivo_acao.file.url if arquivo_acao.file else None
+            }
+        })
+        
+    except Exception as e:
+        print(f"[API_POST_ARQUIVO] Erro ao adicionar arquivo: {str(e)}")
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Erro ao adicionar arquivo: {str(e)}'
+        }, status=500)
+
+@login_required
+@require_POST
+@csrf_exempt
+def api_post_finalizaratendimento(request):
+    """API para finalizar um atendimento, alterando o status_atendimento para FINALIZADO."""
+    print("[FINALIZAR_ATENDIMENTO] Iniciando processamento")
+    try:
+        # Obter ID do agendamento
+        agendamento_id = request.POST.get('agendamento_id')
+        
+        if not agendamento_id:
+            print("[FINALIZAR_ATENDIMENTO] ID do agendamento não fornecido")
+            return JsonResponse({
+                'status': 'error',
+                'message': 'ID do agendamento não fornecido'
+            }, status=400)
+        
+        # Buscar o agendamento
+        try:
+            agendamento = Agendamento.objects.get(id=agendamento_id)
+            print(f"[FINALIZAR_ATENDIMENTO] Agendamento encontrado: {agendamento.id}")
+        except Agendamento.DoesNotExist:
+            print(f"[FINALIZAR_ATENDIMENTO] Agendamento não encontrado: {agendamento_id}")
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Agendamento não encontrado'
+            }, status=404)
+        
+        # Atualizar o status do atendimento
+        agendamento.status_atendimento = Agendamento.StatusAtendimentoChoices.FINALIZADO
+        agendamento.save()
+        print(f"[FINALIZAR_ATENDIMENTO] Agendamento {agendamento.id} finalizado com sucesso")
+        
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Atendimento finalizado com sucesso'
+        })
+        
+    except Exception as e:
+        print(f"[FINALIZAR_ATENDIMENTO] Erro ao finalizar atendimento: {str(e)}")
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Erro ao finalizar atendimento: {str(e)}'
+        }, status=500)
+
+@login_required
+@require_POST
+@csrf_exempt
+def api_post_adicionaracao(request):
+    """API para adicionar uma ação judicial a um agendamento existente."""
+    print("[ADICIONAR_ACAO] Iniciando processamento")
+    try:
+        # Obter dados do formulário
+        agendamento_id = request.POST.get('agendamento_id')
+        tipo_acao = request.POST.get('tipo_acao')
+        senha_inss = request.POST.get('senha_inss')
+        tipo_pagamento = request.POST.get('tipo_pagamento')
+        
+        print(f"[ADICIONAR_ACAO] POST data: {request.POST}")
+        print(f"[ADICIONAR_ACAO] FILES data: {request.FILES}")
+        
+        print(f"[ADICIONAR_ACAO] Dados recebidos - Agendamento: {agendamento_id}, Tipo Ação: {tipo_acao}, Tipo Pagamento: {tipo_pagamento}")
+        
+        # Verificar campos obrigatórios
+        if not all([agendamento_id, tipo_acao, tipo_pagamento]):
+            print("[ADICIONAR_ACAO] Campos obrigatórios ausentes")
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Campos obrigatórios ausentes: ID do agendamento, tipo de ação e tipo de pagamento'
+            }, status=400)
+        
+        # Buscar o agendamento
+        try:
+            agendamento = Agendamento.objects.select_related('cliente_agendamento', 'loja').get(id=agendamento_id)
+            print(f"[ADICIONAR_ACAO] Agendamento encontrado: {agendamento.id}")
+        except Agendamento.DoesNotExist:
+            print(f"[ADICIONAR_ACAO] Agendamento não encontrado: {agendamento_id}")
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Agendamento não encontrado'
+            }, status=404)
+        
+        # Preparar dados para criar a ação
+        cliente_agendamento_instance = agendamento.cliente_agendamento
+        
+        # Importar ClienteAcao e Acoes aqui para evitar importação circular no topo do arquivo, se aplicável
+        from apps.juridico.models import Acoes, ClienteAcao, ArquivosAcoesINSS
+        
+        # Encontrar ou criar o ClienteAcao correspondente (do app juridico)
+        # Assumindo que ClienteAgendamento (cliente_agendamento_instance) tem 'cpf_cliente' e 'nome_cliente'
+        # e ClienteAcao tem 'cpf' e 'nome'
+        cpf_cliente_str = cliente_agendamento_instance.cpf
+        nome_cliente_str = cliente_agendamento_instance.nome_completo
+        contato_cliente_str = cliente_agendamento_instance.numero
+
+        cliente_acao_obj, cliente_acao_created = ClienteAcao.objects.get_or_create(
+            cpf=cpf_cliente_str,
+            defaults={
+                'nome': nome_cliente_str,
+                'contato': contato_cliente_str
+            }
+        )
+        if cliente_acao_created:
+            print(f"[ADICIONAR_ACAO] Novo ClienteAcao criado: {cliente_acao_obj.id} - {cliente_acao_obj.cpf}")
+        else:
+            print(f"[ADICIONAR_ACAO] ClienteAcao existente encontrado: {cliente_acao_obj.id} - {cliente_acao_obj.cpf}")
+
+        # Criar presença na loja (sempre criar uma nova)
+        vendedor_id = request.POST.get('vendedor')
+        vendedor = User.objects.get(id=vendedor_id) if vendedor_id else None
+
+        presenca = PresencaLoja.objects.create(
+            agendamento=agendamento,
+            cliente_agendamento=cliente_agendamento_instance,
+            loja_comp=agendamento.loja,
+            vendedor=vendedor,
+            tabulacao_venda=PresencaLoja.TabulacaoVendaChoices.NEGOCIO_FECHADO,
+            cliente_rua=False, # Esta view trata de ações originadas de agendamentos
+            data_presenca=timezone.now()
+        )
+        print(f'[ADICIONAR_ACAO] Nova PresencaLoja criada com ID: {presenca.id}')
+        
+        # Criar ação judicial
+        acao = Acoes.objects.create(
+            cliente=cliente_acao_obj,
+            status_emcaminhamento=Acoes.StatusChoices.EM_ESPERA,
+            senha_inss=senha_inss,
+            tipo_acao=tipo_acao,
+            vendedor_responsavel=vendedor,  # Corrigido: usando o nome correto do campo
+            loja=agendamento.loja  # Adicionando a loja do agendamento
+        )
+        print(f"[ADICIONAR_ACAO] Ação criada: {acao.id}")
+        
+        # Processar informações de pagamento
+        from apps.juridico.models import RegistroPagamentos
+        if tipo_pagamento in ['A_VISTA', 'PARCELADO']:
+            valor_total = Decimal('0')
+            tipo_pagamento_model = None
+            if tipo_pagamento == 'A_VISTA':
+                valor_total_str = request.POST.get('valor_total', '0').replace('R$', '').replace('.', '').replace(',', '.')
+                try:
+                    valor_total = Decimal(valor_total_str)
+                except:
+                    valor_total = Decimal('0')
+                tipo_pagamento_model = RegistroPagamentos.TipoPagamentoChoices.A_VISTA
+                RegistroPagamentos.objects.create(
+                    acao_inss=acao,
+                    tipo_pagamento=tipo_pagamento_model,
+                    valor_total=valor_total,
+                    valor_entrada=valor_total,
+                    parcelas_totais=0,
+                    parcelas_restantes=0,
+                    parcelas_pagas=0,
+                    status=RegistroPagamentos.StatusPagamentoChoices.EM_ANDAMENTO
+                )
+                print(f"[ADICIONAR_ACAO] Registro de pagamento à vista criado: Valor: {valor_total}")
+            elif tipo_pagamento == 'PARCELADO':
+                valor_entrada_str = request.POST.get('valor_entrada', '0').replace('R$', '').replace('.', '').replace(',', '.')
+                qtd_parcelas_str = request.POST.get('qtd_parcelas', '0')
+                valor_parcela_str = request.POST.get('valor_parcela', '0').replace('R$', '').replace('.', '').replace(',', '.')
+                try:
+                    valor_entrada = Decimal(valor_entrada_str)
+                    qtd_parcelas = int(qtd_parcelas_str)
+                    valor_parcela = Decimal(valor_parcela_str)
+                    valor_total = valor_entrada + (qtd_parcelas * valor_parcela)
+                except:
+                    valor_entrada = Decimal('0')
+                    qtd_parcelas = 0
+                    valor_parcela = Decimal('0')
+                    valor_total = Decimal('0')
+                tipo_pagamento_model = RegistroPagamentos.TipoPagamentoChoices.PARCELADO
+                RegistroPagamentos.objects.create(
+                    acao_inss=acao,
+                    tipo_pagamento=tipo_pagamento_model,
+                    valor_total=valor_total,
+                    valor_entrada=valor_entrada,
+                    parcelas_totais=qtd_parcelas,
+                    parcelas_restantes=qtd_parcelas,
+                    parcelas_pagas=0,
+                    status=RegistroPagamentos.StatusPagamentoChoices.EM_ANDAMENTO
+                )
+                print(f"[ADICIONAR_ACAO] Registro de pagamento parcelado criado: Valor total: {valor_total}, Entrada: {valor_entrada}, Parcelas: {qtd_parcelas}x{valor_parcela}")
+        
+        # Processar documentos
+        documentos = []
+        i = 0
+        while True:
+            # Verificar se existe um documento com o índice atual
+            titulo = request.POST.get(f'documentos[{i}][titulo]')
+            if not titulo:
+                break
+                
+            arquivo = request.FILES.get(f'documentos[{i}][file]')
+            if arquivo:
+                documento = ArquivosAcoesINSS.objects.create(
+                    acao_inss=acao,
+                    titulo=titulo,
+                    file=arquivo
+                )
+                documentos.append(documento)
+                print(f"[ADICIONAR_ACAO] Documento adicionado: {documento.id}, Título: {titulo}, Arquivo: {arquivo.name}")
+            i += 1
+        
+        print(f"[ADICIONAR_ACAO] Total de {len(documentos)} documentos adicionados")
+        
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Ação adicionada com sucesso',
+            'acao_id': acao.id,
+            'documentos_count': len(documentos)
+        })
+        
+    except Exception as e:
+        print(f"[ADICIONAR_ACAO] Erro ao adicionar ação: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Erro ao adicionar ação: {str(e)}'
+        }, status=500)
+
+
+@login_required
+@require_POST
+def api_post_clienterua_acao(request):
+    """
+    API para processar o formulário de cliente rua com ação.
+    
+    Esta função cria registros de:
+    1. ClienteAgendamento (app inss)
+    2. PresencaLoja (app inss) com acao=True
+    3. ClienteAcao (app juridico)
+    4. Acoes (app juridico)
+    5. RegistroPagamentos (app juridico) se aplicável
+    6. ArquivosAcoesINSS (app juridico) para os documentos enviados
+    """
+    print("[CLIENTE_RUA_ACAO] Iniciando processamento")
+    try:
+        # Verificar se o formulário é do tipo cliente_rua_acao
+        form_type = request.POST.get('form_type')
+        if form_type != 'cliente_rua_acao':
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Tipo de formulário inválido'
+            }, status=400)
+        
+        # Obter dados do formulário
+        data = {
+            'nome_cliente': request.POST.get('nome_cliente'),
+            'cpf_cliente': request.POST.get('cpf_cliente', '').replace('.', '').replace('-', ''),
+            'numero_cliente': request.POST.get('numero_cliente'),
+            'data_comparecimento': request.POST.get('data_comparecimento'),
+            'loja_id': request.POST.get('loja'),
+            'vendedor_id': request.POST.get('vendedor_id'),
+            'senha_inss': request.POST.get('senha_inss'),
+            'tipo_acao': request.POST.get('tipo_acao'),
+            'tipo_pagamento': request.POST.get('tipo_pagamento'),
+            'valor_total': request.POST.get('valor_total'),
+            'valor_entrada': request.POST.get('valor_entrada'),
+            'qtd_parcelas': request.POST.get('qtd_parcelas'),
+            'valor_parcela': request.POST.get('valor_parcela')
+        }
+        
+        print(f"[CLIENTE_RUA_ACAO] Dados recebidos: {data}")
+        print(f"[CLIENTE_RUA_ACAO] FILES data: {request.FILES}")
+        
+        # Validar campos obrigatórios
+        campos_obrigatorios = {
+            'nome_cliente': 'Nome do cliente',
+            'cpf_cliente': 'CPF do cliente',
+            'numero_cliente': 'Número de contato',
+            'data_comparecimento': 'Data de comparecimento',
+            'loja_id': 'Loja',
+            'vendedor_id': 'Vendedor',
+            'tipo_acao': 'Tipo de ação',
+            'tipo_pagamento': 'Tipo de pagamento'
+        }
+        
+        for campo, descricao in campos_obrigatorios.items():
+            if not data[campo]:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': f'{descricao} é obrigatório'
+                }, status=400)
+        
+        # Validar campos de pagamento
+        if data['tipo_pagamento'] == 'A_VISTA' and not data['valor_total']:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Valor total é obrigatório para pagamento à vista'
+            }, status=400)
+        elif data['tipo_pagamento'] == 'PARCELADO' and not all([data['valor_entrada'], data['qtd_parcelas'], data['valor_parcela']]):
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Todos os campos do parcelamento são obrigatórios'
+            }, status=400)
+        
+        # Criar ou atualizar cliente no app inss
+        try:
+            cliente = ClienteAgendamento.objects.get(cpf=data['cpf_cliente'])
+            print(f"[CLIENTE_RUA_ACAO] Cliente existente encontrado: {cliente.id}")
+            # Atualizar dados do cliente
+            cliente.nome_completo = data['nome_cliente']
+            cliente.numero = data['numero_cliente']
+            cliente.save()
+            print("[CLIENTE_RUA_ACAO] Dados do cliente atualizados")
+        except ClienteAgendamento.DoesNotExist:
+            print("[CLIENTE_RUA_ACAO] Criando novo cliente")
+            cliente = ClienteAgendamento.objects.create(
+                nome_completo=data['nome_cliente'],
+                cpf=data['cpf_cliente'],
+                numero=data['numero_cliente']
+            )
+            print(f"[CLIENTE_RUA_ACAO] Novo cliente criado: {cliente.id}")
+        
+        # Obter loja e vendedor
+        try:
+            loja = Loja.objects.get(id=data['loja_id'])
+            print(f"[CLIENTE_RUA_ACAO] Loja encontrada: {loja.id}")
+            
+            # Buscar o Funcionario vendedor para obter o User associado
+            funcionario_vendedor = Funcionario.objects.get(id=data['vendedor_id'])
+            vendedor = funcionario_vendedor.usuario # Este é o objeto User
+            if not vendedor:
+                 print(f"[CLIENTE_RUA_ACAO] Erro: Funcionário {funcionario_vendedor.id} não tem usuário de sistema associado.")
+                 return JsonResponse({
+                     'status': 'error',
+                     'message': f'O funcionário selecionado como vendedor ({funcionario_vendedor.nome_completo if funcionario_vendedor else data["vendedor_id"]}) não possui um usuário de sistema vinculado.'
+                 }, status=400)
+            print(f"[CLIENTE_RUA_ACAO] Vendedor (User) encontrado: {vendedor.id} via Funcionario ID: {funcionario_vendedor.id}")
+
+        except Loja.DoesNotExist:
+            print(f"[CLIENTE_RUA_ACAO] Erro: Loja com ID {data['loja_id']} não encontrada.")
+            return JsonResponse({'status': 'error', 'message': 'Loja não encontrada.'}, status=404)
+        except Funcionario.DoesNotExist:
+            print(f"[CLIENTE_RUA_ACAO] Erro: Funcionário vendedor com ID {data['vendedor_id']} não encontrado.")
+            return JsonResponse({'status': 'error', 'message': 'Funcionário vendedor não encontrado.'}, status=404)
+        except Exception as e: # Captura outras exceções genéricas durante a busca de loja/vendedor
+            print(f"[CLIENTE_RUA_ACAO] Erro inesperado ao buscar loja/vendedor: {str(e)}")
+            return JsonResponse({
+                'status': 'error',
+                'message': f'Erro ao processar dados da loja ou vendedor: {str(e)}'
+            }, status=500)
+        
+        # Criar presença na loja
+        presenca = PresencaLoja.objects.create(
+            cliente_agendamento=cliente,
+            loja_comp=loja,
+            vendedor=vendedor,
+            tabulacao_venda=PresencaLoja.TabulacaoVendaChoices.NEGOCIO_FECHADO,
+            cliente_rua=True,
+            acao=True,  # Marcando como presença com ação judicial
+            data_presenca=timezone.now()
+        )
+        print(f"[CLIENTE_RUA_ACAO] Presença criada: {presenca.id}")
+        
+        # Importar modelos do app juridico
+        from apps.juridico.models import Acoes, ClienteAcao, ArquivosAcoesINSS, RegistroPagamentos
+        
+        # Criar ou obter cliente no app juridico
+        cliente_acao, created = ClienteAcao.objects.get_or_create(
+            cpf=data['cpf_cliente'],
+            defaults={
+                'nome': data['nome_cliente'],
+                'contato': data['numero_cliente']
+            }
+        )
+        if created:
+            print(f"[CLIENTE_RUA_ACAO] Novo ClienteAcao criado: {cliente_acao.id}")
+        else:
+            print(f"[CLIENTE_RUA_ACAO] ClienteAcao existente encontrado: {cliente_acao.id}")
+            # Atualizar dados do cliente
+            cliente_acao.nome = data['nome_cliente']
+            cliente_acao.contato = data['numero_cliente']
+            cliente_acao.save()
+        
+        # Criar ação judicial
+        acao = Acoes.objects.create(
+            cliente=cliente_acao,
+            status_emcaminhamento=Acoes.StatusChoices.EM_ESPERA,
+            senha_inss=data['senha_inss'],
+            tipo_acao=data['tipo_acao'],
+            vendedor_responsavel=vendedor,
+            loja=loja
+        )
+        print(f"[CLIENTE_RUA_ACAO] Ação criada: {acao.id}")
+        
+        # Processar informações de pagamento
+        if data['tipo_pagamento'] in ['A_VISTA', 'PARCELADO']:
+            valor_total = Decimal('0')
+            tipo_pagamento_model = None
+            from apps.juridico.models import RegistroPagamentos
+            if data['tipo_pagamento'] == 'A_VISTA':
+                valor_total_str = data['valor_total'].replace('R$', '').replace('.', '').replace(',', '.') if data['valor_total'] else '0'
+                try:
+                    valor_total = Decimal(valor_total_str)
+                except:
+                    valor_total = Decimal('0')
+                tipo_pagamento_model = RegistroPagamentos.TipoPagamentoChoices.A_VISTA
+                registro_pagamento = RegistroPagamentos.objects.create(
+                    acao_inss=acao,
+                    tipo_pagamento=tipo_pagamento_model,
+                    valor_total=valor_total,
+                    valor_entrada=valor_total,
+                    parcelas_totais=0,
+                    parcelas_restantes=0,
+                    parcelas_pagas=0,
+                    status=RegistroPagamentos.StatusPagamentoChoices.EM_ANDAMENTO
+                )
+                print(f"[CLIENTE_RUA_ACAO] Registro de pagamento à vista criado: {registro_pagamento.id}, Valor: {valor_total}")
+            elif data['tipo_pagamento'] == 'PARCELADO':
+                valor_entrada_str = data['valor_entrada'].replace('R$', '').replace('.', '').replace(',', '.') if data['valor_entrada'] else '0'
+                qtd_parcelas_str = data['qtd_parcelas'] if data['qtd_parcelas'] else '0'
+                valor_parcela_str = data['valor_parcela'].replace('R$', '').replace('.', '').replace(',', '.') if data['valor_parcela'] else '0'
+                try:
+                    valor_entrada = Decimal(valor_entrada_str)
+                    qtd_parcelas = int(qtd_parcelas_str)
+                    valor_parcela = Decimal(valor_parcela_str)
+                    valor_total = valor_entrada + (qtd_parcelas * valor_parcela)
+                except:
+                    valor_entrada = Decimal('0')
+                    qtd_parcelas = 0
+                    valor_parcela = Decimal('0')
+                    valor_total = Decimal('0')
+                tipo_pagamento_model = RegistroPagamentos.TipoPagamentoChoices.PARCELADO
+                registro_pagamento = RegistroPagamentos.objects.create(
+                    acao_inss=acao,
+                    tipo_pagamento=tipo_pagamento_model,
+                    valor_total=valor_total,
+                    valor_entrada=valor_entrada,
+                    parcelas_totais=qtd_parcelas,
+                    parcelas_restantes=qtd_parcelas,
+                    parcelas_pagas=0,
+                    status=RegistroPagamentos.StatusPagamentoChoices.EM_ANDAMENTO
+                )
+                print(f"[CLIENTE_RUA_ACAO] Registro de pagamento parcelado criado: {registro_pagamento.id}, Valor total: {valor_total}, Entrada: {valor_entrada}, Parcelas: {qtd_parcelas}x{valor_parcela}")
+        
+        # Processar arquivos
+        arquivos = []
+        for key, file in request.FILES.items():
+            if key.startswith('arquivo_'):
+                titulo = request.POST.get(f'titulo_{key}', f'Arquivo {len(arquivos) + 1}')
+                arquivo = ArquivosAcoesINSS.objects.create(
+                    acao_inss=acao,
+                    titulo=titulo,
+                    file=file
+                )
+                arquivos.append(arquivo)
+                print(f"[CLIENTE_RUA_ACAO] Arquivo adicionado: {arquivo.id}, Título: {titulo}, Arquivo: {file.name}")
+        
+        print(f"[CLIENTE_RUA_ACAO] Total de {len(arquivos)} arquivos adicionados")
+        
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Cliente com ação registrado com sucesso',
+            'presenca_id': presenca.id,
+            'acao_id': acao.id,
+            'arquivos_count': len(arquivos)
+        })
+        
+    except Exception as e:
+        print(f"[CLIENTE_RUA_ACAO] Erro ao processar cliente rua com ação: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Erro ao processar cliente rua com ação: {str(e)}'
+        }, status=500)
