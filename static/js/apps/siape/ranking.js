@@ -51,7 +51,9 @@ $(document).ready(function() {
     }
 
     // Função modificada para colocar a tag BLACK em um box junto com o nome
+    // Função comentada para remover a tag BLACK do pódio
     function checkForBlackStatus(element, valor) {
+        /* 
         // console.log('Iniciando checkForBlackStatus');
         
         // Remove tag anterior se existir
@@ -84,6 +86,7 @@ $(document).ready(function() {
         }
         
         // console.log('Finalizando checkForBlackStatus');
+        */
     }
 
     // Função para atualizar os dados do pódium

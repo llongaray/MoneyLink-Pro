@@ -44,4 +44,11 @@ urlpatterns = [
     path('api/comunicados/download/<int:arquivo_id>/', download_arquivo_comunicado, name='api_download_arquivo_comunicado'),
     path('api/get/destinatarios/', api_get_destinatarios, name='api_get_destinatarios'),
     path('api/get/infosgerais/', api_get_infosgerais, name='api_get_infosgerais'),
+
+    # Rotas para Sistema de Presença
+    path('presenca/', render_presenca, name='render_presenca'),
+    path('presenca/relatorio/', render_relatorio_presenca, name='render_relatorio_presenca'),
+    path('api/presenca/registros/', api_get_registros_presenca, name='api_get_registros_presenca'),
+    path('api/presenca/registrar/', api_post_registro_presenca, name='api_post_registro_presenca'),
+    path('api/presenca/relatorio/', api_get_relatorio_presenca, name='api_get_relatorio_presenca'),
 ]

@@ -1,0 +1,92 @@
+{% extends "base-plus.html" %}
+{% load static %}
+
+{% block header_title %}
+Relatório de Presença<span class="produto-text"></span>
+{% endblock %}
+
+{% block addcss_extra %}
+<link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+<link rel="stylesheet" href="{% static 'rh/css/relatorio_presenca.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="container my-4">
+    <h1 class="titulo-pagina mb-4"><i class='bx bx-file me-2'></i>Relatório de Presença</h1>
+
+    <!-- Filtros -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <i class='bx bx-filter-alt me-2'></i> Filtros
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="form-group">
+                        <label for="data-inicio" class="form-label">
+                            <i class='bx bx-calendar me-2'></i>Data Início
+                        </label>
+                        <input type="date" class="form-control" id="data-inicio">
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-group">
+                        <label for="data-fim" class="form-label">
+                            <i class='bx bx-calendar me-2'></i>Data Fim
+                        </label>
+                        <input type="date" class="form-control" id="data-fim">
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-group">
+                        <label for="usuario" class="form-label">
+                            <i class='bx bx-user me-2'></i>Funcionário
+                        </label>
+                        <select class="form-control" id="usuario">
+                            <option value="">Todos</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="form-group">
+                        <label>&nbsp;</label>
+                        <button id="btn-filtrar" class="btn btn-primary btn-block w-100">
+                            <i class='bx bx-search me-2'></i> Filtrar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabela de Relatórios -->
+    <div class="card">
+        <div class="card-header bg-info text-white">
+            <i class='bx bx-table me-2'></i> Relatórios
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover" id="tabela-relatorios">
+                    <thead>
+                        <tr>
+                            <th><i class='bx bx-calendar me-2'></i>Data</th>
+                            <th><i class='bx bx-user me-2'></i>Funcionário</th>
+                            <th><i class='bx bx-message-square-detail me-2'></i>Observação</th>
+                            <th><i class='bx bx-time me-2'></i>Data de Criação</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="4" class="text-center loading">Carregando relatórios...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block addjs_extra %}
+<script src="{% static 'rh/js/relatorio_presenca.js' %}"></script>
+{% endblock %} 

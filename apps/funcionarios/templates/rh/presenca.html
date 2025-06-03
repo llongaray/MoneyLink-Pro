@@ -1,0 +1,78 @@
+{% extends "base-plus.html" %}
+{% load static %}
+
+{% block header_title %}
+Registro de Presença<span class="produto-text"></span>
+{% endblock %}
+
+{% block addcss_extra %}
+<link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+<link rel="stylesheet" href="{% static 'rh/css/presenca.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="container my-4">
+    <h1 class="titulo-pagina mb-4"><i class='bx bx-calendar-check me-2'></i>Registro de Presença</h1>
+
+    <!-- Card do Calendário -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <i class='bx bx-calendar me-2'></i> Calendário de Presença
+        </div>
+        <div class="card-body">
+            <!-- Cabeçalho do Calendário -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div class="d-flex gap-2">
+                    <button id="btn-mes-anterior" class="btn btn-outline-primary">
+                        <i class='bx bx-chevron-left'></i> Mês Anterior
+                    </button>
+                    <h3 id="mes-atual" class="mb-0 mx-3"></h3>
+                    <button id="btn-mes-proximo" class="btn btn-outline-primary">
+                        Próximo Mês <i class='bx bx-chevron-right'></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Grid do Calendário -->
+            <div class="calendar-container">
+                <!-- Cabeçalho dos dias da semana -->
+                <div class="calendar-header">
+                    <div>Domingo</div>
+                    <div>Segunda</div>
+                    <div>Terça</div>
+                    <div>Quarta</div>
+                    <div>Quinta</div>
+                    <div>Sexta</div>
+                    <div>Sábado</div>
+                </div>
+                
+                <!-- Grid dos dias -->
+                <div id="grid-calendario" class="calendar-grid">
+                    <!-- Dias serão inseridos via JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Registros do Dia -->
+    <div class="modal fade" id="modal-registros" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title"><i class='bx bx-time me-2'></i>Registros do Dia</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Registros serão inseridos via JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block addjs_extra %}
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{% static 'rh/js/presenca.js' %}"></script>
+{% endblock %} 

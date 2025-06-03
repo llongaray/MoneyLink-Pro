@@ -132,6 +132,26 @@
             </a>
           </li>
           {% endif %}
+
+          {% has_access user "SCT55" as can_rh_presenca %}
+          {% if can_rh_presenca %}
+          <li>
+            <a href="{% url 'funcionarios:render_presenca' %}">
+              <i class="bx bx-calendar-check"></i>
+              <span class="menu-label">Presença</span>
+            </a>
+          </li>
+          {% endif %}
+
+          {% has_access user "SCT56" as can_rh_relatorio_presenca %}
+          {% if can_rh_relatorio_presenca %}
+          <li>
+            <a href="{% url 'funcionarios:render_relatorio_presenca' %}">
+              <i class="bx bx-file"></i>
+              <span class="menu-label">Relatório Presença</span>
+            </a>
+          </li>
+          {% endif %}
         </ul>
       </li>
       {% endif %}

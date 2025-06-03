@@ -1748,3 +1748,163 @@ def api_get_infosgerais(request):
             'status': 'error',
             'message': str(e)
         }, status=500)
+
+# --- Views para Sistema de Presença ---
+
+@login_required
+@controle_acess('SCT55')   # 55 – RECURSOS HUMANOS | PRESENÇA
+def render_presenca(request):
+    """Renderiza a página de registro de presença."""
+    return render(request, 'rh/presenca.html')
+
+@login_required
+@controle_acess('SCT56')   # 56 – RECURSOS HUMANOS | RELATÓRIO PRESENÇA
+def render_relatorio_presenca(request):
+    """Renderiza a página de relatório de presença."""
+    return render(request, 'rh/relatorio_presenca.html')
+
+@require_GET
+@login_required
+def api_get_registros_presenca(request):
+    """API para buscar registros de presença de um dia específico."""
+    print("[PRESENCA] Iniciando busca de registros de presença")
+    data = request.GET.get('data')
+    if not data:
+        print("[PRESENCA] Erro: Data não fornecida")
+        return JsonResponse({'error': 'Data não fornecida'}, status=400)
+    
+    try:
+        data = datetime.strptime(data, '%Y-%m-%d').date()
+        print(f"[PRESENCA] Data convertida: {data}")
+    except ValueError:
+        print("[PRESENCA] Erro: Formato de data inválido")
+        return JsonResponse({'error': 'Formato de data inválido'}, status=400)
+    
+    # Buscar registros do dia
+    print(f"[PRESENCA] Buscando registros para usuário {request.user.username} na data {data}")
+    registros = RegistroPresenca.objects.filter(
+        entrada_auto__usuario=request.user,
+        entrada_auto__data=data
+    ).order_by('datahora')
+    
+    print(f"[PRESENCA] Encontrados {registros.count()} registros")
+    registros_list = []
+    for registro in registros:
+        registros_list.append({
+            'tipo': registro.tipo,
+            'datahora': registro.datahora.strftime('%H:%M:%S')
+        })
+    
+    print(f"[PRESENCA] Retornando {len(registros_list)} registros processados")
+    return JsonResponse({
+        'hoje': {
+            'data': data.strftime('%Y-%m-%d'),
+            'registros': registros_list
+        }
+    })
+
+@require_POST
+@login_required
+def api_post_registro_presenca(request):
+    """API para registrar presença."""
+    print("[PRESENCA] Iniciando registro de presença")
+    try:
+        data = json.loads(request.body)
+        tipo = data.get('tipo')
+        print(f"[PRESENCA] Tipo de registro solicitado: {tipo}")
+        
+        if not tipo:
+            print("[PRESENCA] Erro: Tipo de registro não fornecido")
+            return JsonResponse({'error': 'Tipo de registro não fornecido'}, status=400)
+        
+        # Verificar se já existe uma entrada automática para hoje
+        hoje = timezone.now().date()
+        print(f"[PRESENCA] Data atual: {hoje}")
+        entrada_auto, created = EntradaAuto.objects.get_or_create(
+            usuario=request.user,
+            data=hoje,
+            defaults={
+                'ip_usado': request.META.get('REMOTE_ADDR')
+            }
+        )
+        print(f"[PRESENCA] Entrada automática {'criada' if created else 'recuperada'} para {request.user.username}")
+        
+        # Criar o registro de presença
+        registro = RegistroPresenca.objects.create(
+            entrada_auto=entrada_auto,
+            tipo=tipo,
+            datahora=timezone.now()
+        )
+        print(f"[PRESENCA] Registro criado com ID {registro.id} às {registro.datahora}")
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Registro de {tipo.lower()} realizado com sucesso',
+            'registro': {
+                'id': registro.id,
+                'tipo': registro.tipo,
+                'datahora': registro.datahora.strftime('%H:%M:%S')
+            }
+        })
+        
+    except json.JSONDecodeError:
+        print("[PRESENCA] Erro: JSON inválido no corpo da requisição")
+        return JsonResponse({'error': 'JSON inválido'}, status=400)
+    except Exception as e:
+        print(f"[PRESENCA] Erro ao registrar presença: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({'error': str(e)}, status=500)
+
+@require_GET
+@login_required
+@controle_acess('SCT56')   # 56 – RECURSOS HUMANOS | RELATÓRIO PRESENÇA
+def api_get_relatorio_presenca(request):
+    """
+    API para buscar relatórios de presença.
+    Permite filtrar por período e usuário.
+    """
+    print("[PRESENCA] Iniciando busca de relatórios de presença")
+    try:
+        data_inicio = request.GET.get('data_inicio')
+        data_fim = request.GET.get('data_fim')
+        usuario_id = request.GET.get('usuario_id')
+        print(f"[PRESENCA] Filtros: data_inicio={data_inicio}, data_fim={data_fim}, usuario_id={usuario_id}")
+
+        # Constrói a query base
+        query = {}
+        if data_inicio:
+            query['data__gte'] = data_inicio
+        if data_fim:
+            query['data__lte'] = data_fim
+        if usuario_id:
+            query['usuario_id'] = usuario_id
+        print(f"[PRESENCA] Query construída: {query}")
+
+        # Busca relatórios
+        relatorios = RelatorioSistemaPresenca.objects.filter(
+            **query
+        ).select_related('usuario').order_by('-data')
+        print(f"[PRESENCA] Encontrados {relatorios.count()} relatórios")
+
+        data = []
+        for relatorio in relatorios:
+            data.append({
+                'id': relatorio.id,
+                'usuario': {
+                    'id': relatorio.usuario.id,
+                    'nome': f"{relatorio.usuario.first_name} {relatorio.usuario.last_name}".strip() or relatorio.usuario.username
+                },
+                'data': relatorio.data.strftime('%d/%m/%Y'),
+                'observacao': relatorio.observacao,
+                'data_criacao': relatorio.data_criacao.strftime('%d/%m/%Y %H:%M')
+            })
+        print(f"[PRESENCA] Retornando {len(data)} relatórios processados")
+
+        return JsonResponse(data, safe=False)
+
+    except Exception as e:
+        print(f"[PRESENCA] Erro ao buscar relatórios de presença: {e}")
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({'error': 'Erro ao buscar relatórios de presença.'}, status=500)

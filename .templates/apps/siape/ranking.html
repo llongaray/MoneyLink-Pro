@@ -23,146 +23,148 @@
 {% endblock %}
 {% block content %}
 
-<div class="container__cards">
-    <div class="card meta-geral">
-        <div class="icon">
-            <i class="fas fa-chart-line"></i>
+<div class="container-ranking">
+    <div class="container__cards">
+        <div class="card meta-geral">
+            <div class="icon">
+                <i class="fas fa-chart-line"></i>
+            </div>
+            <div class="info__valores">
+                <h3 class="title">Meta Geral</h3>
+                <h5 class="valor"></h5>
+                <span class="percentual">
+                    <p class="porcentagem"></p>
+                    <p class="txt"> da Meta</p>
+                </span>
+            </div>
         </div>
-        <div class="info__valores">
-            <h3 class="title">Meta Geral</h3>
-            <h5 class="valor"></h5>
-            <span class="percentual">
-                <p class="porcentagem"></p>
-                <p class="txt"> da Meta</p>
-            </span>
+        <div class="card meta-empresa">
+            <div class="icon">
+                <i class="fas fa-building"></i>
+            </div>
+            <div class="info__valores">
+                <h3 class="title">Meta Empresa</h3>
+                <h5 class="valor"></h5>
+                <span class="percentual">
+                    <p class="porcentagem"></p>
+                    <p class="txt"> da Meta</p>
+                </span>
+            </div>
+        </div>
+        <div class="card meta-siape">
+            <div class="icon">
+                <i class="fas fa-star"></i>
+            </div>
+            <div class="info__valores">
+                <h3 class="title">Meta SIAPE</h3>
+                <h5 class="valor"></h5>
+                <span class="percentual">
+                    <p class="porcentagem"></p>
+                    <p class="txt"> da Meta</p>
+                </span>
+            </div>
         </div>
     </div>
-    <div class="card meta-empresa">
-        <div class="icon">
-            <i class="fas fa-building"></i>
+
+    <!-- HTML aprimorado -->
+    <div class="banner-container">
+        <div class="banner-slider" id="ranking-banner-wrapper">
+        <!-- botão de fechar -->
+        <button type="button" class="banner-close-btn" aria-label="Fechar">&times;</button>
+    
+        <div class="banner-track">
+            <!-- Imagem inicial estática, será substituída pelo JS -->
+            <img 
+            src="{% static 'img/inss_banner.jpg' %}" 
+            alt="Banner Ranking INSS" 
+            class="banner-item">
         </div>
-        <div class="info__valores">
-            <h3 class="title">Meta Empresa</h3>
-            <h5 class="valor"></h5>
-            <span class="percentual">
-                <p class="porcentagem"></p>
-                <p class="txt"> da Meta</p>
-            </span>
-        </div>
-    </div>
-    <div class="card meta-siape">
-        <div class="icon">
-            <i class="fas fa-star"></i>
-        </div>
-        <div class="info__valores">
-            <h3 class="title">Meta SIAPE</h3>
-            <h5 class="valor"></h5>
-            <span class="percentual">
-                <p class="porcentagem"></p>
-                <p class="txt"> da Meta</p>
-            </span>
         </div>
     </div>
+    
+    <section>
+        <div class="container__ranking">
+            <div class="container__top3 container">
+
+                <!-- Top 4 -->
+                <div class="top4 box__ranking">
+                    <div class="info__foto">
+                        <div class="foto__pos">
+                            <img src="/static/img/default-store.png" alt="Posição Disponível">
+                            <div class="circle__position">4</div>
+                        </div>
+                        <div class="valor">0</div>
+                    </div>
+                    <div class="bar">
+                        <div class="nome">Posição Disponível</div>
+                        <div class="icon"><i class="fas fa-award"></i></div>
+                    </div>
+                </div>
+
+                <!-- Top 2 -->
+                <div class="top2 box__ranking">
+                    <div class="info__foto">
+                        <div class="foto__pos">
+                            <img src="/static/img/default-store.png" alt="Posição Disponível">
+                            <div class="circle__position">2</div>
+                        </div>
+                        <div class="valor">0</div>
+                    </div>
+                    <div class="bar">
+                        <div class="nome">Posição Disponível</div>
+                        <div class="icon"><i class="fas fa-trophy"></i></div>
+                    </div>
+                </div>
+
+                <!-- Top 1 -->
+                <div class="top1 box__ranking">
+                    <div class="info__foto">
+                        <div class="foto__pos">
+                            <img src="/static/img/default-store.png" alt="Posição Disponível">
+                            <div class="circle__position">1</div>
+                        </div>
+                        <div class="valor">0</div>
+                    </div>
+                    <div class="bar">
+                        <div class="nome">Posição Disponível</div>
+                        <div class="icon"><i class="fas fa-gem"></i></div>
+                    </div>
+                </div>
+
+                <!-- Top 3 -->
+                <div class="top3 box__ranking">
+                    <div class="info__foto">
+                        <div class="foto__pos">
+                            <img src="/static/img/default-store.png" alt="Posição Disponível">
+                            <div class="circle__position">3</div>
+                        </div>
+                        <div class="valor">0</div>
+                    </div>
+                    <div class="bar">
+                        <div class="nome">Posição Disponível</div>
+                        <div class="icon"><i class="fas fa-medal"></i></div>
+                    </div>
+                </div>
+
+                <!-- Top 5 -->
+                <div class="top5 box__ranking">
+                    <div class="info__foto">
+                        <div class="foto__pos">
+                            <img src="/static/img/default-store.png" alt="Posição Disponível">
+                            <div class="circle__position">5</div>
+                        </div>
+                        <div class="valor">0</div>
+                    </div>
+                    <div class="bar">
+                        <div class="nome">Posição Disponível</div>
+                        <div class="icon"><i class="fas fa-award"></i></div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
 </div>
-
-<!-- HTML aprimorado -->
-<div class="banner-container">
-    <div class="banner-slider" id="ranking-banner-wrapper">
-      <!-- botão de fechar -->
-      <button type="button" class="banner-close-btn" aria-label="Fechar">&times;</button>
-  
-      <div class="banner-track">
-        <!-- Imagem inicial estática, será substituída pelo JS -->
-        <img 
-          src="{% static 'img/inss_banner.jpg' %}" 
-          alt="Banner Ranking INSS" 
-          class="banner-item">
-      </div>
-    </div>
-  </div>
-  
-<section>
-    <div class="container__ranking">
-        <div class="container__top3 container">
-
-            <!-- Top 4 -->
-            <div class="top4 box__ranking">
-                <div class="info__foto">
-                    <div class="foto__pos">
-                        <img src="/static/img/default-store.png" alt="Posição Disponível">
-                        <div class="circle__position">4</div>
-                    </div>
-                    <div class="valor">0</div>
-                </div>
-                <div class="bar">
-                    <div class="nome">Posição Disponível</div>
-                    <div class="icon"><i class="fas fa-award"></i></div>
-                </div>
-            </div>
-
-            <!-- Top 2 -->
-            <div class="top2 box__ranking">
-                <div class="info__foto">
-                    <div class="foto__pos">
-                        <img src="/static/img/default-store.png" alt="Posição Disponível">
-                        <div class="circle__position">2</div>
-                    </div>
-                    <div class="valor">0</div>
-                </div>
-                <div class="bar">
-                    <div class="nome">Posição Disponível</div>
-                    <div class="icon"><i class="fas fa-trophy"></i></div>
-                </div>
-            </div>
-
-            <!-- Top 1 -->
-            <div class="top1 box__ranking">
-                <div class="info__foto">
-                    <div class="foto__pos">
-                        <img src="/static/img/default-store.png" alt="Posição Disponível">
-                        <div class="circle__position">1</div>
-                    </div>
-                    <div class="valor">0</div>
-                </div>
-                <div class="bar">
-                    <div class="nome">Posição Disponível</div>
-                    <div class="icon"><i class="fas fa-gem"></i></div>
-                </div>
-            </div>
-
-            <!-- Top 3 -->
-            <div class="top3 box__ranking">
-                <div class="info__foto">
-                    <div class="foto__pos">
-                        <img src="/static/img/default-store.png" alt="Posição Disponível">
-                        <div class="circle__position">3</div>
-                    </div>
-                    <div class="valor">0</div>
-                </div>
-                <div class="bar">
-                    <div class="nome">Posição Disponível</div>
-                    <div class="icon"><i class="fas fa-medal"></i></div>
-                </div>
-            </div>
-
-            <!-- Top 5 -->
-            <div class="top5 box__ranking">
-                <div class="info__foto">
-                    <div class="foto__pos">
-                        <img src="/static/img/default-store.png" alt="Posição Disponível">
-                        <div class="circle__position">5</div>
-                    </div>
-                    <div class="valor">0</div>
-                </div>
-                <div class="bar">
-                    <div class="nome">Posição Disponível</div>
-                    <div class="icon"><i class="fas fa-award"></i></div>
-                </div>
-            </div>
-
-        </div>
-    </div>
-</section>
 {% endblock %}
 
 {% block addjs_extra %}

@@ -310,16 +310,16 @@
     flex: 1;
     min-height: 425px;
     display: flex;
-    align-items: flex-end;
-    justify-content: center;
+    align-items: center;
     padding: 1.3rem;
     background-color: var(--card-bg, #FFFFFF);
     border-radius: 0.85rem;
     box-shadow: 0 3px 17px rgba(0, 0, 0, 0.08);
-    overflow: hidden;
+    overflow: auto;
     position: relative;
     transition: all 0.3s ease;
-    height: 467px;  /* Altura fixa para ambos os containers */
+    height: 467px;
+    flex-direction: column;
 }
 
 .container::before {

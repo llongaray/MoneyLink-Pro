@@ -6,7 +6,6 @@ import os
 from django.utils.text import slugify
 from django.utils import timezone
 from django.core.validators import FileExtensionValidator
-from django.core.exceptions import ValidationError
 
 # --- Configuração de Armazenamento ---
 
@@ -651,3 +650,105 @@ class ArquivoComunicado(models.Model):
         verbose_name = "Arquivo de Comunicado"
         verbose_name_plural = "Arquivos de Comunicados"
         ordering = ['-data_criacao']
+
+# --- Modelos de Presença ---
+
+class EntradaAuto(models.Model):
+    """
+    Modelo para registrar automaticamente quando um usuário acessa o sistema.
+    O registro é feito apenas uma vez por dia, na primeira vez que o usuário acessa.
+    """
+    usuario = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='entradas_auto',
+        verbose_name="Usuário"
+    )
+    datahora = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Data e Hora"
+    )
+    data = models.DateField(
+        auto_now_add=True,
+        verbose_name="Data"
+    )
+    ip_usado = models.GenericIPAddressField(
+        null=True,
+        blank=True,
+        verbose_name="IP Usado"
+    )
+
+    def __str__(self):
+        return f"Entrada de {self.usuario.username} em {self.datahora.strftime('%d/%m/%Y %H:%M')}"
+
+    class Meta:
+        verbose_name = "Entrada Automática"
+        verbose_name_plural = "Entradas Automáticas"
+        ordering = ['-datahora']
+        # Garante que só existe um registro por usuário por dia
+        unique_together = ['usuario', 'data']
+
+class RegistroPresenca(models.Model):
+    """
+    Modelo para registrar entradas e saídas dos funcionários.
+    Pode ser registrado manualmente ou automaticamente pelo sistema.
+    """
+    class TipoRegistro(models.TextChoices):
+        ENTRADA = 'ENTRADA', 'Entrada'
+        SAIDA = 'SAIDA', 'Saída'
+
+    entrada_auto = models.ForeignKey(
+        EntradaAuto,
+        on_delete=models.CASCADE,
+        related_name='registros_presenca',
+        verbose_name="Entrada Automática"
+    )
+    tipo = models.CharField(
+        max_length=10,
+        choices=TipoRegistro.choices,
+        verbose_name="Tipo de Registro"
+    )
+    datahora = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Data e Hora"
+    )
+
+    def __str__(self):
+        return f"{self.entrada_auto.usuario.username} - {self.get_tipo_display()} - {self.datahora.strftime('%d/%m/%Y %H:%M')}"
+
+    class Meta:
+        verbose_name = "Registro de Presença"
+        verbose_name_plural = "Registros de Presença"
+        ordering = ['-datahora']
+
+class RelatorioSistemaPresenca(models.Model):
+    """
+    Modelo para registrar relatórios gerados pelo sistema sobre ausências.
+    O sistema verifica diariamente se houve registros de entrada/saída no dia anterior.
+    """
+    usuario = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='relatorios_presenca',
+        verbose_name="Usuário"
+    )
+    data = models.DateField(
+        verbose_name="Data do Relatório"
+    )
+    observacao = models.TextField(
+        verbose_name="Observação"
+    )
+    data_criacao = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Data de Criação"
+    )
+
+    def __str__(self):
+        return f"{self.usuario.username} - {self.data.strftime('%d/%m/%Y')}"
+
+    class Meta:
+        verbose_name = "Relatório de Presença"
+        verbose_name_plural = "Relatórios de Presença"
+        ordering = ['-data']
+        # Garante que só existe um relatório por usuário por dia
+        unique_together = ['usuario', 'data']

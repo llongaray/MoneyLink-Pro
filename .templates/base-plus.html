@@ -87,8 +87,9 @@
         {% block content %}{% endblock %}
     </main>
     
-    <!-- Scripts -->
+    <!-- jQuery (necessário para o funcionamento dos comunicados) -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- Script dos comunicados -->
     <script src="{% static 'js/apps/funcionarios/comunicados_cliente.js' %}"></script>
     <script src="{% static 'js/alert_ti.js' %}"></script>
     {% block addjs_extra %}{% endblock %}

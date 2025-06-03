@@ -7,41 +7,41 @@ let paginaEmFoco = true;
 
 // Função para verificar novos alertas
 function verificarNovosAlertas() {
-    console.log('🔍 Verificando novos alertas...');
+    // console.log('🔍 Verificando novos alertas...');
     $.ajax({
         url: '/autenticacao/api/alertas/verificar/',
         method: 'GET',
         success: function(response) {
-            console.log('📥 Resposta recebida:', response);
+            // console.log('📥 Resposta recebida:', response);
             if (response.tem_alerta && !response.ja_visto) {
-                console.log('⚠️ Novo alerta encontrado!');
+                // console.log('⚠️ Novo alerta encontrado!');
                 if (paginaEmFoco) {
                     exibirAlerta(response);
                 } else {
-                    console.log('📱 Página não está em foco, armazenando alerta pendente');
+                    // console.log('📱 Página não está em foco, armazenando alerta pendente');
                     alertaPendente = response;
                 }
             } else {
-                console.log('✅ Nenhum alerta novo encontrado');
+                // console.log('✅ Nenhum alerta novo encontrado');
             }
         },
         error: function(error) {
-            console.error('❌ Erro ao verificar alertas:', error);
+            // console.error('❌ Erro ao verificar alertas:', error);
         }
     });
 }
 
 // Função para exibir o alerta
 function exibirAlerta(dados) {
-    console.log('🎯 Iniciando exibição do alerta...');
+    // console.log('🎯 Iniciando exibição do alerta...');
     
     // Se já houver um alerta sendo exibido, não exibe outro
     if (alertaAtual) {
-        console.log('⚠️ Já existe um alerta sendo exibido');
+        // console.log('⚠️ Já existe um alerta sendo exibido');
         return;
     }
 
-    console.log('📝 Criando elemento do alerta...');
+    // console.log('📝 Criando elemento do alerta...');
     // Cria o elemento do alerta
     const alertaHTML = `
         <div id="alert-ti-floating" class="alert-ti-floating" style="display: none;">
@@ -61,7 +61,7 @@ function exibirAlerta(dados) {
         </div>
     `;
 
-    console.log('📌 Adicionando alerta ao DOM...');
+    // console.log('📌 Adicionando alerta ao DOM...');
     // Adiciona o alerta ao DOM
     $('body').append(alertaHTML);
     alertaAtual = dados.alerta_id;
@@ -73,39 +73,39 @@ function exibirAlerta(dados) {
 
     // Mostra o alerta e tenta reproduzir o áudio
     if (paginaEmFoco) {
-        console.log('👁️ Página em foco, exibindo alerta...');
+        // console.log('👁️ Página em foco, exibindo alerta...');
         $('#alert-ti-floating').fadeIn(300);
         tocarAudio();
     } else {
-        console.log('👁️ Página não está em foco, alerta será exibido quando voltar ao foco');
+        // console.log('👁️ Página não está em foco, alerta será exibido quando voltar ao foco');
     }
 }
 
 // Função para tocar o áudio
 function tocarAudio() {
-    console.log('🎵 Iniciando reprodução do áudio...');
+    // console.log('🎵 Iniciando reprodução do áudio...');
     if (audioElement) {
         // Tenta reproduzir o áudio
         const playPromise = audioElement.play();
         
         if (playPromise !== undefined) {
             playPromise.then(() => {
-                console.log('✅ Áudio reproduzido com sucesso');
+                // console.log('✅ Áudio reproduzido com sucesso');
                 audioPendente = null;
             }).catch(error => {
-                console.error('❌ Erro ao tocar áudio:', error);
+                // console.error('❌ Erro ao tocar áudio:', error);
                 // Se falhar, armazena o áudio como pendente
                 audioPendente = audioElement.src;
             });
         }
     } else {
-        console.warn('⚠️ Elemento de áudio não encontrado');
+        // console.warn('⚠️ Elemento de áudio não encontrado');
     }
 }
 
 // Função para marcar o alerta como visto
 function marcarAlertaVisto(alertaId) {
-    console.log(`📌 Marcando alerta ${alertaId} como visto...`);
+    // console.log(`📌 Marcando alerta ${alertaId} como visto...`);
     $.ajax({
         url: `/autenticacao/api/alertas/marcar-visto/${alertaId}/`,
         method: 'POST',
@@ -113,23 +113,23 @@ function marcarAlertaVisto(alertaId) {
             'X-CSRFToken': getCookie('csrftoken')
         },
         success: function(response) {
-            console.log('✅ Alerta marcado como visto com sucesso');
+            // console.log('✅ Alerta marcado como visto com sucesso');
         },
         error: function(error) {
-            console.error('❌ Erro ao marcar alerta como visto:', error);
+            // console.error('❌ Erro ao marcar alerta como visto:', error);
         }
     });
 }
 
 // Função para configurar os eventos do alerta
 function configurarEventosAlerta() {
-    console.log('⚙️ Configurando eventos do alerta...');
+    // console.log('⚙️ Configurando eventos do alerta...');
     
     // Evento de fechar o alerta
     $('.close-alert').on('click', function() {
-        console.log('🔔 Botão de fechar clicado');
+        // console.log('🔔 Botão de fechar clicado');
         if (alertaAtual) {
-            console.log(`📌 Fechando alerta ${alertaAtual}...`);
+            // console.log(`📌 Fechando alerta ${alertaAtual}...`);
             marcarAlertaVisto(alertaAtual);
             $('#alert-ti-floating').fadeOut(300, function() {
                 $(this).remove();
@@ -137,7 +137,7 @@ function configurarEventosAlerta() {
             alertaAtual = null;
             audioElement = null;
             audioPendente = null;
-            console.log('✅ Alerta removido com sucesso');
+            // console.log('✅ Alerta removido com sucesso');
         }
     });
 
@@ -146,14 +146,14 @@ function configurarEventosAlerta() {
     eventos.forEach(evento => {
         document.addEventListener(evento, function tentarReproduzirPendente() {
             if (audioPendente && audioElement) {
-                console.log('🔄 Tentando reproduzir áudio pendente após interação...');
+                // console.log('🔄 Tentando reproduzir áudio pendente após interação...');
                 audioElement.play().then(() => {
-                    console.log('✅ Áudio pendente reproduzido com sucesso');
+                    // console.log('✅ Áudio pendente reproduzido com sucesso');
                     audioPendente = null;
                     // Remove o evento após reproduzir com sucesso
                     eventos.forEach(e => document.removeEventListener(e, tentarReproduzirPendente));
                 }).catch(error => {
-                    console.error('❌ Falha ao reproduzir áudio pendente:', error);
+                    // console.error('❌ Falha ao reproduzir áudio pendente:', error);
                 });
             }
         }, { once: true });
@@ -179,10 +179,10 @@ function getCookie(name) {
 // Função para verificar se a página está em foco
 function verificarFocoPagina() {
     paginaEmFoco = document.hasFocus();
-    console.log(`👁️ Página ${paginaEmFoco ? 'em foco' : 'sem foco'}`);
+    // console.log(`👁️ Página ${paginaEmFoco ? 'em foco' : 'sem foco'}`);
     
     if (paginaEmFoco && alertaPendente) {
-        console.log('📱 Página voltou ao foco, exibindo alerta pendente');
+        // console.log('📱 Página voltou ao foco, exibindo alerta pendente');
         exibirAlerta(alertaPendente);
         alertaPendente = null;
     }
@@ -190,7 +190,7 @@ function verificarFocoPagina() {
 
 // Inicialização
 $(document).ready(function() {
-    console.log('🚀 Inicializando sistema de alertas...');
+    // console.log('🚀 Inicializando sistema de alertas...');
     
     // Configura eventos de foco
     $(window).on('focus blur', verificarFocoPagina);
@@ -201,9 +201,9 @@ $(document).ready(function() {
     
     // Verifica novos alertas a cada 3 segundos
     setInterval(verificarNovosAlertas, 3000);
-    console.log('⏰ Verificação periódica configurada (3 segundos)');
+    // console.log('⏰ Verificação periódica configurada (3 segundos)');
     
     // Verifica alertas imediatamente ao carregar a página
     verificarNovosAlertas();
-    console.log('✅ Sistema de alertas inicializado');
+    // console.log('✅ Sistema de alertas inicializado');
 });

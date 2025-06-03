@@ -37,7 +37,7 @@ async function tocarSomAlerta() {
     try {
         // Se o usuário ainda não interagiu com a página, não tenta tocar o som
         if (!usuarioInteragiu) {
-            console.log('Usuário ainda não interagiu com a página, som será tocado na próxima interação');
+            // console.log('Usuário ainda não interagiu com a página, som será tocado na próxima interação');
             return false;
         }
 
@@ -49,10 +49,10 @@ async function tocarSomAlerta() {
         
         if (playPromise !== undefined) {
             await playPromise;
-            console.log('Som reproduzido com sucesso');
+            // console.log('Som reproduzido com sucesso');
         }
     } catch (error) {
-        console.log('Erro ao tocar som:', error);
+        // console.log('Erro ao tocar som:', error);
         return false;
     }
     return true;
@@ -70,14 +70,14 @@ async function verificarSonsPendentes() {
 
 // Função para atualizar o contador de comunicados não lidos
 async function atualizarContadorComunicados() {
-    console.log('Iniciando atualização do contador de comunicados...');
+    // console.log('Iniciando atualização do contador de comunicados...');
     $.ajax({
         url: '/rh/api/comunicados/list/',
         method: 'GET',
         success: async function(response) {
-            console.log('Resposta recebida:', response);
+            // console.log('Resposta recebida:', response);
             const naoLidos = response.filter(c => !c.lido);
-            console.log(`Total de comunicados não lidos: ${naoLidos.length}`);
+            // console.log(`Total de comunicados não lidos: ${naoLidos.length}`);
             
             // Verifica se há comunicados novos (não notificados)
             const comunicadosNovos = naoLidos.filter(c => !comunicadosNotificados.has(c.id));
@@ -104,48 +104,48 @@ async function atualizarContadorComunicados() {
             
             // Atualiza o modal se estiver aberto
             if ($('.comunicados-popup').hasClass('active')) {
-                console.log('Modal está aberto, atualizando conteúdo...');
+                // console.log('Modal está aberto, atualizando conteúdo...');
                 atualizarModalComunicados(response);
             }
         },
         error: function(error) {
-            console.error('Erro ao buscar comunicados:', error);
+            // console.error('Erro ao buscar comunicados:', error);
         }
     });
 }
 
 // Função para atualizar o conteúdo do modal
 function atualizarModalComunicados(comunicados) {
-    console.log('Atualizando modal de comunicados...');
+    // console.log('Atualizando modal de comunicados...');
     const naoLidos = comunicados.filter(c => !c.lido);
     const lidos = comunicados.filter(c => c.lido);
-    console.log(`Comunicados não lidos: ${naoLidos.length}, Comunicados lidos: ${lidos.length}`);
+    // console.log(`Comunicados não lidos: ${naoLidos.length}, Comunicados lidos: ${lidos.length}`);
     
     // Limpa os containers
-    console.log('Limpando containers de comunicados...');
+    // console.log('Limpando containers de comunicados...');
     $('#submodal-nao-lidos').empty();
     $('#submodal-lidos').empty();
     
     // Adiciona comunicados não lidos
     if (naoLidos.length === 0) {
-        console.log('Nenhum comunicado não lido encontrado');
+        // console.log('Nenhum comunicado não lido encontrado');
         $('#submodal-nao-lidos').html('<p class="text-center">Nenhum comunicado não lido</p>');
     } else {
-        console.log('Adicionando comunicados não lidos...');
+        // console.log('Adicionando comunicados não lidos...');
         naoLidos.forEach(comunicado => {
-            console.log(`Adicionando comunicado não lido ID: ${comunicado.id}`);
+            // console.log(`Adicionando comunicado não lido ID: ${comunicado.id}`);
             $('#submodal-nao-lidos').append(criarHTMLComunicado(comunicado));
         });
     }
     
     // Adiciona comunicados lidos
     if (lidos.length === 0) {
-        console.log('Nenhum comunicado lido encontrado');
+        // console.log('Nenhum comunicado lido encontrado');
         $('#submodal-lidos').html('<p class="text-center">Nenhum comunicado lido</p>');
     } else {
-        console.log('Adicionando comunicados lidos...');
+        // console.log('Adicionando comunicados lidos...');
         lidos.forEach(comunicado => {
-            console.log(`Adicionando comunicado lido ID: ${comunicado.id}`);
+            // console.log(`Adicionando comunicado lido ID: ${comunicado.id}`);
             $('#submodal-lidos').append(criarHTMLComunicado(comunicado));
         });
     }
@@ -153,10 +153,10 @@ function atualizarModalComunicados(comunicados) {
 
 // Função para criar o HTML de um comunicado
 function criarHTMLComunicado(comunicado) {
-    console.log(`Criando HTML para comunicado ID: ${comunicado.id}`);
+    // console.log(`Criando HTML para comunicado ID: ${comunicado.id}`);
     // Formata a data corretamente
     const data = formatarDataBR(comunicado.data_criacao);
-    console.log(`Data do comunicado: ${data}`);
+    // console.log(`Data do comunicado: ${data}`);
     
     return `
         <div class="submodal-comunicado-item ${!comunicado.lido ? 'submodal-nao-lido' : ''}" data-id="${comunicado.id}">
@@ -185,7 +185,7 @@ function formatarDataBR(dataString) {
         
         // Verifica se a data é válida
         if (isNaN(data.getTime())) {
-            console.error('Data inválida:', dataString);
+            // console.error('Data inválida:', dataString);
             return 'Data inválida';
         }
         
@@ -196,7 +196,7 @@ function formatarDataBR(dataString) {
         
         return `${dia}/${mes}/${ano}`;
     } catch (error) {
-        console.error('Erro ao formatar data:', error);
+        // console.error('Erro ao formatar data:', error);
         return 'Data inválida';
     }
 }
@@ -220,7 +220,7 @@ function getCookie(name) {
 // Função para marcar um comunicado como lido
 function marcarComoLido(event, comunicadoId) {
     event.preventDefault();
-    console.log(`Marcando comunicado ID: ${comunicadoId} como lido...`);
+    // console.log(`Marcando comunicado ID: ${comunicadoId} como lido...`);
     
     const form = event.target;
     const formData = new FormData(form);
@@ -232,17 +232,17 @@ function marcarComoLido(event, comunicadoId) {
         processData: false,
         contentType: false,
         success: function(response) {
-            console.log('Resposta do servidor:', response);
+            // console.log('Resposta do servidor:', response);
             if (response.status === 'success') {
-                console.log('Comunicado marcado como lido com sucesso');
+                // console.log('Comunicado marcado como lido com sucesso');
                 // Atualiza o contador e o modal
                 atualizarContadorComunicados();
             }
         },
         error: function(xhr, status, error) {
-            console.error('Erro ao marcar comunicado como lido:', error);
-            console.error('Status:', status);
-            console.error('Resposta:', xhr.responseText);
+            // console.error('Erro ao marcar comunicado como lido:', error);
+            // console.error('Status:', status);
+            // console.error('Resposta:', xhr.responseText);
         }
     });
 }
@@ -250,7 +250,7 @@ function marcarComoLido(event, comunicadoId) {
 // Função para marcar que o usuário interagiu com a página
 function marcarInteracaoUsuario() {
     if (!usuarioInteragiu) {
-        console.log('Primeira interação do usuário detectada');
+        // console.log('Primeira interação do usuário detectada');
         usuarioInteragiu = true;
         // Tenta tocar sons pendentes quando o usuário interagir pela primeira vez
         verificarSonsPendentes();
@@ -290,7 +290,7 @@ function monitorarInteracoesUsuario() {
 
 // Inicialização
 $(document).ready(function() {
-    console.log('Documento pronto, inicializando...');
+    // console.log('Documento pronto, inicializando...');
     
     // Carrega os IDs notificados do localStorage
     carregarComunicadosNotificados();
@@ -302,7 +302,7 @@ $(document).ready(function() {
     $('#btn-comunicados').on('click', function(e) {
         e.stopPropagation();
         $('.comunicados-popup').toggleClass('active');
-        console.log(`Modal agora está: ${$('.comunicados-popup').hasClass('active') ? 'ativo' : 'inativo'}`);
+        // console.log(`Modal agora está: ${$('.comunicados-popup').hasClass('active') ? 'ativo' : 'inativo'}`);
         
         // Se o modal estiver aberto, atualiza os comunicados
         if ($('.comunicados-popup').hasClass('active')) {
