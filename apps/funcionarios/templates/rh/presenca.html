@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block header_title %}
-Registro de Presença<span class="produto-text"></span>
+Presença Gincana<span class="produto-text"></span>
 {% endblock %}
 
 {% block addcss_extra %}
@@ -12,14 +12,21 @@ Registro de Presença<span class="produto-text"></span>
 
 {% block content %}
 <div class="container my-4">
-    <h1 class="titulo-pagina mb-4"><i class='bx bx-calendar-check me-2'></i>Registro de Presença</h1>
+    <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
 
     <!-- Card do Calendário -->
-    <div class="card mb-4">
+    <div class="card mb-4 mt-4">
+        {% if can_view_full_calendar %}
         <div class="card-header bg-primary text-white">
-            <i class='bx bx-calendar me-2'></i> Calendário de Presença
+            <i class='bx bx-calendar me-2'></i> Calendário da Gincana
         </div>
+        {% else %}
+        <div class="card-header bg-primary text-white">
+            <i class='bx bx-calendar-day me-2'></i> Dia Atual da Gincana
+        </div>
+        {% endif %}
         <div class="card-body">
+            {% if can_view_full_calendar %}
             <!-- Cabeçalho do Calendário -->
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <div class="d-flex gap-2">
@@ -32,9 +39,11 @@ Registro de Presença<span class="produto-text"></span>
                     </button>
                 </div>
             </div>
+            {% endif %}
 
             <!-- Grid do Calendário -->
             <div class="calendar-container">
+                {% if can_view_full_calendar %}
                 <!-- Cabeçalho dos dias da semana -->
                 <div class="calendar-header">
                     <div>Domingo</div>
@@ -45,33 +54,39 @@ Registro de Presença<span class="produto-text"></span>
                     <div>Sexta</div>
                     <div>Sábado</div>
                 </div>
+                {% endif %}
                 
                 <!-- Grid dos dias -->
-                <div id="grid-calendario" class="calendar-grid">
+                <div id="grid-calendario" class="calendar-grid {% if not can_view_full_calendar %}calendar-grid-single-day{% endif %}">
                     <!-- Dias serão inseridos via JavaScript -->
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Modal de Registros do Dia -->
+    <!-- Modal de Registros do Dia REMOVIDO -->
+    <!-- 
     <div class="modal fade" id="modal-registros" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header bg-info text-white">
-                    <h5 class="modal-title"><i class='bx bx-time me-2'></i>Registros do Dia</h5>
+                    <h5 class="modal-title"><i class='bx bx-time me-2'></i>Registros do Dia <span id="modal-data-selecionada"></span></h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body">
-                    <!-- Registros serão inseridos via JavaScript -->
+                <div class="modal-body" id="modal-registros-body">
+                    
                 </div>
             </div>
         </div>
     </div>
+    -->
 </div>
 {% endblock %}
 
 {% block addjs_extra %}
+<script>
+    const gCanViewFullCalendar = {{ can_view_full_calendar|yesno:"true,false" }};
+</script>
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="{% static 'rh/js/presenca.js' %}"></script>

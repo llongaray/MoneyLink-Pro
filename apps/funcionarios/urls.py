@@ -50,5 +50,7 @@ urlpatterns = [
     path('presenca/relatorio/', render_relatorio_presenca, name='render_relatorio_presenca'),
     path('api/presenca/registros/', api_get_registros_presenca, name='api_get_registros_presenca'),
     path('api/presenca/registrar/', api_post_registro_presenca, name='api_post_registro_presenca'),
-    path('api/presenca/relatorio/', api_get_relatorio_presenca, name='api_get_relatorio_presenca'),
+    path('api/presenca/relatorio/', api_get_relatorio_presenca, name='api_get_relatorio_presenca_data'),
+    path('api/presenca/funcionarios/', api_rh_get_funcionarios_para_filtro_presenca, name='api_rh_get_funcionarios_para_filtro_presenca'),
+    path('api/presenca/equipes/', api_rh_get_equipes_para_filtro_presenca, name='api_rh_get_equipes_para_filtro_presenca'),
 ]

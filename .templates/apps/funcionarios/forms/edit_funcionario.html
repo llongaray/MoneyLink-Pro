@@ -216,6 +216,13 @@ Editar Funcionário<span class="produto-text"></span>
                 <input type="text" id="edit_pis" name="pis" class="form-control">
             </div>
             <div class="mb-3">
+              <label for="edit_tipo_contrato" class="form-label"><i class='bx bx-file-blank me-2'></i>Tipo de Contrato *</label>
+              <select id="edit_tipo_contrato" name="tipo_contrato" class="form-select" required>
+                <option value="">--- Selecione ---</option>
+                {# Opções populadas via JS #}
+              </select>
+            </div>
+            <div class="mb-3">
                 <label for="edit_empresa" class="form-label"><i class='bx bx-building-house me-2'></i>Empresa *</label>
                 <select id="edit_empresa" name="empresa" class="form-select" required>
                     <option value="">--- Selecione ---</option>

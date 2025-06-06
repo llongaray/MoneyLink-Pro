@@ -37,6 +37,7 @@ $(document).ready(function() {
     const $editCargoSelect = $('#edit_cargo');
     const $editHorarioSelect = $('#edit_horario');
     const $editEquipeSelect = $('#edit_equipe');
+    const $editTipoContratoSelect = $('#edit_tipo_contrato');
     const $editRegrasComissionamentoContainer = $('#edit_regras_comissionamento_container'); // Novo Container
 
     // Novos elementos para a seção de arquivos
@@ -65,6 +66,7 @@ $(document).ready(function() {
     let todosHorarios = [];
     let todasEquipes = [];
     let todasRegrasComissao = []; // Cache para regras de comissão
+    let todosTiposContrato = []; // Novo cache
 
     // --- Funções Auxiliares ---
 
@@ -275,6 +277,7 @@ $(document).ready(function() {
                 todosDepartamentos = data.departamentos || [];
                 todosSetores = data.setores || [];
                 todosCargos = data.cargos || [];
+                todosTiposContrato = data.tipo_contrato_choices || []; // Carrega os tipos de contrato
                 
                 // Extrai todas as lojas de todas as empresas
                 todasLojas = [];
@@ -329,6 +332,9 @@ $(document).ready(function() {
                     console.log("Populando filtro de funções/cargos");
                     popularSelect($filtroFuncao, todosCargos);
                 }
+                
+                // Popula o select de tipo de contrato no formulário de edição
+                popularSelect($editTipoContratoSelect, todosTiposContrato, 'value', 'display', '--- Selecione o Tipo de Contrato ---', false);
                 
                 // Carrega equipes e horários
                 $.getJSON(apiUrlInfoGeralEmp)
@@ -550,6 +556,10 @@ $(document).ready(function() {
         $('#edit_matricula').val(funcionario.matricula || '');
         $('#edit_pis').val(funcionario.pis || '');
         
+        // Tipo de Contrato
+        console.log('Populando tipo_contrato:', funcionario.tipo_contrato);
+        $('#edit_tipo_contrato').val(funcionario.tipo_contrato || '');
+        
         // Dados pessoais
         $('#edit_data_nascimento').val(funcionario.data_nascimento || '');
         $('#edit_genero').val(funcionario.genero || '');
@@ -652,6 +662,7 @@ $(document).ready(function() {
             cpf: $('#edit_cpf').val(),
             matricula: $('#edit_matricula').val(),
             pis: $('#edit_pis').val(),
+            tipo_contrato: $('#edit_tipo_contrato').val(),
             data_nascimento: $('#edit_data_nascimento').val(),
             genero: $('#edit_genero').val(),
             estado_civil: $('#edit_estado_civil').val(),

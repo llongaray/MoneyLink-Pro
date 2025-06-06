@@ -3,6 +3,28 @@ from .models import *
 import os
 from django.utils.safestring import mark_safe
 
+
+# Filtro personalizado para funcionários MEI
+class FuncionarioMEIFilter(admin.SimpleListFilter):
+    title = 'Funcionários MEI Ativos'
+    parameter_name = 'mei_ativo'
+
+    def lookups(self, request, model_admin):
+        return (
+            ('sim', 'Apenas MEI Ativos'),
+            ('nao', 'Não MEI ou Inativos'),
+            ('todos_mei', 'Todos os MEI'),
+        )
+
+    def queryset(self, request, queryset):
+        if self.value() == 'sim':
+            return queryset.filter(tipo_contrato='MEI', status=True)
+        elif self.value() == 'nao':
+            return queryset.exclude(tipo_contrato='MEI', status=True)
+        elif self.value() == 'todos_mei':
+            return queryset.filter(tipo_contrato='MEI')
+        return queryset
+
 @admin.register(Empresa)
 class EmpresaAdmin(admin.ModelAdmin):
     list_display = ('id', 'nome', 'cnpj', 'endereco', 'status')
@@ -96,10 +118,12 @@ class ArquivoFuncionarioAdmin(admin.ModelAdmin):
     list_filter = (
         'status',
         'data_upload',
+        'funcionario__tipo_contrato',
         ('funcionario__empresa', admin.RelatedOnlyFieldListFilter),
         ('funcionario__departamento', admin.RelatedOnlyFieldListFilter),
         ('funcionario__setor', admin.RelatedOnlyFieldListFilter),
         ('funcionario__cargo', admin.RelatedOnlyFieldListFilter),
+        ('funcionario__equipe', admin.RelatedOnlyFieldListFilter),
         'funcionario__status',
     )
     search_fields = ('titulo', 'descricao', 'funcionario__nome_completo', 'funcionario__apelido', 'funcionario__cpf')
@@ -153,13 +177,14 @@ class RegraComissionamentoAdmin(admin.ModelAdmin):
     list_filter = (
         'status', 'escopo_base', 'data_inicio', 'data_fim',
         ('empresas', admin.RelatedOnlyFieldListFilter),
+        ('lojas', admin.RelatedOnlyFieldListFilter),
         ('departamentos', admin.RelatedOnlyFieldListFilter),
         ('setores', admin.RelatedOnlyFieldListFilter),
         ('equipes', admin.RelatedOnlyFieldListFilter),
     )
     search_fields = ('titulo',)
     list_editable = ('status',)
-    filter_horizontal = ('empresas', 'departamentos', 'setores', 'equipes')
+    filter_horizontal = ('empresas', 'lojas', 'departamentos', 'setores', 'equipes')
     readonly_fields = ('data_criacao', 'data_atualizacao')
     ordering = ('-status', '-data_criacao', 'titulo')
     list_per_page = 20
@@ -174,7 +199,7 @@ class RegraComissionamentoAdmin(admin.ModelAdmin):
         }),
         ('Aplicabilidade (Filtros)', {
             'description': "Selecione onde esta regra se aplica. Deixar em branco significa que não há filtro nesse nível.",
-            'fields': ('empresas', 'departamentos', 'setores', 'equipes')
+            'fields': ('empresas', 'lojas', 'departamentos', 'setores', 'equipes')
         }),
         ('Vigência e Auditoria', {
             'fields': ('data_inicio', 'data_fim', ('data_criacao', 'data_atualizacao'))
@@ -192,13 +217,17 @@ class RegraComissionamentoAdmin(admin.ModelAdmin):
 
 @admin.register(Funcionario)
 class FuncionarioAdmin(admin.ModelAdmin):
-    list_display = ('get_display_name', 'cpf_formatado', 'matricula', 'empresa', 'get_lojas', 'departamento', 'cargo', 'status')
-    list_filter = ('empresa', 'departamento', 'cargo', 'status', 'lojas')
-    search_fields = ('nome_completo', 'apelido', 'cpf', 'matricula', 'celular1', 'lojas__nome')
+    list_display = ('get_display_name', 'cpf_formatado', 'matricula', 'get_tipo_contrato_display', 'empresa', 'get_lojas', 'departamento', 'cargo', 'status')
+    list_filter = (
+        FuncionarioMEIFilter, 'tipo_contrato', 'empresa', 'departamento', 'setor', 'cargo', 'equipe', 
+        'status', 'lojas', 'data_admissao', 'data_demissao'
+    )
+    search_fields = ('nome_completo', 'apelido', 'cpf', 'matricula', 'celular1', 'lojas__nome', 'pis')
     list_per_page = 25
-    autocomplete_fields = ['empresa', 'departamento', 'cargo', 'horario', 'equipe']
+    autocomplete_fields = ['empresa', 'departamento', 'setor', 'cargo', 'horario', 'equipe']
     filter_horizontal = ['lojas', 'regras_comissionamento']
-    readonly_fields = ('get_foto_preview', 'data_admissao', 'data_demissao')
+    readonly_fields = ('get_foto_preview',)
+    actions = ['marcar_como_mei', 'marcar_como_clt', 'marcar_como_estagio', 'ativar_funcionarios', 'desativar_funcionarios']
 
     def get_lojas(self, obj):
         return ", ".join([loja.nome for loja in obj.lojas.all()])
@@ -233,6 +262,7 @@ class FuncionarioAdmin(admin.ModelAdmin):
         }),
         ('Profissional', {
             'fields': (
+                'tipo_contrato',
                 ('matricula', 'pis'),
                 ('empresa', 'lojas'),
                 ('departamento', 'setor'),
@@ -267,6 +297,53 @@ class FuncionarioAdmin(admin.ModelAdmin):
         if obj.cpf:
             return f"{obj.cpf[:3]}.{obj.cpf[3:6]}.{obj.cpf[6:9]}-{obj.cpf[9:]}"
         return "-"
+
+    @admin.display(description='Tipo Contrato', ordering='tipo_contrato')
+    def get_tipo_contrato_display(self, obj):
+        if obj.tipo_contrato:
+            # Adiciona cor baseada no tipo de contrato
+            if obj.tipo_contrato == 'MEI':
+                return mark_safe(f'<span style="color: #28a745; font-weight: bold;">{obj.get_tipo_contrato_display()}</span>')
+            elif obj.tipo_contrato == 'CLT':
+                return mark_safe(f'<span style="color: #007bff; font-weight: bold;">{obj.get_tipo_contrato_display()}</span>')
+            elif obj.tipo_contrato == 'ESTAGIO':
+                return mark_safe(f'<span style="color: #ffc107; font-weight: bold;">{obj.get_tipo_contrato_display()}</span>')
+            return obj.get_tipo_contrato_display()
+        return "-"
+
+    # Actions personalizadas para tipo de contrato
+    @admin.action(description="Alterar para MEI")
+    def marcar_como_mei(self, request, queryset):
+        updated = queryset.update(tipo_contrato='MEI')
+        self.message_user(request, f'{updated} funcionário(s) alterado(s) para MEI.')
+
+    @admin.action(description="Alterar para CLT")
+    def marcar_como_clt(self, request, queryset):
+        updated = queryset.update(tipo_contrato='CLT')
+        self.message_user(request, f'{updated} funcionário(s) alterado(s) para CLT.')
+
+    @admin.action(description="Alterar para Estágio")
+    def marcar_como_estagio(self, request, queryset):
+        updated = queryset.update(tipo_contrato='ESTAGIO')
+        self.message_user(request, f'{updated} funcionário(s) alterado(s) para Estágio.')
+
+    @admin.action(description="Ativar funcionários selecionados")
+    def ativar_funcionarios(self, request, queryset):
+        updated = queryset.update(status=True)
+        # Também ativar os usuários Django associados
+        for funcionario in queryset.filter(usuario__isnull=False):
+            funcionario.usuario.is_active = True
+            funcionario.usuario.save()
+        self.message_user(request, f'{updated} funcionário(s) ativado(s).')
+
+    @admin.action(description="Desativar funcionários selecionados")
+    def desativar_funcionarios(self, request, queryset):
+        updated = queryset.update(status=False)
+        # Também desativar os usuários Django associados
+        for funcionario in queryset.filter(usuario__isnull=False):
+            funcionario.usuario.is_active = False
+            funcionario.usuario.save()
+        self.message_user(request, f'{updated} funcionário(s) desativado(s).')
 
 @admin.register(Comunicado)
 class ComunicadoAdmin(admin.ModelAdmin):
@@ -411,3 +488,137 @@ class ArquivoComunicadoAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('comunicado')
+
+# --- Admins para Sistema de Presença ---
+
+@admin.register(EntradaAuto)
+class EntradaAutoAdmin(admin.ModelAdmin):
+    list_display = ('usuario', 'data', 'datahora', 'ip_usado', 'get_funcionario_tipo_contrato')
+    list_filter = (
+        'data', 'datahora',
+        ('usuario', admin.RelatedOnlyFieldListFilter),
+        'usuario__funcionario_profile__tipo_contrato',
+        ('usuario__funcionario_profile__empresa', admin.RelatedOnlyFieldListFilter),
+        ('usuario__funcionario_profile__equipe', admin.RelatedOnlyFieldListFilter),
+    )
+    search_fields = (
+        'usuario__username', 'usuario__first_name', 'usuario__last_name',
+        'usuario__funcionario_profile__nome_completo', 'ip_usado'
+    )
+    readonly_fields = ('datahora', 'data')
+    ordering = ('-datahora',)
+    list_per_page = 50
+
+    @admin.display(description='Tipo Contrato', ordering='usuario__funcionario_profile__tipo_contrato')
+    def get_funcionario_tipo_contrato(self, obj):
+        if hasattr(obj.usuario, 'funcionario_profile') and obj.usuario.funcionario_profile:
+            tipo = obj.usuario.funcionario_profile.tipo_contrato
+            if tipo == 'MEI':
+                return mark_safe(f'<span style="color: #28a745; font-weight: bold;">{tipo}</span>')
+            elif tipo == 'CLT':
+                return mark_safe(f'<span style="color: #007bff; font-weight: bold;">{tipo}</span>')
+            elif tipo == 'ESTAGIO':
+                return mark_safe(f'<span style="color: #ffc107; font-weight: bold;">{tipo}</span>')
+            return tipo
+        return "-"
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related(
+            'usuario', 'usuario__funcionario_profile'
+        )
+
+@admin.register(RegistroPresenca)
+class RegistroPresencaAdmin(admin.ModelAdmin):
+    list_display = ('get_usuario_nome', 'data_entrada', 'tipo', 'datahora', 'get_funcionario_tipo_contrato')
+    list_filter = (
+        'tipo', 'datahora', 'entrada_auto__data',
+        ('entrada_auto__usuario', admin.RelatedOnlyFieldListFilter),
+        'entrada_auto__usuario__funcionario_profile__tipo_contrato',
+        ('entrada_auto__usuario__funcionario_profile__empresa', admin.RelatedOnlyFieldListFilter),
+        ('entrada_auto__usuario__funcionario_profile__equipe', admin.RelatedOnlyFieldListFilter),
+    )
+    search_fields = (
+        'entrada_auto__usuario__username', 'entrada_auto__usuario__first_name',
+        'entrada_auto__usuario__last_name', 'entrada_auto__usuario__funcionario_profile__nome_completo'
+    )
+    readonly_fields = ('datahora',)
+    ordering = ('-datahora',)
+    list_per_page = 50
+
+    @admin.display(description='Usuário', ordering='entrada_auto__usuario__username')
+    def get_usuario_nome(self, obj):
+        usuario = obj.entrada_auto.usuario
+        if hasattr(usuario, 'funcionario_profile') and usuario.funcionario_profile:
+            return usuario.funcionario_profile.nome_completo
+        return f"{usuario.first_name} {usuario.last_name}".strip() or usuario.username
+
+    @admin.display(description='Data de Entrada', ordering='entrada_auto__data')
+    def data_entrada(self, obj):
+        return obj.entrada_auto.data.strftime('%d/%m/%Y')
+
+    @admin.display(description='Tipo Contrato', ordering='entrada_auto__usuario__funcionario_profile__tipo_contrato')
+    def get_funcionario_tipo_contrato(self, obj):
+        usuario = obj.entrada_auto.usuario
+        if hasattr(usuario, 'funcionario_profile') and usuario.funcionario_profile:
+            tipo = usuario.funcionario_profile.tipo_contrato
+            if tipo == 'MEI':
+                return mark_safe(f'<span style="color: #28a745; font-weight: bold;">{tipo}</span>')
+            elif tipo == 'CLT':
+                return mark_safe(f'<span style="color: #007bff; font-weight: bold;">{tipo}</span>')
+            elif tipo == 'ESTAGIO':
+                return mark_safe(f'<span style="color: #ffc107; font-weight: bold;">{tipo}</span>')
+            return tipo
+        return "-"
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related(
+            'entrada_auto__usuario', 'entrada_auto__usuario__funcionario_profile'
+        )
+
+@admin.register(RelatorioSistemaPresenca)
+class RelatorioSistemaPresencaAdmin(admin.ModelAdmin):
+    list_display = ('get_usuario_nome', 'data', 'observacao_resumida', 'data_criacao', 'get_funcionario_tipo_contrato')
+    list_filter = (
+        'data', 'data_criacao',
+        ('usuario', admin.RelatedOnlyFieldListFilter),
+        'usuario__funcionario_profile__tipo_contrato',
+        ('usuario__funcionario_profile__empresa', admin.RelatedOnlyFieldListFilter),
+        ('usuario__funcionario_profile__equipe', admin.RelatedOnlyFieldListFilter),
+    )
+    search_fields = (
+        'usuario__username', 'usuario__first_name', 'usuario__last_name',
+        'usuario__funcionario_profile__nome_completo', 'observacao'
+    )
+    readonly_fields = ('data_criacao',)
+    ordering = ('-data_criacao',)
+    list_per_page = 50
+
+    @admin.display(description='Usuário', ordering='usuario__username')
+    def get_usuario_nome(self, obj):
+        if hasattr(obj.usuario, 'funcionario_profile') and obj.usuario.funcionario_profile:
+            return obj.usuario.funcionario_profile.nome_completo
+        return f"{obj.usuario.first_name} {obj.usuario.last_name}".strip() or obj.usuario.username
+
+    @admin.display(description='Observação', ordering='observacao')
+    def observacao_resumida(self, obj):
+        if len(obj.observacao) > 50:
+            return obj.observacao[:50] + "..."
+        return obj.observacao
+
+    @admin.display(description='Tipo Contrato', ordering='usuario__funcionario_profile__tipo_contrato')
+    def get_funcionario_tipo_contrato(self, obj):
+        if hasattr(obj.usuario, 'funcionario_profile') and obj.usuario.funcionario_profile:
+            tipo = obj.usuario.funcionario_profile.tipo_contrato
+            if tipo == 'MEI':
+                return mark_safe(f'<span style="color: #28a745; font-weight: bold;">{tipo}</span>')
+            elif tipo == 'CLT':
+                return mark_safe(f'<span style="color: #007bff; font-weight: bold;">{tipo}</span>')
+            elif tipo == 'ESTAGIO':
+                return mark_safe(f'<span style="color: #ffc107; font-weight: bold;">{tipo}</span>')
+            return tipo
+        return "-"
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related(
+            'usuario', 'usuario__funcionario_profile'
+        )

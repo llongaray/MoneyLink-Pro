@@ -222,6 +222,20 @@ class Funcionario(models.Model):
     # Informações Profissionais e Documentos
     matricula = models.CharField(max_length=50, unique=True, blank=True, null=True, verbose_name="Matrícula") # Adicionado unique=True
     pis = models.CharField(max_length=20, blank=True, null=True, verbose_name="PIS") # Campo PIS adicionado aqui
+    
+    class TipoContratoChoices(models.TextChoices):
+        CLT = 'CLT', 'CLT'
+        MEI = 'MEI', 'MEI'
+        ESTAGIO = 'ESTAGIO', 'Estágio'
+
+    tipo_contrato = models.CharField(
+        max_length=10,
+        choices=TipoContratoChoices.choices,
+        default=TipoContratoChoices.CLT,
+        verbose_name="Tipo de Contrato",
+        null=True, blank=True # Permitir nulo temporariamente para migrações em dados existentes
+    )
+
     empresa = models.ForeignKey(Empresa, on_delete=models.PROTECT, related_name='funcionarios', verbose_name="Empresa")
     lojas = models.ManyToManyField(Loja, blank=True, related_name='funcionarios', verbose_name="Lojas")
     departamento = models.ForeignKey(Departamento, on_delete=models.PROTECT, related_name='funcionarios', verbose_name="Departamento")

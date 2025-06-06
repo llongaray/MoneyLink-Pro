@@ -76,6 +76,14 @@ Novo Funcionário<span class="produto-text"></span>
                   <label for="foto" class="form-label"><i class='bx bx-image-add me-2'></i>Foto</label>
                   <input type="file" id="foto" name="foto" class="form-control" accept="image/*">
                 </div>
+
+                <div class="mb-3">
+                  <label for="tipo_contrato" class="form-label"><i class='bx bx-file-blank me-2'></i>Tipo de Contrato *</label>
+                  <select id="tipo_contrato" name="tipo_contrato" class="form-select" required>
+                    <option value="">--- Selecione ---</option>
+                    {# Opções populadas via JS #}
+                  </select>
+                </div>
               </div>
 
               <!-- Coluna 2 -->

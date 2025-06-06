@@ -5,6 +5,9 @@ $(document).ready(function() {
     const apiUrlNovoFuncionario = '/rh/api/post/userfuncionario/'; // Corrigido prefixo
     const $form = $('form'); // Seleciona o formulário principal da página
     const $messageContainer = $('#message-container'); // <<< ADICIONADO AQUI
+    const apiUrlInfoGeralEmp = '/rh/api/get/infogeralemp/';
+    const apiUrlTipoContratoChoices = '/rh/api/get/infogeral/'; // Reutilizando a API que já tem os choices
+    const apiUrlCardsInfo = '/rh/api/get/infocardsnovo/';
 
     // --- Elementos do DOM ---
     const $empresaSelect = $('#empresa');
@@ -16,6 +19,8 @@ $(document).ready(function() {
     const $cpfInput = $('#cpf');
     const $dataNascimentoInput = $('#data_nascimento'); // Adicionado para o campo de data
     const $submitButton = $form.find('button[type="submit"]');
+    const $lojasContainer = $('#lojas-container');
+    const $tipoContratoSelect = $('#tipo_contrato'); // Novo seletor
 
     // --- Cache de Dados ---
     let todosDepartamentos = [];
@@ -86,8 +91,10 @@ $(document).ready(function() {
         // Usar Promise.all para carregar ambos em paralelo
         Promise.all([
             $.getJSON(apiUrlGeral).fail(function() { console.error("Falha ao carregar dados gerais."); return $.Deferred().resolve(null); }), // Continua mesmo se falhar
-            $.getJSON(apiUrlFuncionarios).fail(function() { console.error("Falha ao carregar funcionários."); return $.Deferred().resolve(null); }) // Continua mesmo se falhar
-        ]).then(([dataGeral, dataFuncionarios]) => {
+            $.getJSON(apiUrlFuncionarios).fail(function() { console.error("Falha ao carregar funcionários."); return $.Deferred().resolve(null); }), // Continua mesmo se falhar
+            $.getJSON(apiUrlInfoGeralEmp).fail(function() { console.error("Falha ao carregar dados gerais emp."); return $.Deferred().resolve(null); }),
+            $.getJSON(apiUrlTipoContratoChoices).fail(function() { console.error("Falha ao carregar choices de tipo de contrato."); return $.Deferred().resolve(null); })
+        ]).then(([dataGeral, dataFuncionarios, dataGeralEmp, dataTipoContrato]) => {
 
             if (dataGeral) {
                 console.log("Dados gerais carregados:", dataGeral);
@@ -101,13 +108,21 @@ $(document).ready(function() {
 
                 // Popula selects principais
                 popularSelect($empresaSelect, todosEmpresas, 'id', 'nome', 'Selecione uma Empresa', false);
-                popularSelect($horarioSelect, todosHorarios, 'id', 'nome', 'Selecione um Horário', false);
+                popularSelect($horarioSelect, todosHorarios, 'id', 'display_text', '--- Selecione um Horário ---', false);
                 popularSelect($equipeSelect, todosEquipes, 'id', 'nome', 'Selecione uma Equipe', false);
 
                 // Habilita selects principais se tiverem opções
                 $empresaSelect.prop('disabled', todosEmpresas.length === 0);
                 $horarioSelect.prop('disabled', todosHorarios.length === 0);
                 $equipeSelect.prop('disabled', todosEquipes.length === 0);
+
+                // Popular Tipo de Contrato
+                if (dataTipoContrato && dataTipoContrato.tipo_contrato_choices) {
+                    popularSelect($tipoContratoSelect, dataTipoContrato.tipo_contrato_choices, 'value', 'display', '--- Selecione o Tipo de Contrato ---', false);
+                } else {
+                    console.warn('Choices para Tipo de Contrato não encontrados na resposta da API.');
+                    resetSelect($tipoContratoSelect, 'Erro ao carregar tipos');
+                }
             } else {
                 showMessage('error', 'Não foi possível carregar os dados básicos do formulário.');
                 // Desabilita selects que dependem dos dados gerais

@@ -132,26 +132,6 @@
             </a>
           </li>
           {% endif %}
-
-          {% has_access user "SCT55" as can_rh_presenca %}
-          {% if can_rh_presenca %}
-          <li>
-            <a href="{% url 'funcionarios:render_presenca' %}">
-              <i class="bx bx-calendar-check"></i>
-              <span class="menu-label">Presença</span>
-            </a>
-          </li>
-          {% endif %}
-
-          {% has_access user "SCT56" as can_rh_relatorio_presenca %}
-          {% if can_rh_relatorio_presenca %}
-          <li>
-            <a href="{% url 'funcionarios:render_relatorio_presenca' %}">
-              <i class="bx bx-file"></i>
-              <span class="menu-label">Relatório Presença</span>
-            </a>
-          </li>
-          {% endif %}
         </ul>
       </li>
       {% endif %}
@@ -385,7 +365,87 @@
       {% endif %}
 
 
-      {# 7. CONFIGURAÇÕES #}
+      {# 7. GINCANA #}
+      {% has_access user "CT66" as can_gincana_cat %}
+      {% if can_gincana_cat %}
+      <li class="sidebar-category">
+        <a href="javascript:void(0)" class="category-toggle">
+          <i class="bx bx-joystick"></i>
+          <span class="menu-label">Gincana</span>
+          <i class="bx bx-chevron-down category-arrow"></i>
+        </a>
+        <ul class="subcategory">
+          {% has_access user "SCT67" as can_rh_presenca %}
+          {% if can_rh_presenca %}
+          <li>
+            <a href="{% url 'funcionarios:render_presenca' %}">
+              <i class="bx bx-calendar-check"></i>
+              <span class="menu-label">Presença</span>
+            </a>
+          </li>
+          {% endif %}
+
+          {% has_access user "SCT68" as can_rh_relatorio_presenca %}
+          {% if can_rh_relatorio_presenca %}
+          <li>
+            <a href="{% url 'funcionarios:render_relatorio_presenca' %}">
+              <i class="bx bx-file"></i>
+              <span class="menu-label">Relatório Presença</span>
+            </a>
+          </li>
+          {% endif %}
+        </ul>
+      </li>
+      {% endif %}
+
+
+      {# 7. MATERIAL DE APOIO / MARKETING #}
+      {% has_access user "CT69" as can_criativa_cat %}
+      {% if can_criativa_cat %}
+      <li class="sidebar-category">
+        <a href="javascript:void(0)" class="category-toggle">
+          <i class='bx bx-book-content'></i>
+          <span class="menu-label">Material de Apoio</span>
+          <i class='bx bx-chevron-down category-arrow'></i>
+        </a>
+        <ul class="subcategory">
+          {% has_access user "SCT72" as can_marketing_dashboard %}
+          {% if can_marketing_dashboard %}
+          <li>
+            <a href="{% url 'marketing:render_dashboard_materiais' %}">
+              <i class="bx bx-tachometer"></i>
+              <span class="menu-label">Dashboard</span>
+            </a>
+          </li>
+          {% endif %}
+
+          {% has_access user "SCT70" as can_marketing_biblioteca %}
+          {% if can_marketing_biblioteca %}
+          <li>
+            <a href="{% url 'marketing:render_materiais' %}">
+              <i class="bx bx-download"></i>
+              <span class="menu-label">Biblioteca de Materiais</span>
+            </a>
+          </li>
+          {% endif %}
+
+          {% has_access user "SCT71" as can_marketing_gerenciar %}
+          {% if can_marketing_gerenciar %}
+          <li>
+            <a href="{% url 'marketing:render_addmateriais' %}">
+              <i class="bx bx-plus-circle"></i>
+              <span class="menu-label">Gerenciar Materiais</span>
+            </a>
+          </li>
+          {% endif %}
+        </ul>
+      </li>
+      {% endif %}
+
+
+
+
+      {# 8. CONFIGURAÇÕES #}
       {% has_access user "CT2" as can_cfg_cat %}
       {% if can_cfg_cat %}
       <li class="sidebar-category">

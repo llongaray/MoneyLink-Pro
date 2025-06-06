@@ -11,6 +11,7 @@ urlpatterns = [
     path('autenticacao/', include('apps.usuarios.urls')),
     path('moneyplus/', include('apps.moneyplus.urls')),
     path('juridico/', include('apps.juridico.urls')),
+    path('marketing/', include('apps.marketing.urls')),
     path('', include('apps.administrativo.urls')),
 ]
 

@@ -48,7 +48,6 @@ INSTALLED_APPS = [
     'apps.moneyplus.apps.MoneyplusConfig',
     'apps.administrativo.apps.AdministrativoConfig',
     'apps.juridico.apps.JuridicoConfig',
-    'apps.marketing.apps.MarketingConfig',
 ]
 
 AUTHENTICATION_BACKENDS = [
@@ -98,13 +97,28 @@ WSGI_APPLICATION = 'setup.wsgi.application'
 #    }
 #}
 
+#DATABASES = {
+#    'default': {
+#        'ENGINE':   'django.db.backends.mysql',
+#        'NAME':     'moneylinkpro',
+#        'USER':     'moneylink',
+#        'PASSWORD': 'M@k9m3p1',
+#        'HOST':     '127.0.0.1',    # ou 'SEU_IP_SERVIDOR' para acesso externo 🌐
+#        'PORT':     '3306',
+#        'OPTIONS': {
+#            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+#            'charset': 'utf8mb4',
+#        },
+#    }
+#}
+
 DATABASES = {
     'default': {
         'ENGINE':   'django.db.backends.mysql',
-        'NAME':     'moneylinkpro',
-        'USER':     'moneylink',
-        'PASSWORD': 'M@k9m3p1',
-        'HOST':     '127.0.0.1',    # ou 'SEU_IP_SERVIDOR' para acesso externo 🌐
+        'NAME':     'teste-moneylink',      # nome do banco criado
+        'USER':     'testmoneylink',        # usuário criado
+        'PASSWORD': 'moneylink@2025',       # senha do usuário
+        'HOST':     '127.0.0.1',            # localhost
         'PORT':     '3306',
         'OPTIONS': {
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
@@ -112,6 +126,7 @@ DATABASES = {
         },
     }
 }
+
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [

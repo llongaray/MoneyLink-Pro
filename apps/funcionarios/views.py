@@ -6,7 +6,7 @@ import logging
 import os
 import traceback
 import zipfile
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
 # Third-party imports (Django)
@@ -18,6 +18,7 @@ from django.contrib.auth.models import Group, User
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, transaction
+from django.db.models import Count, Q
 from django.db.models.fields.files import FileField, ImageField
 from django.http import Http404, HttpResponse, JsonResponse, FileResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -128,6 +129,7 @@ def api_get_infogeral(request):
             #'horarios': list(HorarioTrabalho.objects.filter(status=True).values('id', 'nome', 'entrada', 'saida_almoco', 'volta_almoco', 'saida')),
             'equipes': list(Equipe.objects.filter(status=True).values('id', 'nome')),
             'hierarquia_choices': hierarquia_choices, # Mantém para o form administrativo
+            'tipo_contrato_choices': [{'value': value, 'display': display} for value, display in Funcionario.TipoContratoChoices.choices],
         }
         print("Dados gerais (incluindo cargos e horários formatados) coletados para API.")
         return JsonResponse(data)
@@ -366,6 +368,7 @@ def api_get_funcionario(request, funcionario_id):
             'equipe_id': funcionario.equipe.id if funcionario.equipe else None,
             'equipe_nome': funcionario.equipe.nome if funcionario.equipe else None,
             'status': funcionario.status,
+            'tipo_contrato': funcionario.tipo_contrato, # Adicionado tipo_contrato
             'data_admissao': funcionario.data_admissao.strftime('%Y-%m-%d') if funcionario.data_admissao else None,
             'data_demissao': funcionario.data_demissao.strftime('%Y-%m-%d') if funcionario.data_demissao else None,
             'foto_url': funcionario.foto.url if funcionario.foto else None,
@@ -449,6 +452,7 @@ def api_get_userFuncionario(request, user_id):
                 'horario_id': funcionario.horario_id,
                 'equipe_id': funcionario.equipe_id,
                 'status': funcionario.status,
+                'tipo_contrato': funcionario.tipo_contrato, # Adicionado tipo_contrato
                 'data_admissao': funcionario.data_admissao,
                 'data_demissao': funcionario.data_demissao,
                 'foto_url': funcionario.foto.url if funcionario.foto else None,
@@ -1752,74 +1756,147 @@ def api_get_infosgerais(request):
 # --- Views para Sistema de Presença ---
 
 @login_required
-@controle_acess('SCT55')   # 55 – RECURSOS HUMANOS | PRESENÇA
+@controle_acess('SCT67')   # 55 – RECURSOS HUMANOS | PRESENÇA (GINCANA)
+@ensure_csrf_cookie
 def render_presenca(request):
-    """Renderiza a página de registro de presença."""
-    return render(request, 'rh/presenca.html')
+    """Renderiza a página de registro de participação na gincana."""
+    user = request.user
+    can_view_full_calendar = False
+
+    if user.is_superuser:
+        can_view_full_calendar = True
+    else:
+        try:
+            funcionario = Funcionario.objects.get(usuario=user, status=True, tipo_contrato='MEI')
+            if funcionario.cargo and funcionario.cargo.hierarquia == Cargo.HierarquiaChoices.GESTOR:
+                can_view_full_calendar = True
+        except Funcionario.DoesNotExist:
+            pass # Usuário não é um funcionário MEI, ou não tem cargo, mantém can_view_full_calendar = False
+        except Exception as e:
+            # Logar o erro em um sistema de produção
+            print(f"Erro ao verificar permissão do calendário para {user.username}: {e}")
+            pass # Em caso de erro, assume a visão restrita por segurança
+
+    context = {
+        'can_view_full_calendar': can_view_full_calendar
+    }
+    return render(request, 'rh/presenca.html', context)
 
 @login_required
-@controle_acess('SCT56')   # 56 – RECURSOS HUMANOS | RELATÓRIO PRESENÇA
+@controle_acess('SCT68')   # 56 – RECURSOS HUMANOS | RELATÓRIO PRESENÇA (GINCANA)
 def render_relatorio_presenca(request):
-    """Renderiza a página de relatório de presença."""
+    """Renderiza a página de relatório de participação na gincana."""
     return render(request, 'rh/relatorio_presenca.html')
 
 @require_GET
 @login_required
 def api_get_registros_presenca(request):
-    """API para buscar registros de presença de um dia específico."""
-    print("[PRESENCA] Iniciando busca de registros de presença")
-    data = request.GET.get('data')
-    if not data:
-        print("[PRESENCA] Erro: Data não fornecida")
+    """API para buscar registros de participação na gincana de um dia específico."""
+    print("[GINCANA_API] Iniciando busca de registros de participação")
+    data_param = request.GET.get('data') # Renomeado para evitar conflito com o dict 'data'
+    if not data_param:
+        print("[GINCANA_API] Erro: Data não fornecida")
         return JsonResponse({'error': 'Data não fornecida'}, status=400)
     
     try:
-        data = datetime.strptime(data, '%Y-%m-%d').date()
-        print(f"[PRESENCA] Data convertida: {data}")
+        data_convertida = datetime.strptime(data_param, '%Y-%m-%d').date()
+        print(f"[GINCANA_API] Data convertida: {data_convertida}")
     except ValueError:
-        print("[PRESENCA] Erro: Formato de data inválido")
+        print("[GINCANA_API] Erro: Formato de data inválido")
         return JsonResponse({'error': 'Formato de data inválido'}, status=400)
+
+    user = request.user
+    # Determinar se o usuário tem visão completa do calendário
+    tem_visao_completa = False
+    if user.is_superuser:
+        tem_visao_completa = True
+    else:
+        try:
+            funcionario = Funcionario.objects.get(usuario=user, status=True, tipo_contrato='MEI')
+            if funcionario.cargo and funcionario.cargo.hierarquia in [Cargo.HierarquiaChoices.SUPERVISOR_GERAL, Cargo.HierarquiaChoices.GESTOR]:
+                tem_visao_completa = True
+        except Funcionario.DoesNotExist:
+            pass 
+        except Exception as e:
+            print(f"[GINCANA_API] Erro ao verificar permissão de visão completa para {user.username}: {e}")
+            # Em caso de erro na verificação, assume que não tem visão completa por segurança
+            tem_visao_completa = False
     
-    # Buscar registros do dia
-    print(f"[PRESENCA] Buscando registros para usuário {request.user.username} na data {data}")
-    registros = RegistroPresenca.objects.filter(
-        entrada_auto__usuario=request.user,
-        entrada_auto__data=data
+    response_data = {
+        'data_solicitada': data_convertida.strftime('%Y-%m-%d'),
+        'registros_usuario_logado': [], # Para o botão do dia atual e visão normal
+        'resumo_dia': { # Para a visão de gestor/superuser
+            'total_entradas': 0,
+            'total_saidas': 0
+        },
+        'visao_completa_aplicada': tem_visao_completa # Informa ao frontend qual lógica foi usada
+    }
+
+    if tem_visao_completa:
+        print(f"[GINCANA_API] Usuário {user.username} tem visão completa. Buscando todos os registros para {data_convertida}")
+        # Contar todas as entradas e saídas para a data
+        total_entradas_dia = RegistroPresenca.objects.filter(
+            entrada_auto__data=data_convertida, 
+            tipo='ENTRADA'
+        ).count()
+        total_saidas_dia = RegistroPresenca.objects.filter(
+            entrada_auto__data=data_convertida, 
+            tipo='SAIDA'
+        ).count()
+        response_data['resumo_dia']['total_entradas'] = total_entradas_dia
+        response_data['resumo_dia']['total_saidas'] = total_saidas_dia
+        print(f"[GINCANA_API] Resumo do dia: Entradas={total_entradas_dia}, Saídas={total_saidas_dia}")
+
+    # Sempre buscar registros do usuário logado para o botão do dia atual e para a visão normal do usuário
+    # Isso é importante mesmo para quem tem visão completa, para gerenciar o SEU PRÓPRIO botão de registro.
+    print(f"[GINCANA_API] Buscando registros específicos para usuário {user.username} na data {data_convertida}")
+    registros_usuario = RegistroPresenca.objects.filter(
+        entrada_auto__usuario=user,
+        entrada_auto__data=data_convertida
     ).order_by('datahora')
     
-    print(f"[PRESENCA] Encontrados {registros.count()} registros")
-    registros_list = []
-    for registro in registros:
-        registros_list.append({
+    print(f"[GINCANA_API] Encontrados {registros_usuario.count()} registros para o usuário {user.username}")
+    
+    for registro in registros_usuario:
+        response_data['registros_usuario_logado'].append({
             'tipo': registro.tipo,
             'datahora': registro.datahora.strftime('%H:%M:%S')
         })
     
-    print(f"[PRESENCA] Retornando {len(registros_list)} registros processados")
-    return JsonResponse({
-        'hoje': {
-            'data': data.strftime('%Y-%m-%d'),
-            'registros': registros_list
-        }
-    })
+    print(f"[GINCANA_API] Retornando dados processados: {response_data}")
+    return JsonResponse(response_data)
 
 @require_POST
 @login_required
+@csrf_protect
 def api_post_registro_presenca(request):
-    """API para registrar presença."""
-    print("[PRESENCA] Iniciando registro de presença")
+    """API para registrar participação na gincana."""
+    print("[GINCANA_API] Iniciando registro de participação")
     try:
+        # Verificar se o usuário é funcionário MEI antes de permitir registro
+        try:
+            funcionario = Funcionario.objects.get(
+                usuario=request.user,
+                status=True,
+                tipo_contrato='MEI'
+            )
+            print(f"[GINCANA_API] Funcionário MEI verificado: {funcionario.nome_completo}")
+        except Funcionario.DoesNotExist:
+            print(f"[GINCANA_API] Usuário {request.user.username} não é funcionário MEI ativo")
+            return JsonResponse({
+                'error': 'Apenas funcionários com contrato MEI podem registrar presença na gincana'
+            }, status=403)
+        
         data = json.loads(request.body)
         tipo = data.get('tipo')
-        print(f"[PRESENCA] Tipo de registro solicitado: {tipo}")
+        print(f"[GINCANA_API] Tipo de registro solicitado: {tipo}")
         
         if not tipo:
-            print("[PRESENCA] Erro: Tipo de registro não fornecido")
+            print("[GINCANA_API] Erro: Tipo de registro não fornecido")
             return JsonResponse({'error': 'Tipo de registro não fornecido'}, status=400)
         
-        # Verificar se já existe uma entrada automática para hoje
         hoje = timezone.now().date()
-        print(f"[PRESENCA] Data atual: {hoje}")
+        print(f"[GINCANA_API] Data atual: {hoje}")
         entrada_auto, created = EntradaAuto.objects.get_or_create(
             usuario=request.user,
             data=hoje,
@@ -1827,19 +1904,18 @@ def api_post_registro_presenca(request):
                 'ip_usado': request.META.get('REMOTE_ADDR')
             }
         )
-        print(f"[PRESENCA] Entrada automática {'criada' if created else 'recuperada'} para {request.user.username}")
+        print(f"[GINCANA_API] Entrada automática {'criada' if created else 'recuperada'} para {request.user.username}")
         
-        # Criar o registro de presença
         registro = RegistroPresenca.objects.create(
             entrada_auto=entrada_auto,
             tipo=tipo,
             datahora=timezone.now()
         )
-        print(f"[PRESENCA] Registro criado com ID {registro.id} às {registro.datahora}")
+        print(f"[GINCANA_API] Registro criado com ID {registro.id} às {registro.datahora}")
         
         return JsonResponse({
             'success': True,
-            'message': f'Registro de {tipo.lower()} realizado com sucesso',
+            'message': f'Registro de {tipo.lower()} na gincana realizado com sucesso',
             'registro': {
                 'id': registro.id,
                 'tipo': registro.tipo,
@@ -1848,63 +1924,272 @@ def api_post_registro_presenca(request):
         })
         
     except json.JSONDecodeError:
-        print("[PRESENCA] Erro: JSON inválido no corpo da requisição")
+        print("[GINCANA_API] Erro: JSON inválido no corpo da requisição")
         return JsonResponse({'error': 'JSON inválido'}, status=400)
     except Exception as e:
-        print(f"[PRESENCA] Erro ao registrar presença: {str(e)}")
+        print(f"[GINCANA_API] Erro ao registrar participação: {str(e)}")
         import traceback
         traceback.print_exc()
         return JsonResponse({'error': str(e)}, status=500)
 
 @require_GET
 @login_required
-@controle_acess('SCT56')   # 56 – RECURSOS HUMANOS | RELATÓRIO PRESENÇA
+@controle_acess('SCT67') # Permissão consistente com a página de relatório
+def api_rh_get_funcionarios_para_filtro_presenca(request):
+    """
+    API para buscar funcionários ativos (com usuário associado) para o filtro 
+    do relatório de presença.
+    Retorna lista de objetos com 'id' (User ID) e 'nome' (Nome completo do funcionário).
+    """
+    print("[API_FILTRO_FUNCIONARIOS_PRESENCA] Iniciando busca de funcionários para filtro")
+    try:
+        funcionarios = Funcionario.objects.filter(
+            status=True, 
+            usuario__isnull=False,
+            tipo_contrato='MEI'
+        ).select_related('usuario').order_by('nome_completo')
+        
+        data = []
+        for f in funcionarios:
+            data.append({
+                'id': f.usuario.id, 
+                'nome': f.nome_completo
+            })
+        print(f"[API_FILTRO_FUNCIONARIOS_PRESENCA] Encontrados {len(data)} funcionários.")
+        return JsonResponse(data, safe=False)
+    except Exception as e:
+        print(f"[API_FILTRO_FUNCIONARIOS_PRESENCA] Erro ao buscar funcionários para filtro de presença: {e}")
+        # logger.error(f"Erro ao buscar funcionários para filtro de presença: {e}", exc_info=True) # Considerar logger em produção
+        return JsonResponse({'error': 'Erro ao carregar lista de funcionários.'}, status=500)
+
+@login_required
+@require_GET
+@controle_acess('SCT67')
+def api_rh_get_equipes_para_filtro_presenca(request):
+    """
+    API para buscar equipes ativas para o filtro do relatório de presença.
+    Retorna lista de objetos com 'id' (Equipe ID) e 'nome' (Nome da equipe).
+    """
+    print("[API_FILTRO_EQUIPES_PRESENCA] Iniciando busca de equipes para filtro")
+    try:
+        equipes = Equipe.objects.filter(status=True).order_by('nome')
+        
+        data = []
+        for e in equipes:
+            data.append({
+                'id': e.id, 
+                'nome': e.nome
+            })
+        print(f"[API_FILTRO_EQUIPES_PRESENCA] Encontradas {len(data)} equipes.")
+        return JsonResponse(data, safe=False)
+    except Exception as e:
+        print(f"[API_FILTRO_EQUIPES_PRESENCA] Erro ao buscar equipes para filtro de presença: {e}")
+        return JsonResponse({'error': 'Erro ao carregar lista de equipes.'}, status=500)
+
+@login_required
+@require_GET
+@controle_acess('SCT67')
 def api_get_relatorio_presenca(request):
     """
-    API para buscar relatórios de presença.
-    Permite filtrar por período e usuário.
+    API aprimorada para o Dashboard de Presença.
+    Busca dados de EntradaAuto, RegistroPresenca e RelatorioSistemaPresenca.
     """
-    print("[PRESENCA] Iniciando busca de relatórios de presença")
+    print("[API_DASHBOARD_PRESENCA] Iniciando busca de dados abrangentes")
     try:
-        data_inicio = request.GET.get('data_inicio')
-        data_fim = request.GET.get('data_fim')
-        usuario_id = request.GET.get('usuario_id')
-        print(f"[PRESENCA] Filtros: data_inicio={data_inicio}, data_fim={data_fim}, usuario_id={usuario_id}")
+        data_inicio_str = request.GET.get('data_inicio')
+        data_fim_str = request.GET.get('data_fim')
+        equipe_id_str = request.GET.get('equipe_id')
+        usuario_id_str = request.GET.get('usuario_id')
+        
+        print(f"[API_DASHBOARD_PRESENCA] Filtros recebidos: data_inicio={data_inicio_str}, data_fim={data_fim_str}, equipe_id={equipe_id_str}, usuario_id={usuario_id_str}")
 
-        # Constrói a query base
-        query = {}
-        if data_inicio:
-            query['data__gte'] = data_inicio
-        if data_fim:
-            query['data__lte'] = data_fim
-        if usuario_id:
-            query['usuario_id'] = usuario_id
-        print(f"[PRESENCA] Query construída: {query}")
+        data_ref_hoje = timezone.now().date()
+        if data_fim_str and (not data_inicio_str or data_inicio_str == data_fim_str):
+            try:
+                parsed_date_fim = parse_date(data_fim_str)
+                if parsed_date_fim:
+                    data_ref_hoje = parsed_date_fim
+            except ValueError:
+                pass 
+        
+        print(f"[API_DASHBOARD_PRESENCA] Data de referência para 'hoje': {data_ref_hoje}")
 
-        # Busca relatórios
-        relatorios = RelatorioSistemaPresenca.objects.filter(
-            **query
-        ).select_related('usuario').order_by('-data')
-        print(f"[PRESENCA] Encontrados {relatorios.count()} relatórios")
+        filters_periodo_ponto = Q()
+        filters_periodo_ausencia = Q()
 
-        data = []
-        for relatorio in relatorios:
-            data.append({
-                'id': relatorio.id,
-                'usuario': {
-                    'id': relatorio.usuario.id,
-                    'nome': f"{relatorio.usuario.first_name} {relatorio.usuario.last_name}".strip() or relatorio.usuario.username
-                },
-                'data': relatorio.data.strftime('%d/%m/%Y'),
-                'observacao': relatorio.observacao,
-                'data_criacao': relatorio.data_criacao.strftime('%d/%m/%Y %H:%M')
+        if data_inicio_str:
+            filters_periodo_ponto &= Q(entrada_auto__data__gte=data_inicio_str)
+            filters_periodo_ausencia &= Q(data__gte=data_inicio_str)
+        if data_fim_str:
+            filters_periodo_ponto &= Q(entrada_auto__data__lte=data_fim_str)
+            filters_periodo_ausencia &= Q(data__lte=data_fim_str)
+        
+        user_q_object = Q()
+        usuarios_da_equipe = None
+        
+        # Aplicar filtro por equipe se fornecido
+        if equipe_id_str:
+            usuarios_da_equipe = Funcionario.objects.filter(
+                equipe_id=equipe_id_str, 
+                status=True, 
+                usuario__isnull=False,
+                tipo_contrato='MEI'
+            ).values_list('usuario_id', flat=True)
+            
+            # Converter para lista para verificar se há usuários MEI na equipe
+            usuarios_da_equipe = list(usuarios_da_equipe)
+            print(f"[API_DASHBOARD_PRESENCA] Funcionários MEI encontrados na equipe {equipe_id_str}: {len(usuarios_da_equipe)}")
+            
+            if usuarios_da_equipe:
+                user_q_object = Q(usuario_id__in=usuarios_da_equipe)
+                filters_periodo_ponto &= Q(entrada_auto__usuario_id__in=usuarios_da_equipe)
+                filters_periodo_ausencia &= Q(usuario_id__in=usuarios_da_equipe)
+            else:
+                # Se não há funcionários MEI na equipe, retorna resultados vazios
+                print(f"[API_DASHBOARD_PRESENCA] Nenhum funcionário MEI encontrado na equipe {equipe_id_str}")
+                user_q_object = Q(usuario_id=-1)  # Filtro que não retorna nada
+                filters_periodo_ponto &= Q(entrada_auto__usuario_id=-1)
+                filters_periodo_ausencia &= Q(usuario_id=-1)
+        
+        # Aplicar filtro por usuário específico se fornecido (mais restritivo que equipe)
+        if usuario_id_str:
+            # Verificar se o usuário específico é MEI antes de aplicar o filtro
+            usuario_funcionario = Funcionario.objects.filter(
+                usuario_id=usuario_id_str,
+                status=True,
+                tipo_contrato='MEI'
+            ).first()
+            
+            if usuario_funcionario:
+                user_q_object = Q(usuario_id=usuario_id_str)
+                filters_periodo_ponto &= Q(entrada_auto__usuario_id=usuario_id_str)
+                filters_periodo_ausencia &= Q(usuario_id=usuario_id_str)
+            else:
+                # Se o usuário não for MEI, não mostra dados para ele
+                print(f"[API_DASHBOARD_PRESENCA] Usuário {usuario_id_str} não é MEI ou não existe")
+                user_q_object = Q(usuario_id=-1)  # Filtro que não retorna nada
+                filters_periodo_ponto &= Q(entrada_auto__usuario_id=-1)
+                filters_periodo_ausencia &= Q(usuario_id=-1)
+
+        dashboard_data = {}
+
+        filters_hoje_checkin = Q(data=data_ref_hoje) & user_q_object
+        entradas_auto_hoje = EntradaAuto.objects.filter(filters_hoje_checkin)
+        dashboard_data['total_checkins_hoje'] = entradas_auto_hoje.count()
+        
+        funcionarios_ativos_qs = Funcionario.objects.filter(status=True, usuario__isnull=False, tipo_contrato='MEI')
+        if equipe_id_str:
+            funcionarios_ativos_qs = funcionarios_ativos_qs.filter(equipe_id=equipe_id_str)
+        if usuario_id_str:
+            funcionarios_ativos_qs = funcionarios_ativos_qs.filter(usuario_id=usuario_id_str)
+        total_funcionarios_ativos_contexto = funcionarios_ativos_qs.count()
+        dashboard_data['total_funcionarios_ativos_contexto'] = total_funcionarios_ativos_contexto
+        ids_usuarios_com_checkin_hoje = entradas_auto_hoje.values_list('usuario_id', flat=True)
+        dashboard_data['funcionarios_sem_checkin_hoje'] = total_funcionarios_ativos_contexto - len(set(ids_usuarios_com_checkin_hoje))
+
+        filters_hoje_registros = Q(entrada_auto__data=data_ref_hoje)
+        if equipe_id_str and usuarios_da_equipe is not None: # Aplicar filtro de equipe se presente
+            if usuarios_da_equipe:
+                filters_hoje_registros &= Q(entrada_auto__usuario_id__in=usuarios_da_equipe)
+            else:
+                filters_hoje_registros &= Q(entrada_auto__usuario_id=-1)  # Nenhum resultado
+        if usuario_id_str: # Aplicar filtro de usuário se presente (mais restritivo que equipe)
+            filters_hoje_registros &= Q(entrada_auto__usuario_id=usuario_id_str)
+
+        dashboard_data['total_entradas_hoje'] = RegistroPresenca.objects.filter(filters_hoje_registros, tipo='ENTRADA').count()
+        dashboard_data['total_saidas_hoje'] = RegistroPresenca.objects.filter(filters_hoje_registros, tipo='SAIDA').count()
+
+        if data_inicio_str or data_fim_str:
+            dashboard_data['total_entradas_periodo'] = RegistroPresenca.objects.filter(filters_periodo_ponto, tipo='ENTRADA').count()
+            dashboard_data['total_saidas_periodo'] = RegistroPresenca.objects.filter(filters_periodo_ponto, tipo='SAIDA').count()
+        else: # Se não há filtro de período, os totais do período são os de "hoje"
+            dashboard_data['total_entradas_periodo'] = dashboard_data['total_entradas_hoje']
+            dashboard_data['total_saidas_periodo'] = dashboard_data['total_saidas_hoje']
+
+        ausencias_qs = RelatorioSistemaPresenca.objects.filter(filters_periodo_ausencia)
+        dashboard_data['total_ausencias_reportadas'] = ausencias_qs.count()
+        dashboard_data['usuarios_com_ausencias'] = ausencias_qs.values('usuario_id').distinct().count()
+        
+        top_observacoes_list_ausencias = []
+        if dashboard_data['total_ausencias_reportadas'] > 0:
+            top_obs_qs = ausencias_qs.values('observacao').annotate(count=Count('observacao')).order_by('-count')[:1]
+            if top_obs_qs:
+                top_observacoes_list_ausencias = [{'observacao': item['observacao'], 'count': item['count']} for item in top_obs_qs]
+        dashboard_data['top_observacoes_ausencias'] = top_observacoes_list_ausencias
+        
+        print(f"[API_DASHBOARD_PRESENCA] Dados do Dashboard calculados: {dashboard_data}")
+
+        registros_ponto_qs = RegistroPresenca.objects.filter(
+            filters_periodo_ponto 
+        ).select_related(
+            'entrada_auto__usuario',
+            'entrada_auto__usuario__funcionario_profile',
+            'entrada_auto__usuario__funcionario_profile__departamento',
+            'entrada_auto__usuario__funcionario_profile__equipe'
+        ).order_by('-entrada_auto__data', '-datahora')
+
+        registros_ponto_list = []
+        for rp in registros_ponto_qs:
+            usuario = rp.entrada_auto.usuario
+            nome_usuario = f"{usuario.first_name} {usuario.last_name}".strip() or usuario.username
+            
+            departamento_nome = "N/A"
+            equipe_nome = "N/A"
+            try:
+                if usuario.funcionario_profile:
+                    if usuario.funcionario_profile.departamento:
+                        departamento_nome = usuario.funcionario_profile.departamento.nome
+                    if usuario.funcionario_profile.equipe:
+                        equipe_nome = usuario.funcionario_profile.equipe.nome
+            except ObjectDoesNotExist:
+                pass # Funcionário pode não ter perfil ou departamento/equipe associado
+
+            registros_ponto_list.append({
+                'id': rp.id,
+                'data': rp.entrada_auto.data.strftime('%d/%m/%Y'),
+                'hora': rp.datahora.strftime('%H:%M:%S'),
+                'usuario_nome': nome_usuario,
+                'departamento': departamento_nome,
+                'equipe': equipe_nome,
+                'tipo': rp.get_tipo_display(),
+                'ip_usado': rp.entrada_auto.ip_usado if rp.entrada_auto else 'N/A'
             })
-        print(f"[PRESENCA] Retornando {len(data)} relatórios processados")
-
-        return JsonResponse(data, safe=False)
+        
+        print(f"[API_DASHBOARD_PRESENCA] {len(registros_ponto_list)} registros de ponto para a tabela.")
+        
+        response_payload = {
+            'dashboard': dashboard_data,
+            'registros_ponto': registros_ponto_list
+        }
+        return JsonResponse(response_payload, safe=False)
 
     except Exception as e:
-        print(f"[PRESENCA] Erro ao buscar relatórios de presença: {e}")
-        import traceback
-        traceback.print_exc()
-        return JsonResponse({'error': 'Erro ao buscar relatórios de presença.'}, status=500)
+        logger.error(f"[API_DASHBOARD_PRESENCA] Erro crítico: {e}", exc_info=True)
+        # Removido traceback.print_exc() pois o logger já fará isso com exc_info=True
+        return JsonResponse({'error': 'Erro interno ao processar dados de presença.'}, status=500)
+
+@login_required
+@require_GET
+@controle_acess('SCT67')
+def api_rh_get_funcionarios_para_filtro_presenca(request):
+    # ... (código da função api_rh_get_funcionarios_para_filtro_presenca como antes) ...
+    print("[API_FILTRO_FUNCIONARIOS_PRESENCA] Iniciando busca de funcionários para filtro")
+    try:
+        funcionarios = Funcionario.objects.filter(
+            status=True, 
+            usuario__isnull=False
+        ).select_related('usuario').order_by('nome_completo')
+        
+        data = []
+        for f in funcionarios:
+            data.append({
+                'id': f.usuario.id, 
+                'nome': f.nome_completo
+            })
+        print(f"[API_FILTRO_FUNCIONARIOS_PRESENCA] Encontrados {len(data)} funcionários.")
+        return JsonResponse(data, safe=False)
+    except Exception as e:
+        logger.error(f"[API_FILTRO_FUNCIONARIOS_PRESENCA] Erro ao buscar funcionários: {e}", exc_info=True)
+        return JsonResponse({'error': 'Erro ao carregar lista de funcionários.'}, status=500)
+
+# ... (restante das views) ...
